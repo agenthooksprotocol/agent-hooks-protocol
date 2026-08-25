@@ -1,16 +1,16 @@
 {
   "status": "Working Draft",
   "sourceTitle": "Agent Hooks Protocol v0.1 Proposal",
-  "sourceFetchedAt": "2026-08-24T17:58:50.903Z",
+  "sourceFetchedAt": "2026-08-25T16:29:21.362Z",
   "privateSourceLocationStored": false,
   "proposalPath": "proposals/AHP-0001.md",
-  "proposalSha256": "232d60c9da52cfff3aaa983c0f95ad1b6cc557f332c91694d73417df544e506b",
+  "proposalSha256": "bc6fa37e1f5087fa627aaf0ba6a2cdb477528de8b0bea4f811ee306c4be090e6",
   "canonicalPath": "spec/working-draft.md",
   "openQuestionsPreserved": 12,
   "migrationNotes": [
     "Notion page, collection, discussion, and user identifiers were omitted.",
     "Private source links were omitted.",
     "Public reference links and all substantive proposal sections were preserved.",
-    "Canonical Working Draft context and stable requirement identifiers were added without resolving Section 24 questions."
+    "Canonical Working Draft context and stable requirement identifiers were added without resolving the source proposal Section 23 questions."
   ]
 }
