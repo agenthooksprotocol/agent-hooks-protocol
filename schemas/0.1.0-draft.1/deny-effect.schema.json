@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/deny-effect.schema.json",
+  "title": "AHP deny Effect (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1.",
+  "x-requirements": ["AHP-CAP-001", "AHP-DEC-001", "AHP-DEC-002"],
+  "type": "object",
+  "required": ["type", "reason"],
+  "properties": {
+    "type": {"const": "deny"},
+    "reason": {"type": "string", "minLength": 1},
+    "code": {"type": "string", "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"},
+    "extensions": {"$ref": "extensions.schema.json"}
+  }
+}

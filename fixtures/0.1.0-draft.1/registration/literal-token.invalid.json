@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "0.1",
+  "hooks": [
+    {
+      "id": "com.example.insecure",
+      "transport": {"type": "http", "url": "https://policy.example.com/agent-hooks"},
+      "authentication": {"type": "bearer", "tokenEnv": "AHP_POLICY_TOKEN", "token": "do-not-store-literal-tokens"},
+      "subscriptions": [
+        {"events": ["tool.before"], "mode": "intercept", "timeoutMs": 500, "failurePolicy": "fail-closed"}
+      ]
+    }
+  ]
+}

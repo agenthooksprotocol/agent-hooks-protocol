@@ -1,0 +1,5 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt_http_002",
+  "result": {"protocolVersion": "0.1", "effects": []}
+}

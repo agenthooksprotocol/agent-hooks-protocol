@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/intercept-request.schema.json",
+  "title": "AHP hooks/intercept Request for tool.before (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1. The request id/event id equality is also checked by conformance tooling.",
+  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001", "AHP-TB-001", "AHP-CAP-001"],
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/request"},
+    {
+      "type": "object",
+      "properties": {
+        "method": {"const": "hooks/intercept"},
+        "params": {
+          "type": "object",
+          "required": ["protocolVersion", "event", "capabilities"],
+          "properties": {
+            "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+            "event": {"$ref": "tool-before.schema.json"},
+            "capabilities": {
+              "allOf": [
+                {"$ref": "capabilities.schema.json"},
+                {
+                  "properties": {
+                    "effects": {"contains": {"const": "deny"}, "minContains": 1}
+                  }
+                }
+              ]
+            },
+            "extensions": {"$ref": "extensions.schema.json"}
+          }
+        }
+      }
+    }
+  ]
+}

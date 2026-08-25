@@ -1,0 +1,21 @@
+{
+  "protocolVersion": "0.1",
+  "hooks": [
+    {
+      "id": "com.example.policy",
+      "transport": {"type": "http", "url": "https://policy.example.com/agent-hooks"},
+      "authentication": {"type": "bearer", "tokenEnv": "AHP_POLICY_TOKEN"},
+      "subscriptions": [
+        {"events": ["tool.before"], "mode": "intercept", "timeoutMs": 750, "failurePolicy": "fail-closed"}
+      ]
+    },
+    {
+      "id": "com.example.local_review",
+      "transport": {"type": "stdio", "command": "/usr/local/bin/local-review", "args": ["serve"], "lifecycle": "persistent"},
+      "subscriptions": [
+        {"events": ["tool.before"], "mode": "intercept", "timeoutMs": 500, "failurePolicy": "fail-open"},
+        {"events": ["tool.after", "tool.error"], "mode": "observe", "includeNative": false}
+      ]
+    }
+  ]
+}

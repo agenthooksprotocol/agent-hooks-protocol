@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/registration.schema.json",
+  "title": "AHP Portable Registration (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1. Backend id uniqueness is also checked by conformance tooling.",
+  "x-requirements": ["AHP-REG-001", "AHP-FAIL-001", "AHP-FAIL-002"],
+  "type": "object",
+  "required": ["protocolVersion", "hooks"],
+  "properties": {
+    "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+    "hooks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/backend"}
+    }
+  },
+  "$defs": {
+    "reverseDns": {
+      "type": "string",
+      "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "stdioTransport": {
+      "type": "object",
+      "required": ["type", "command", "lifecycle"],
+      "properties": {
+        "type": {"const": "stdio"},
+        "command": {"type": "string", "minLength": 1},
+        "args": {"type": "array", "items": {"type": "string"}},
+        "lifecycle": {"enum": ["persistent", "per_event"]},
+        "cwd": {"type": "string"}
+      }
+    },
+    "httpTransport": {
+      "type": "object",
+      "required": ["type", "url"],
+      "properties": {
+        "type": {"const": "http"},
+        "url": {"type": "string", "format": "uri", "pattern": "^https?://"}
+      }
+    },
+    "authentication": {
+      "type": "object",
+      "required": ["type", "tokenEnv"],
+      "properties": {
+        "type": {"const": "bearer"},
+        "tokenEnv": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
+      },
+      "not": {
+        "anyOf": [
+          {"required": ["token"]},
+          {"required": ["bearerToken"]},
+          {"required": ["value"]}
+        ]
+      }
+    },
+    "interceptSubscription": {
+      "type": "object",
+      "required": ["events", "mode", "timeoutMs", "failurePolicy"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "uniqueItems": true,
+          "items": {"const": "tool.before"}
+        },
+        "mode": {"const": "intercept"},
+        "timeoutMs": {"type": "integer", "minimum": 1},
+        "failurePolicy": {"enum": ["fail-open", "fail-closed"]},
+        "includeNative": {"type": "boolean"}
+      }
+    },
+    "observeSubscription": {
+      "type": "object",
+      "required": ["events", "mode"],
+      "properties": {
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["tool.before", "tool.after", "tool.error", "session.start", "session.end"]}
+        },
+        "mode": {"const": "observe"},
+        "includeNative": {"type": "boolean"}
+      },
+      "not": {
+        "anyOf": [
+          {"required": ["timeoutMs"]},
+          {"required": ["failurePolicy"]}
+        ]
+      }
+    },
+    "backend": {
+      "type": "object",
+      "required": ["id", "transport", "subscriptions"],
+      "properties": {
+        "id": {"$ref": "#/$defs/reverseDns"},
+        "transport": {
+          "oneOf": [
+            {"$ref": "#/$defs/stdioTransport"},
+            {"$ref": "#/$defs/httpTransport"}
+          ]
+        },
+        "authentication": {"$ref": "#/$defs/authentication"},
+        "subscriptions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {"$ref": "#/$defs/interceptSubscription"},
+              {"$ref": "#/$defs/observeSubscription"}
+            ]
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"transport": {"properties": {"type": {"const": "stdio"}}}}},
+          "then": {"not": {"required": ["authentication"]}}
+        },
+        {
+          "if": {"required": ["authentication"]},
+          "then": {"properties": {"transport": {"properties": {"type": {"const": "http"}}}}}
+        }
+      ]
+    }
+  }
+}

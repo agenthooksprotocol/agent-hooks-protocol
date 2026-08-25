@@ -1,0 +1,12 @@
+# Review routing only; governance authority is defined by GOVERNANCE.md and MAINTAINERS.md.
+* @danielkov
+
+# Require explicit owner review for governance and ownership policy.
+/.github/CODEOWNERS @danielkov
+/GOVERNANCE.md @danielkov
+/MAINTAINERS.md @danielkov
+/governance/ @danielkov
+/docs/RELEASES.md @danielkov
+/SECURITY.md @danielkov
+/CODE_OF_CONDUCT.md @danielkov
+/CONTRIBUTING.md @danielkov
