@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt_http_error_001",
+  "error": {
+    "code": -32001,
+    "message": "Unsupported AHP protocol version",
+    "data": {
+      "supported": ["draft"]
+    }
+  }
+}

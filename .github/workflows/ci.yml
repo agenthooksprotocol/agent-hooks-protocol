@@ -13,13 +13,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Validate schemas, fixtures, and manifests
-        run: python3 tools/check_conformance.py
+        with:
+          fetch-depth: 0
+      - name: Test snapshot checker
+        run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover tools/tests
+      - name: Validate protocol snapshots
+        run: PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
       - uses: dtolnay/rust-toolchain@1.88.0
       - name: Test SDK generator
         run: cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
       - name: Validate SDK generation profile
-        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision 0.1.0-draft.1
+        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision draft
       - uses: actions/setup-node@v5
         with:
           node-version: 20
@@ -27,7 +31,7 @@ jobs:
       - name: Compile generated TypeScript
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision 0.1.0-draft.1 --language typescript \
+            generate --revision draft --language typescript \
             --output "$RUNNER_TEMP/ahp.generated.ts"
           mkdir -p "$RUNNER_TEMP/ahp-codegen"
           npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
@@ -41,7 +45,7 @@ jobs:
       - name: Test generated Python
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision 0.1.0-draft.1 --language python \
+            generate --revision draft --language python \
             --output "$RUNNER_TEMP/ahp_generated.py"
           python3 tools/sdk-codegen/tests/python-smoke.py \
             "$RUNNER_TEMP/ahp_generated.py" "$GITHUB_WORKSPACE"
@@ -51,7 +55,7 @@ jobs:
       - name: Test generated Go
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision 0.1.0-draft.1 --language go \
+            generate --revision draft --language go \
             --output "$RUNNER_TEMP/ahp_generated.go"
           tools/sdk-codegen/tests/go-smoke.sh \
             "$RUNNER_TEMP/ahp_generated.go" "$GITHUB_WORKSPACE"
@@ -60,7 +64,7 @@ jobs:
           AHP_RUST_TOOLCHAIN: "1.88.0"
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision 0.1.0-draft.1 --language rust \
+            generate --revision draft --language rust \
             --output "$RUNNER_TEMP/ahp_generated.rs"
           tools/sdk-codegen/tests/rust-smoke.sh \
             "$RUNNER_TEMP/ahp_generated.rs" "$GITHUB_WORKSPACE"

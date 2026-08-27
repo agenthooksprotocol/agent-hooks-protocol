@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt_observe_with_id_001",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt_observe_with_id_001",
+      "source": "https://harness.example/runtime/42",
+      "type": "session.start",
+      "time": "2026-08-24T08:50:00Z",
+      "session": {"id": "sess_observe_123"}
+    }
+  }
+}

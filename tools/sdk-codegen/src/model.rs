@@ -4,7 +4,7 @@ use serde_json::Value;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SchemaManifest {
-    pub draft_version: String,
+    pub snapshot_version: String,
     pub dialect: String,
     pub protocol_version: String,
     pub sdk_generation: Profile,

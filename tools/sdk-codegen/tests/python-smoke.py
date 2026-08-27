@@ -44,7 +44,7 @@ def main() -> None:
     repository = pathlib.Path(sys.argv[2]).resolve()
 
     registration = fixture(
-        repository, "fixtures/0.1.0-draft.1/registration/portable.valid.json"
+        repository, "fixtures/draft/registration/portable.valid.json"
     )
     registration["futureRoot"] = {"nested": True}
     registration["hooks"][0]["transport"]["futureNested"] = 7
@@ -111,7 +111,7 @@ def main() -> None:
         fail("unknown variant payload was lost")
 
     no_default = fixture(
-        repository, "fixtures/0.1.0-draft.1/registration/portable.valid.json"
+        repository, "fixtures/draft/registration/portable.valid.json"
     )
     del no_default["hooks"][1]["subscriptions"][1]["includeNative"]
     result = sdk.parse_registration(no_default)
@@ -124,7 +124,7 @@ def main() -> None:
         fail("decoder fabricated an absent default")
 
     request = fixture(
-        repository, "fixtures/0.1.0-draft.1/http/intercept-request.valid.json"
+        repository, "fixtures/draft/http/intercept-request.valid.json"
     )
     integral_request = json.dumps(request, separators=(",", ":")).replace(
         json.dumps(request["id"]), "1.0", 1
@@ -144,7 +144,7 @@ def main() -> None:
         fail(f"unknown enum value was not preserved: {result['diagnostics']}")
 
     deny = fixture(
-        repository, "fixtures/0.1.0-draft.1/http/deny-response.valid.json"
+        repository, "fixtures/draft/http/deny-response.valid.json"
     )
     deny["result"]["effects"][0]["code"] = None
     result = sdk.parse_intercept_deny_response(deny)
@@ -180,7 +180,7 @@ def main() -> None:
         fail("oneOf ambiguity did not produce ambiguous_union")
 
     malformed = fixture(
-        repository, "fixtures/0.1.0-draft.1/registration/portable.valid.json"
+        repository, "fixtures/draft/registration/portable.valid.json"
     )
     malformed["hooks"][0]["transport"] = {"type": "http"}
     result = sdk.parse_registration(malformed)

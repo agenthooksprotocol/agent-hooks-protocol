@@ -6,22 +6,36 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 
 ## Working Draft artifacts
 
-- [Canonical v0.1 Working Draft specification](spec/working-draft.md)
-- [AHP-0001 source proposal and provenance record](proposals/AHP-0001.md)
-- [Stable requirement manifest](spec/requirements.json)
-- [Versioned JSON Schemas](schemas/README.md)
+- [Canonical Working Draft specification](spec/draft/index.md)
+- [Stable requirement manifest](spec/draft/requirements.json)
+- [Versioned JSON Schemas](schema/README.md)
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
 - [Schema-driven SDK generation](tools/sdk-codegen/README.md)
 
-The proposal is non-normative. Its unresolved questions remain open. The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
+The canonical Working Draft and each machine-readable artifact use the literal snapshot and wire identifier `draft` until publication.
+
+## Repository snapshots
+
+The four parallel `draft/` trees form one logical, mutable snapshot:
+
+- `spec/draft/` contains the Markdown specification and requirement manifest;
+- `schema/draft/` contains the JSON Schemas and schema manifest;
+- `fixtures/draft/` contains golden examples and their manifest; and
+- `conformance/draft/` contains conformance profiles and their manifest.
+
+A release freezes matching copies beneath the same publication-date key, such as `spec/2026-08-27/`, `schema/2026-08-27/`, `fixtures/2026-08-27/`, and `conformance/2026-08-27/`. There is no `latest/` alias: use `draft` for current work or an exact `YYYY-MM-DD` date for a published snapshot. The repository snapshot key and on-wire `protocolVersion` are identical: both are `draft` while mutable and both become the publication date when frozen.
+
+Validate the mutable snapshot with `python3 tools/check_conformance.py`, or a frozen snapshot with `python3 tools/check_conformance.py --snapshot 2026-08-27`. See the [tooling guide](tools/README.md) for focused tests and the [release policy](docs/RELEASES.md) for the freeze procedure.
 
 ## Normative scope
 
 AHP is language-neutral. Normative protocol requirements must be expressible without depending on a programming language, runtime, framework, or vendor.
 
 Only repository material that an AHP release explicitly identifies as normative defines the protocol. All implementations, SDKs, bindings, examples, adapters, and generated artifacts are non-normative. This includes every TypeScript SDK or TypeScript implementation. If an SDK or example conflicts with the normative protocol, the normative protocol takes precedence.
+
+Markdown and JSON Schema are the source artifacts in this repository. Generated documentation, SDKs, adapters, and reference implementations do not replace them as sources of truth.
 
 ## Participate
 

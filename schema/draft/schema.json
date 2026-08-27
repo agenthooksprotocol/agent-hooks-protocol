@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/schema.json",
+  "title": "AHP Wire Message (Draft)",
+  "$comment": "Mutable AHP draft. This aggregate entrypoint selects every wire-message shape defined by the AHP draft.",
+  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002"],
+  "oneOf": [
+    {"$ref": "intercept-request.schema.json"},
+    {"$ref": "intercept-no-effect-response.schema.json"},
+    {"$ref": "intercept-deny-response.schema.json"},
+    {"$ref": "common.schema.json#/$defs/errorResponse"},
+    {"$ref": "observe-notification.schema.json"}
+  ]
+}

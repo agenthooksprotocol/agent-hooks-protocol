@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/intercept-no-effect-response.schema.json",
+  "title": "AHP No-effect Intercept Response (Draft)",
+  "$comment": "Mutable AHP draft. An empty effects list is not authorization.",
+  "x-requirements": ["AHP-RPC-001", "AHP-VER-001", "AHP-DEC-001", "AHP-DEC-003", "AHP-SEC-001"],
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/successResponse"},
+    {
+      "properties": {
+        "result": {
+          "type": "object",
+          "required": ["protocolVersion", "effects"],
+          "properties": {
+            "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+            "effects": {"type": "array", "maxItems": 0},
+            "extensions": {"$ref": "extensions.schema.json"}
+          }
+        }
+      }
+    }
+  ]
+}

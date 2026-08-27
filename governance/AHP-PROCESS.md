@@ -17,7 +17,7 @@ Do not require an AHP proposal for typo fixes, non-semantic clarification, tests
 
 ## Location and numbering
 
-Use [AHP-TEMPLATE.md](AHP-TEMPLATE.md) to draft a proposal. Accepted and historical proposal documents belong in `proposals/` and are named `AHP-NNNN.md`.
+Use [AHP-TEMPLATE.md](AHP-TEMPLATE.md) to draft a proposal. Proposal documents belong in `proposals/` and are named `AHP-NNNN.md`; create the directory when the first proposal is needed.
 
 Open a public tracking issue before requesting a number. An active maintainer assigns the next unused number after checking open and merged proposals. Numbers are never reused, including for withdrawn or rejected proposals. Assignment prevents identifier collisions; it does not imply endorsement.
 

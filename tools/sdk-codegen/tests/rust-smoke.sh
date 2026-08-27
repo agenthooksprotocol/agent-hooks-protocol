@@ -183,7 +183,7 @@ fn success<T>(result: ParseResult<T>) -> (T, Value, Vec<ParseDiagnostic>) {
 
 #[test]
 fn preserves_unknown_data_and_absence_on_round_trip() {
-    let mut registration = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+    let mut registration = fixture("fixtures/draft/registration/portable.valid.json");
     registration["futureRoot"] = serde_json::from_str(
         "1.23456789012345678901234567890123456789",
     ).unwrap();
@@ -196,7 +196,7 @@ fn preserves_unknown_data_and_absence_on_round_trip() {
     let encoded: Value = serde_json::from_str(&encode_registration(&model).unwrap()).unwrap();
     assert_eq!(encoded, registration);
 
-    let mut without_default = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+    let mut without_default = fixture("fixtures/draft/registration/portable.valid.json");
     without_default["hooks"][1]["subscriptions"][1]
         .as_object_mut().unwrap().remove("includeNative");
     let (model, _, _) = success(parse_registration_value(without_default.clone()));
@@ -209,7 +209,7 @@ fn closed_unions_reject_malformed_values_and_null_selects_null() {
     assert!(serde_json::from_value::<JsonRpcId>(json!(true)).is_err());
     assert!(serde_json::from_value::<BackendTransport>(json!({"type": "http"})).is_err());
 
-    let mut response = fixture("fixtures/0.1.0-draft.1/http/deny-response.valid.json");
+    let mut response = fixture("fixtures/draft/http/deny-response.valid.json");
     response["id"] = Value::Null;
     let (response, _, _) = success(parse_intercept_deny_response(
         &serde_json::to_string(&response).unwrap(),
@@ -221,7 +221,7 @@ fn closed_unions_reject_malformed_values_and_null_selects_null() {
 
 #[test]
 fn preserves_forward_compatible_values_with_warnings() {
-    let mut registration = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+    let mut registration = fixture("fixtures/draft/registration/portable.valid.json");
     registration["hooks"][0]["transport"] =
         json!({"type": "future", "deeply": {"preserved": true}});
     let (model, _, diagnostics) = success(parse_registration_value(registration.clone()));
@@ -230,7 +230,7 @@ fn preserves_forward_compatible_values_with_warnings() {
     let encoded: Value = serde_json::from_str(&encode_registration(&model).unwrap()).unwrap();
     assert_eq!(encoded, registration);
 
-    let mut request = fixture("fixtures/0.1.0-draft.1/http/intercept-request.valid.json");
+    let mut request = fixture("fixtures/draft/http/intercept-request.valid.json");
     request["params"]["event"]["tool"]["kind"] = json!("future_tool");
     let result = parse_intercept_request(&serde_json::to_string(&request).unwrap());
     assert!(result.is_ok());
@@ -242,14 +242,14 @@ fn preserves_forward_compatible_values_with_warnings() {
         json!("fail-open")
     );
 
-    let message = fixture("fixtures/0.1.0-draft.1/http/intercept-request.valid.json");
+    let message = fixture("fixtures/draft/http/intercept-request.valid.json");
     let (message, _, _) = success(parse_json_rpc_message(&serde_json::to_string(&message).unwrap()));
     assert!(matches!(message, JsonRpcMessage::JsonRpcRequest(_)));
 }
 
 #[test]
 fn preserves_integral_number_forms_and_enforces_safe_integer_bounds() {
-    let mut integral_float = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+    let mut integral_float = fixture("fixtures/draft/registration/portable.valid.json");
     integral_float["hooks"][0]["subscriptions"][0]["timeoutMs"] =
         serde_json::from_str("1.0").unwrap();
     let (model, raw, diagnostics) = success(parse_registration_value(integral_float.clone()));
@@ -259,7 +259,7 @@ fn preserves_integral_number_forms_and_enforces_safe_integer_bounds() {
     assert_eq!(encoded, integral_float);
 
     for value in [9_007_199_254_740_992_i64, -9_007_199_254_740_992_i64] {
-        let mut out_of_range = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+        let mut out_of_range = fixture("fixtures/draft/registration/portable.valid.json");
         out_of_range["hooks"][0]["subscriptions"][0]["timeoutMs"] = json!(value);
         let result = parse_registration_value(out_of_range);
         assert!(!result.is_ok());
@@ -269,7 +269,7 @@ fn preserves_integral_number_forms_and_enforces_safe_integer_bounds() {
 
 #[test]
 fn reports_structural_failures_and_keeps_valid_json_raw() {
-    let mut deny = fixture("fixtures/0.1.0-draft.1/http/deny-response.valid.json");
+    let mut deny = fixture("fixtures/draft/http/deny-response.valid.json");
     deny["result"]["effects"][0]["code"] = Value::Null;
     let result = parse_intercept_deny_response(&serde_json::to_string(&deny).unwrap());
     assert!(!result.is_ok());
@@ -283,7 +283,7 @@ fn reports_structural_failures_and_keeps_valid_json_raw() {
     assert!(!result.is_ok());
     assert!(result.diagnostics().iter().any(|item| item.code == DiagnosticCode::NoUnionMatch));
 
-    let mut malformed = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+    let mut malformed = fixture("fixtures/draft/registration/portable.valid.json");
     malformed["hooks"][0]["transport"] = json!({"type": "http"});
     let result = parse_registration_value(malformed);
     assert!(!result.is_ok());

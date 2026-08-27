@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/json-rpc-message.schema.json",
+  "title": "AHP Common JSON-RPC Message (Draft)",
+  "$comment": "Mutable AHP draft. This envelope schema does not select an AHP method payload.",
+  "x-requirements": ["AHP-RPC-001"],
+  "oneOf": [
+    {"$ref": "common.schema.json#/$defs/request"},
+    {"$ref": "common.schema.json#/$defs/notification"},
+    {"$ref": "common.schema.json#/$defs/successResponse"},
+    {"$ref": "common.schema.json#/$defs/errorResponse"}
+  ]
+}

@@ -1,0 +1,436 @@
+{
+  "status": "Working Draft",
+  "snapshotVersion": "draft",
+  "protocolVersion": "draft",
+  "cases": [
+    {
+      "id": "stdio.intercept-request.valid",
+      "path": "fixtures/draft/stdio/intercept-request.valid.jsonl",
+      "binding": "stdio-jsonl",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-STDIO-001",
+        "AHP-TB-001",
+        "AHP-CAP-001",
+        "AHP-CAP-002"
+      ],
+      "sha256": "47e1065d63dd8c164cf9cc13c32e81380b1df9d2e589144d19565ea958ed1a3c"
+    },
+    {
+      "id": "stdio.no-effect-response.valid",
+      "path": "fixtures/draft/stdio/no-effect-response.valid.jsonl",
+      "binding": "stdio-jsonl",
+      "schema": "schema/draft/intercept-no-effect-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-STDIO-001",
+        "AHP-DEC-001",
+        "AHP-DEC-003"
+      ],
+      "sha256": "845c4c0711e9d8f79540f538b5e7fade846d9caf966f8e7caeba96c9de918eab"
+    },
+    {
+      "id": "stdio.deny-response.valid",
+      "path": "fixtures/draft/stdio/deny-response.valid.jsonl",
+      "binding": "stdio-jsonl",
+      "schema": "schema/draft/intercept-deny-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-STDIO-001",
+        "AHP-DEC-001",
+        "AHP-DEC-002"
+      ],
+      "sha256": "2a4e08d692365b950477425c5d2959117759ac783359cda9aaa596a2831c78c2"
+    },
+    {
+      "id": "stdio.intercept-request-multiline.invalid",
+      "path": "fixtures/draft/stdio/intercept-request-multiline.invalid.jsonl",
+      "binding": "stdio-jsonl",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-STDIO-001"
+      ],
+      "sha256": "ac4b1110152b02055618bedea46971062721072feffdae406283a4425abd5692"
+    },
+    {
+      "id": "stdio.deny-response-multiple.invalid",
+      "path": "fixtures/draft/stdio/deny-response-multiple.invalid.jsonl",
+      "binding": "stdio-jsonl",
+      "schema": "schema/draft/intercept-deny-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-DEC-001",
+        "AHP-STDIO-001"
+      ],
+      "sha256": "659a2091c99eda22a6d8c327515b1992a130678a062c0ee4742edc58d7945770"
+    },
+    {
+      "id": "http.intercept-request.valid",
+      "path": "fixtures/draft/http/intercept-request.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002",
+        "AHP-TB-001",
+        "AHP-CAP-001",
+        "AHP-CAP-002"
+      ],
+      "sha256": "21df5c59555366c7a72ab503e2c0b6d44497625db5ecc017cecb8b989a7ea1e1"
+    },
+    {
+      "id": "http.intercept-request-effects-missing.invalid",
+      "path": "fixtures/draft/http/intercept-request-effects-missing.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-002",
+        "AHP-CAP-002"
+      ],
+      "sha256": "0ebd0d76c60e2a76bf32751f75f510f62cc5ecec1ed0025d2333487d198edc3b"
+    },
+    {
+      "id": "http.deny-response.valid",
+      "path": "fixtures/draft/http/deny-response.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-deny-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-DEC-001",
+        "AHP-DEC-002"
+      ],
+      "sha256": "7f2ba9080147f2764f5c750a901c9c1b1fcfc215ea545879b4090f57757306f9"
+    },
+    {
+      "id": "http.no-effect-response.valid",
+      "path": "fixtures/draft/http/no-effect-response.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-no-effect-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-DEC-001",
+        "AHP-DEC-003"
+      ],
+      "sha256": "a979ba577873365554d894f947070bb615796b76076ccc493ca71ae5fcaffc81"
+    },
+    {
+      "id": "http.intercept-request-id-mismatch.invalid",
+      "path": "fixtures/draft/http/intercept-request-id-mismatch.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-CORE-004"
+      ],
+      "sha256": "80fc51a9e938abc3a6879e6ad2a0c6c3ab99e5c7d5f7d1fe89f444c1952e81c8"
+    },
+    {
+      "id": "http.no-effect-response-version.invalid",
+      "path": "fixtures/draft/http/no-effect-response-version.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-no-effect-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-VER-001"
+      ],
+      "sha256": "5c3a64d03c6fc566af77af189f47d64201b94fae0cb9b8ec1006d0bf68171f0d"
+    },
+    {
+      "id": "registration.portable.valid",
+      "path": "fixtures/draft/registration/portable.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-001",
+        "AHP-REG-002",
+        "AHP-FAIL-001",
+        "AHP-FAIL-002"
+      ],
+      "sha256": "23030926d763052b081d11d5351e37f05bfbfb55d9cb043d5fa9930d27cf7fa9"
+    },
+    {
+      "id": "registration.intercept-observation-event.invalid",
+      "path": "fixtures/draft/registration/intercept-observation-event.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-002"
+      ],
+      "sha256": "b73db8125230858ff280161b0a26f029ecc0aa8e5f173af1bd3dfb1038a19dab"
+    },
+    {
+      "id": "registration.empty-hooks.invalid",
+      "path": "fixtures/draft/registration/empty-hooks.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-001"
+      ],
+      "sha256": "eb88e1e64adbd0d1c6f2d278eacef788752c8a5c9546336fdc2bd3ce0008aac5"
+    },
+    {
+      "id": "registration.literal-token.invalid",
+      "path": "fixtures/draft/registration/literal-token.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-001",
+        "AHP-SEC-001"
+      ],
+      "sha256": "9b8d462e2f79605a0b09a45ad4352d928965e412315c523d9ca276cdd789d446"
+    },
+    {
+      "id": "registration.observe-policy-fields.invalid",
+      "path": "fixtures/draft/registration/observe-policy-fields.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-001",
+        "AHP-FAIL-001"
+      ],
+      "sha256": "8fb6104062562e3bef6bdce5f89725f03c4d5f2f3518d4d6e2b6bf97c1a815b7"
+    },
+    {
+      "id": "http.error-response.valid",
+      "path": "fixtures/draft/http/error-response.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/json-rpc-message.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001"
+      ],
+      "sha256": "96f737ffd1434cb30adad694f9108c11512b02ba252be33aabfc7883822195a3"
+    },
+    {
+      "id": "http.error-response-result.invalid",
+      "path": "fixtures/draft/http/error-response-result.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/json-rpc-message.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001"
+      ],
+      "sha256": "6040d118af5984e55417bf21955907220b2dbc122f75b0e13150b0baeddf3a88"
+    },
+    {
+      "id": "http.observe-tool-before.valid",
+      "path": "fixtures/draft/http/observe-tool-before.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-before.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001"
+      ],
+      "sha256": "cf727dcbfe3b623f60c330659af3b074cd8aec31c4f81b23aa3dd5c30dbae12c"
+    },
+    {
+      "id": "http.observe-tool-after.valid",
+      "path": "fixtures/draft/http/observe-tool-after.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-after.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001"
+      ],
+      "sha256": "3c0c021e919b9a8f21ff815329d382efd90a27d406e62a39b2787586744d6e3a"
+    },
+    {
+      "id": "http.observe-tool-error.valid",
+      "path": "fixtures/draft/http/observe-tool-error.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-error.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001"
+      ],
+      "sha256": "3de76051d5e8d671e4b039009f865737fb2f71c0ad68f3609efd71c672c48e89"
+    },
+    {
+      "id": "http.observe-session-start.valid",
+      "path": "fixtures/draft/http/observe-session-start.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/session-start.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001"
+      ],
+      "sha256": "3d546388db40688aebc461cdd750feff9c4fd3f9dcddf58caae1c2f8bbcf97c7"
+    },
+    {
+      "id": "http.observe-session-end.valid",
+      "path": "fixtures/draft/http/observe-session-end.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/session-end.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001"
+      ],
+      "sha256": "2fab66b4b8b6284c92b7d28f0b35316bcd61cae52e2405754690f778c337f65b"
+    },
+    {
+      "id": "http.observe-with-id.invalid",
+      "path": "fixtures/draft/http/observe-with-id.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "9458b27c8a626fe0cbc0ab893411a78e92d0488d1e25a6cf3f35532fded71ada"
+    },
+    {
+      "id": "http.observe-unknown-event.invalid",
+      "path": "fixtures/draft/http/observe-unknown-event.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "11446ac910713320952e93e16f15a2ca6562b10a8a6cd9f0606180a823c85ec0"
+    },
+    {
+      "id": "http.observe-tool-after-error.invalid",
+      "path": "fixtures/draft/http/observe-tool-after-error.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-after.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "56bcf7080b365ac4d9997dbc505a84842ed46445ea9375856c3cce311af6bdd9"
+    },
+    {
+      "id": "http.observe-tool-after-input-missing.invalid",
+      "path": "fixtures/draft/http/observe-tool-after-input-missing.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-after.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "52002910c472cd21a318c9c62fc23cef02900ed4d77e95705595c9a656c33fbc"
+    },
+    {
+      "id": "http.observe-tool-error-message-missing.invalid",
+      "path": "fixtures/draft/http/observe-tool-error-message-missing.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-error.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "3310f9edcf80f3762b63b9277aed4884829b872523e136c6ca90e75cc0d52925"
+    },
+    {
+      "id": "http.observe-tool-error-output.invalid",
+      "path": "fixtures/draft/http/observe-tool-error-output.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/tool-error.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "5b52d9b59d82c662d7607aad566718eafed67d21c5f842a8499a6075063e6661"
+    },
+    {
+      "id": "http.observe-session-start-tool.invalid",
+      "path": "fixtures/draft/http/observe-session-start-tool.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/session-start.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "5f2971bad354db9ea34cff4a07cdbad0aea0c514052f43deea820545b82b26f8"
+    },
+    {
+      "id": "http.observe-session-end-outcome.invalid",
+      "path": "fixtures/draft/http/observe-session-end-outcome.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "eventSchema": "schema/draft/session-end.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-HTTP-001",
+        "AHP-RPC-002"
+      ],
+      "sha256": "3499119fa0e39c77533f167ba7c70faf63819f9a6b76a41f713321174bb9346d"
+    }
+  ]
+}

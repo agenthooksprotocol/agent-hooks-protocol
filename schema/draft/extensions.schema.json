@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/extensions.schema.json",
+  "title": "AHP Extensions Object (Draft)",
+  "$comment": "Mutable AHP draft; extension values are unrestricted JSON.",
+  "x-requirements": ["AHP-EXT-001"],
+  "type": "object",
+  "propertyNames": {
+    "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"
+  }
+}

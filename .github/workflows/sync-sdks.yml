@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "schemas/**"
-      - "conformance/manifest.json"
+      - "schema/draft/**"
+      - "conformance/draft/manifest.json"
       - "tools/sdk-codegen/**"
       - ".github/workflows/sync-sdks.yml"
 
@@ -27,17 +27,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
       - name: Verify schemas and generator
         run: |
-          python3 tools/check_conformance.py
+          PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
           cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
-          revision=$(jq -r .draftVersion conformance/manifest.json)
+          revision=draft
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
             check --revision "$revision"
       - name: Generate SDK sources and locks
         env:
           SOURCE_COMMIT: ${{ github.sha }}
         run: |
-          revision=$(jq -r .draftVersion conformance/manifest.json)
-          manifest="schemas/$revision/manifest.json"
+          revision=draft
+          manifest="schema/$revision/manifest.json"
           manifest_sha256=$(sha256sum "$manifest" | cut -d' ' -f1)
           for language in typescript python go rust; do
             mkdir -p "generated/$language"

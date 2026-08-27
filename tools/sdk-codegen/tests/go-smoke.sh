@@ -83,7 +83,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	var _ ProtocolVersion = ProtocolVersionValue01
 	var _ InterceptSubscriptionMode = InterceptSubscriptionModeIntercept
 
-	registration := fixture(t, "fixtures/0.1.0-draft.1/registration/portable.valid.json")
+	registration := fixture(t, "fixtures/draft/registration/portable.valid.json")
 	registration["futureRoot"] = map[string]any{"nested": true}
 	hooks := registration["hooks"].([]any)
 	transport := hooks[0].(map[string]any)["transport"].(map[string]any)
@@ -119,7 +119,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatal("unknown variant payload was lost")
 	}
 
-	noDefault := fixture(t, "fixtures/0.1.0-draft.1/registration/portable.valid.json")
+	noDefault := fixture(t, "fixtures/draft/registration/portable.valid.json")
 	subscriptions := noDefault["hooks"].([]any)[1].(map[string]any)["subscriptions"].([]any)
 	delete(subscriptions[1].(map[string]any), "includeNative")
 	result = ParseRegistration(inputJSON(t, noDefault))
@@ -133,7 +133,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatal("decoder fabricated an absent default")
 	}
 
-	numeric := fixture(t, "fixtures/0.1.0-draft.1/registration/portable.valid.json")
+	numeric := fixture(t, "fixtures/draft/registration/portable.valid.json")
 	numericSubscriptions := numeric["hooks"].([]any)[0].(map[string]any)["subscriptions"].([]any)
 	numericSubscriptions[0].(map[string]any)["timeoutMs"] = json.Number("1e3")
 	result = ParseRegistration(inputJSON(t, numeric))
@@ -161,7 +161,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatal("integer outside the cross-language safe range was accepted")
 	}
 
-	request := fixture(t, "fixtures/0.1.0-draft.1/http/intercept-request.valid.json")
+	request := fixture(t, "fixtures/draft/http/intercept-request.valid.json")
 	messageResult := ParseJsonRpcMessage(inputJSON(t, request))
 	if !messageResult.OK {
 		t.Fatalf("request envelope did not select one branch: %+v", messageResult.Diagnostics)
@@ -184,7 +184,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatal("unknown enum value was lost on round-trip")
 	}
 
-	deny := fixture(t, "fixtures/0.1.0-draft.1/http/deny-response.valid.json")
+	deny := fixture(t, "fixtures/draft/http/deny-response.valid.json")
 	deny["result"].(map[string]any)["effects"].([]any)[0].(map[string]any)["code"] = nil
 	denyResult := ParseInterceptDenyResponse(inputJSON(t, deny))
 	if denyResult.OK || len(denyResult.Raw) == 0 {
@@ -205,7 +205,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatalf("invalid result/error envelope selected a branch: %+v", messageResult.Diagnostics)
 	}
 
-	malformed := fixture(t, "fixtures/0.1.0-draft.1/registration/portable.valid.json")
+	malformed := fixture(t, "fixtures/draft/registration/portable.valid.json")
 	malformed["hooks"].([]any)[0].(map[string]any)["transport"] = map[string]any{"type": "http"}
 	result = ParseRegistration(inputJSON(t, malformed))
 	if result.OK || !hasDiagnostic(result.Diagnostics, DiagnosticInvalidKnownVariant) {
