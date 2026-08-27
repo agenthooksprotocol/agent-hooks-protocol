@@ -1,0 +1,42 @@
+{
+  "schemaRevision": "0.1.0-draft.1",
+  "protocolVersion": "0.1",
+  "publicRoots": [
+    {"name": "Registration", "schema": "schemas/0.1.0-draft.1/registration.schema.json", "protocolVersionPointer": "/protocolVersion"},
+    {"name": "InterceptRequest", "schema": "schemas/0.1.0-draft.1/intercept-request.schema.json", "method": "hooks/intercept", "protocolVersionPointer": "/params/protocolVersion"},
+    {"name": "InterceptDenyResponse", "schema": "schemas/0.1.0-draft.1/intercept-deny-response.schema.json", "protocolVersionPointer": "/result/protocolVersion", "responseContextRequired": true},
+    {"name": "InterceptNoEffectResponse", "schema": "schemas/0.1.0-draft.1/intercept-no-effect-response.schema.json", "protocolVersionPointer": "/result/protocolVersion", "responseContextRequired": true},
+    {"name": "JsonRpcMessage", "schema": "schemas/0.1.0-draft.1/json-rpc-message.schema.json"}
+  ],
+  "stableNames": {
+    "schemas/0.1.0-draft.1/capabilities.schema.json#": "Capabilities",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/errorResponse": "JsonRpcErrorResponse",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/jsonRpcId": "JsonRpcId",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/jsonRpcResponseId": "JsonRpcResponseId",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/native": "NativeEvent",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/notification": "JsonRpcNotification",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/protocolVersion": "ProtocolVersion",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/request": "JsonRpcRequest",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/session": "Session",
+    "schemas/0.1.0-draft.1/common.schema.json#/$defs/successResponse": "JsonRpcSuccessResponse",
+    "schemas/0.1.0-draft.1/deny-effect.schema.json#": "DenyEffect",
+    "schemas/0.1.0-draft.1/extensions.schema.json#": "Extensions",
+    "schemas/0.1.0-draft.1/intercept-deny-response.schema.json#": "InterceptDenyResponse",
+    "schemas/0.1.0-draft.1/intercept-no-effect-response.schema.json#": "InterceptNoEffectResponse",
+    "schemas/0.1.0-draft.1/intercept-request.schema.json#": "InterceptRequest",
+    "schemas/0.1.0-draft.1/json-rpc-message.schema.json#": "JsonRpcMessage",
+    "schemas/0.1.0-draft.1/registration.schema.json#": "Registration",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/authentication": "Authentication",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/backend": "Backend",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/httpTransport": "HttpTransport",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/interceptSubscription": "InterceptSubscription",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/observeSubscription": "ObserveSubscription",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/reverseDns": "ReverseDnsName",
+    "schemas/0.1.0-draft.1/registration.schema.json#/$defs/stdioTransport": "StdioTransport",
+    "schemas/0.1.0-draft.1/tool-before.schema.json#": "ToolBeforeEvent"
+  },
+  "discriminators": [
+    {"schema": "schemas/0.1.0-draft.1/registration.schema.json", "pointer": "/$defs/backend/properties/transport", "property": "type"},
+    {"schema": "schemas/0.1.0-draft.1/registration.schema.json", "pointer": "/$defs/backend/properties/subscriptions/items", "property": "mode"}
+  ]
+}

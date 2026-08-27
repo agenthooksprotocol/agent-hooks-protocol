@@ -14,7 +14,8 @@ It checks:
 - requirement ID uniqueness, requirement text hashes, document anchors, headings, and artifact references;
 - source migration proposal hash and preserved open-question count;
 - absence of private Notion URLs;
-- schema, fixture, and conformance profile manifest drift.
+- schema, fixture, and conformance profile manifest drift; and
+- SDK-generation schema pins, public roots, stable names, discriminator pointers, and compatibility-case integrity.
 
 ## Supported JSON Schema subset
 
@@ -29,3 +30,17 @@ python3 tools/check_conformance.py --update-manifests
 ```
 
 Published immutable draft artifacts must not be edited in place.
+
+## SDK model generator
+
+The optional, non-normative Rust generator validates a versioned generation profile and emits a language-neutral IR or TypeScript wire models and loss-preserving structural codecs:
+
+```sh
+cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+  check --revision 0.1.0-draft.1
+
+cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+  generate --revision 0.1.0-draft.1 --language typescript --output /tmp/ahp.generated.ts
+```
+
+The structural codecs preserve unknown JSON but do not replace canonical Draft 2020-12 validation. See [`sdk-generation/README.md`](../sdk-generation/README.md).

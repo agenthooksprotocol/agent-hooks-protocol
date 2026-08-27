@@ -1,0 +1,61 @@
+{
+  "schemaRevision": "0.1.0-draft.1",
+  "cases": [
+    {
+      "id": "recursive-unknown-fields",
+      "root": "InterceptRequest",
+      "canonicalValid": true,
+      "operation": "roundTrip",
+      "assertions": ["preserveUnknownPropertiesRecursively"]
+    },
+    {
+      "id": "unknown-tool-kind",
+      "root": "InterceptRequest",
+      "canonicalValid": false,
+      "operation": "roundTrip",
+      "assertions": ["preserveUnknownEnumString", "doNotReportAsKnown"]
+    },
+    {
+      "id": "unknown-transport",
+      "root": "Registration",
+      "canonicalValid": false,
+      "operation": "roundTrip",
+      "assertions": ["preserveUnknownVariantObject", "doNotScoreKnownVariants"]
+    },
+    {
+      "id": "known-transport-invalid-shape",
+      "root": "Registration",
+      "canonicalValid": false,
+      "operation": "parse",
+      "assertions": ["retainKnownVariantIdentity", "doNotFallBack"]
+    },
+    {
+      "id": "optional-code-absent-null-value",
+      "root": "DenyEffect",
+      "canonicalValid": false,
+      "operation": "roundTripVariants",
+      "assertions": ["distinguishAbsentNullValueInvalid"]
+    },
+    {
+      "id": "no-default-fabrication",
+      "root": "Registration",
+      "canonicalValid": true,
+      "operation": "roundTrip",
+      "assertions": ["keepIncludeNativeAbsent"]
+    },
+    {
+      "id": "mutually-exclusive-json-rpc-envelope",
+      "root": "JsonRpcMessage",
+      "canonicalValid": false,
+      "operation": "parse",
+      "assertions": ["rejectResultAndErrorTogether", "doNotScoreBranches"]
+    },
+    {
+      "id": "draft1-id-fidelity",
+      "root": "JsonRpcMessage",
+      "canonicalValid": true,
+      "operation": "roundTripVariants",
+      "assertions": ["preserveStringId", "preserveIntegerId", "preserveNullResponseId"]
+    }
+  ]
+}

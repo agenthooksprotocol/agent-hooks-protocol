@@ -23,6 +23,7 @@ FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 CONFORMANCE_MANIFEST = ROOT / "conformance" / "manifest.json"
 REQUIREMENTS = ROOT / "spec" / "requirements.json"
 MIGRATION = ROOT / "spec" / "source-migration.json"
+SDK_GENERATION_MANIFEST = ROOT / "sdk-generation" / DRAFT_VERSION / "manifest.json"
 REQ_RE = re.compile(r"\bAHP-[A-Z]+-\d{3}\b")
 PRIVATE_NOTION_RE = re.compile(
     r"(?:https?://(?:www\.)?notion\.(?:so|site)(?:/|\b)|" + "notion" + r"://)",
@@ -469,6 +470,103 @@ def check_source_migration() -> list[str]:
     return errors
 
 
+def resolve_pointer(document: Any, pointer: str, label: str) -> Any:
+    if pointer == "":
+        return document
+    if not pointer.startswith("/"):
+        raise CheckFailure(f"{label}: expected JSON Pointer")
+    current = document
+    for raw_token in pointer[1:].split("/"):
+        token = unquote(raw_token).replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict) and token in current:
+            current = current[token]
+        elif isinstance(current, list) and token.isdigit() and int(token) < len(current):
+            current = current[int(token)]
+        else:
+            raise CheckFailure(f"{label}: unresolved pointer {pointer!r}")
+    return current
+
+
+def check_sdk_generation() -> tuple[list[str], int]:
+    errors: list[str] = []
+    manifest = load_json(SDK_GENERATION_MANIFEST)
+    if manifest.get("status") != "non-normative":
+        errors.append("SDK generation manifest must be non-normative")
+    if manifest.get("schemaRevision") != DRAFT_VERSION:
+        errors.append("SDK generation revision mismatch")
+
+    schema_pin = manifest.get("schemaManifest", {})
+    schema_path = root_path(schema_pin.get("path", ""))
+    if schema_path != SCHEMA_MANIFEST.resolve() or not schema_path.is_file():
+        errors.append("SDK generation schema manifest pin is invalid")
+    elif sha256(schema_path) != schema_pin.get("sha256"):
+        errors.append("SDK generation schema manifest hash drift")
+
+    profile_pin = manifest.get("profile", {})
+    cases_pin = manifest.get("compatibilityCases", {})
+    profile_path = root_path(profile_pin.get("path", ""))
+    cases_path = root_path(cases_pin.get("path", ""))
+    if not profile_path.is_file() or sha256(profile_path) != profile_pin.get("sha256"):
+        errors.append("SDK generation profile hash drift")
+    if not cases_path.is_file() or sha256(cases_path) != cases_pin.get("sha256"):
+        errors.append("SDK generation corpus hash drift")
+    profile = load_json(profile_path)
+    cases = load_json(cases_path)
+    if profile.get("schemaRevision") != DRAFT_VERSION or cases.get("schemaRevision") != DRAFT_VERSION:
+        errors.append("SDK generation profile or corpus revision mismatch")
+    if profile.get("protocolVersion") != manifest.get("protocolVersion"):
+        errors.append("SDK generation protocol version mismatch")
+
+    schema_manifest = load_json(SCHEMA_MANIFEST)
+    schema_paths = {item["path"] for item in schema_manifest.get("documents", [])}
+    stable_names = profile.get("stableNames", {})
+    if len(set(stable_names.values())) != len(stable_names):
+        errors.append("SDK generation stable names are not unique")
+    for source, name in stable_names.items():
+        path_text, separator, pointer = source.partition("#")
+        if not separator or path_text not in schema_paths or not isinstance(name, str) or not name:
+            errors.append(f"SDK generation invalid stable name source: {source}")
+            continue
+        try:
+            resolve_pointer(load_json(root_path(path_text)), pointer, source)
+        except CheckFailure as exc:
+            errors.append(str(exc))
+
+    known_names = set(stable_names.values())
+    for root in profile.get("publicRoots", []):
+        if root.get("name") not in known_names:
+            errors.append(f"SDK generation public root lacks stable name: {root.get('name')}")
+        if root.get("schema") not in schema_paths:
+            errors.append(f"SDK generation public root has unknown schema: {root.get('schema')}")
+
+    for discriminator in profile.get("discriminators", []):
+        schema = discriminator.get("schema", "")
+        if schema not in schema_paths:
+            errors.append(f"SDK generation discriminator has unknown schema: {schema}")
+            continue
+        try:
+            node = resolve_pointer(load_json(root_path(schema)), discriminator.get("pointer", ""), schema)
+            if not isinstance(node, dict) or not isinstance(node.get("oneOf"), list):
+                errors.append(
+                    f"SDK generation discriminator does not point to oneOf: "
+                    f"{schema}{discriminator.get('pointer')}"
+                )
+        except CheckFailure as exc:
+            errors.append(str(exc))
+
+    case_ids: set[str] = set()
+    for case in cases.get("cases", []):
+        case_id = case.get("id", "")
+        if not case_id or case_id in case_ids:
+            errors.append(f"SDK generation duplicate or empty case id: {case_id!r}")
+        case_ids.add(case_id)
+        if case.get("root") not in known_names:
+            errors.append(f"SDK generation case has unknown root: {case.get('root')}")
+        if not isinstance(case.get("canonicalValid"), bool):
+            errors.append(f"SDK generation case lacks canonicalValid boolean: {case_id}")
+    return errors, len(case_ids)
+
+
 def check_private_links() -> list[str]:
     errors: list[str] = []
     allowed_suffixes = {".json", ".jsonl", ".md", ".py", ".yml", ".yaml", ".txt"}
@@ -522,11 +620,14 @@ def main() -> int:
         requirement_errors, requirement_count = check_requirements()
         errors.extend(requirement_errors)
         errors.extend(check_source_migration())
+        sdk_errors, sdk_case_count = check_sdk_generation()
+        errors.extend(sdk_errors)
         errors.extend(check_private_links())
     except (CheckFailure, KeyError, TypeError) as exc:
         errors.append(str(exc))
         fixture_count = 0
         requirement_count = 0
+        sdk_case_count = 0
 
     if errors:
         print(f"conformance checks failed ({len(errors)}):", file=sys.stderr)
@@ -534,7 +635,10 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
     schema_count = len(list(SCHEMA_DIR.glob("*.schema.json")))
-    print(f"conformance checks passed: {schema_count} schemas, {fixture_count} fixtures, {requirement_count} requirements")
+    print(
+        f"conformance checks passed: {schema_count} schemas, {fixture_count} fixtures, "
+        f"{requirement_count} requirements, {sdk_case_count} SDK generation cases"
+    )
     return 0
 
 
