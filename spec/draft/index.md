@@ -2,11 +2,10 @@
 
 **Status:** Working Draft (`0.1.0-draft.1`)
 **Canonical draft:** This document
-**Proposal and provenance:** [`../../proposals/AHP-0001.md`](../../proposals/AHP-0001.md)
 
-This is the canonical, language-neutral Working Draft specification. It is not a final standard and must not be represented as stable. Sections 5 through 22 are normative where they use BCP 14 terms; the abstract, rationale, open questions, implementation plan, and references are informative. JSON Schemas constrain representable JSON shape; this prose defines protocol semantics. A conflict between prose, schemas, requirements, and fixtures is a draft defect, not permission to choose whichever behavior is convenient.
+This is the canonical, language-neutral Working Draft specification. It is not a final standard and must not be represented as stable. The Base Protocol, Server Features, and compatibility-adapter requirements are normative where they use BCP 14 terms; the abstract, rationale, open questions, implementation plan, and references are informative. JSON Schemas constrain representable JSON shape; this prose defines protocol semantics. A conflict between prose, schemas, requirements, and fixtures is a draft defect, not permission to choose whichever behavior is convenient.
 
-The tracked proposal is non-normative and records provenance and unresolved design questions. This canonical draft intentionally retains every Section 24 open question without resolving it. SDKs and implementation repositories, including the TypeScript SDK, are non-normative.
+This canonical draft retains the protocol rationale, every open question, and the proposed implementation plan. SDKs and implementation repositories, including the TypeScript SDK, are non-normative.
 
 **Protocol version:** `0.1`
 **Audience:** Agent-harness implementers, compatibility-adapter authors, and policy, security, approval, and runtime-middleware vendors
@@ -14,8 +13,8 @@ The tracked proposal is non-normative and records provenance and unresolved desi
 **Specification map**
 
 - [Architecture](architecture.md)
-- [Basic protocol](basic/index.md)
-  - [Transport bindings](basic/transports/index.md)
+- [Base Protocol](base/index.md)
+  - [Transport bindings](base/transports/index.md)
 - [Server Features](server/index.md)
 - [Client Features](client/index.md)
 - [Design rationale and references](rationale.md)

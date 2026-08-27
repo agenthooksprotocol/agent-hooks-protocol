@@ -1,7 +1,7 @@
 # Messages and events
 
-## 8. Common message envelope
-### 8.1 Intercept request
+## Common message envelope
+### Intercept request
 ```json
                {
   "jsonrpc": "2.0",
@@ -35,7 +35,7 @@
 }
 ```
 The JSON-RPC request `id` MUST equal `params.event.id`. A retry of the same event MUST reuse both values.
-### 8.2 Intercept response with no effect
+### Intercept response with no effect
 ```json
 {
   "jsonrpc": "2.0",
@@ -47,7 +47,7 @@ The JSON-RPC request `id` MUST equal `params.event.id`. A retry of the same even
 }
 ```
 An empty effect list means only that this interceptor requests no change. It does not grant permission, override another interceptor, or bypass the harness's permission system.
-### 8.3 Intercept response denying the operation
+### Intercept response denying the operation
 ```json
 {
   "jsonrpc": "2.0",
@@ -64,7 +64,7 @@ An empty effect list means only that this interceptor requests no change. It doe
   }
 }
 ```
-### 8.4 Observe notification
+### Observe notification
 ```json
 {
   "jsonrpc": "2.0",
@@ -97,8 +97,8 @@ An empty effect list means only that this interceptor requests no change. It doe
 }
 ```
 A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
-## 9. Event model
-### 9.1 Common event fields
+## Event model
+### Common event fields
 <table>
 <tr>
 <td>Field</td>
@@ -157,7 +157,7 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 </table>
 `id` MUST be unique across events produced by a harness. UUIDv4, UUIDv7, and suitably generated ULIDs are acceptable examples; the protocol does not require a specific algorithm.
 `source` SHOULD remain stable for the life of the harness installation. It MUST NOT contain access tokens, user secrets, raw prompts, or other sensitive data.
-### 9.2 Session object
+### Session object
 <table>
 <tr>
 <td>Field</td>
@@ -198,7 +198,7 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 </table>
 Paths and model identifiers may be sensitive. A harness MUST permit implementations or administrators to omit optional session fields.
 If present, `agent` has a required `id` and an optional provider-defined `type`.
-### 9.3 Tool object
+### Tool object
 <table>
 <tr>
 <td>Field</td>
@@ -262,7 +262,7 @@ The v0.1 `kind` values are:
 - `other`
 `kind` is deliberately coarse. It supports portable broad policy, such as denying all shell execution, without claiming that arbitrary tool input schemas are portable. `name` and `input` retain the harness representation. A future tool-projection profile may standardize selected inputs, but that work is out of scope here.
 If present, `mcp` MAY contain `server`, `tool`, and transport metadata. Only `server` and `tool` are candidates for future portable semantics; transport metadata is informational.
-### 9.4 Native payload
+### Native payload
 The optional `native` object has this shape:
 ```json
 {
@@ -272,7 +272,7 @@ The optional `native` object has this shape:
 }
 ```
 A harness MUST omit `native` unless native-payload delivery is enabled by local policy. A portable backend MUST function when `native` is absent. Native fields MUST NOT change the semantics of a core effect.
-### 9.5 Extensions
+### Extensions
 
 <a id="AHP-EXT-001"></a>
 **AHP-EXT-001 — MUST.** Extension keys use reverse-DNS names and core behavior does not depend on an extension unless that dependency is explicitly declared.

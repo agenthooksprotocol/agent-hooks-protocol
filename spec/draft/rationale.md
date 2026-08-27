@@ -1,23 +1,23 @@
 # Design rationale and references
 
-## 23. Design rationale
-### 23.1 Why only `deny`?
+## Design rationale
+### Why only `deny`?
 Cross-harness research shows that denial is the smallest broadly meaningful control capability. Approval prompts, forced allow, input mutation, output replacement, context injection, and agent continuation differ significantly across harnesses.
 Starting with one effect makes conformance meaningful. It also prevents the first release from standardizing ambiguous semantics merely because similar provider fields exist.
-### 23.2 Why capabilities if v0.1 has one effect?
+### Why capabilities if v0.1 has one effect?
 Capabilities make requests self-describing and establish the evolution mechanism needed by heterogeneous harnesses. They also prevent a backend from assuming behavior from a provider name.
 The small redundancy in v0.1 is preferable to adding provider detection or an incompatible handshake later.
-### 23.3 Why no `allow`?
+### Why no `allow`?
 Existing systems use “allow” for incompatible concepts. An empty result cleanly means “this backend does not deny,” while the harness remains responsible for all other authorization.
-### 23.4 Why JSON-RPC?
+### Why JSON-RPC?
 JSON-RPC already provides request, response, error, notification, and correlation semantics. MCP and ACP demonstrate that it can be used across local and remote agent transports. AHP needs only a bounded subset and does not copy MCP's streaming HTTP behavior.
-### 23.5 Why ordered serial composition?
+### Why ordered serial composition?
 Control decisions must be deterministic. Serial order is easy to explain and test. It avoids races between denials and prepares for future mutation effects, where each backend may need to see the prior backend's accepted changes.
-### 23.6 Why is observe optional?
+### Why is observe optional?
 Many harnesses already support OpenTelemetry, and telemetry should converge there. AHP observe mode remains useful for compatibility and control-adjacent audit, but making it part of minimum conformance would blur the protocol's purpose and create a competing event-export path.
-### 23.7 Why keep native payloads?
+### Why keep native payloads?
 Adapters need lossless diagnostics when providers drift or expose events that the portable model does not represent. Making native data optional and off by default preserves that escape hatch without allowing it to become the contract.
-## 26. References
+## References
 - [Speakeasy ](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)[`agenthooks`](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)[ design](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)
 - [DeepSeek shared Claude Code and Codex hook-protocol note](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/feature/2026-06-30-hook-protocol-lib.md)
 - [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification)

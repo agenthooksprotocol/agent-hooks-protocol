@@ -1,6 +1,6 @@
 # Compatibility adapters
 
-## 22. Compatibility-adapter requirements
+## Compatibility-adapter requirements
 An adapter translating a native hook system into AHP MUST:
 - Hide provider-specific exit codes and response shapes from the AHP backend.
 - Preserve the native tool name.

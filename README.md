@@ -7,14 +7,13 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 ## Working Draft artifacts
 
 - [Canonical v0.1 Working Draft specification](spec/draft/index.md)
-- [AHP-0001 source proposal and provenance record](proposals/AHP-0001.md)
 - [Stable requirement manifest](spec/draft/requirements.json)
 - [Versioned JSON Schemas](schema/README.md)
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
 
-The proposal is non-normative. Its unresolved questions remain open. The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
+The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
 
 ## Repository snapshots
 

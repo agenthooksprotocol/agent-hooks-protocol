@@ -1,6 +1,6 @@
 # Proposed implementation plan
 
-## 25. Proposed implementation plan
+## Proposed implementation plan
 1. Publish a JSON Schema for the common envelope, `tool.before`, `deny`, and registration document.
 2. Add golden request and response fixtures for stdio and HTTP.
 3. Implement an AHP encoder and decoder in `agenthooks` while preserving its native adapter layer.

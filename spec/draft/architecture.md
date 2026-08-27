@@ -1,6 +1,6 @@
 # Architecture
 
-## 1. Problem
+## Problem
 Current agent harnesses expose incompatible hook systems. They differ in event names, payload shapes, tool identities, process lifecycles, output codecs, timeouts, ordering, permission decisions, and failure behavior. Some use exit codes, some parse structured stdout, some invoke long-lived plugins, and some expose only fire-and-forget events.
 As a result, an external policy backend cannot reliably answer a simple question—such as whether a tool call should execute—without provider-specific logic. A timeout may continue execution in one harness and stop it in another. An apparent `allow` response may mean “this hook has no objection,” “skip the host permission prompt,” or nothing at all.
 AHP standardizes the boundary between a harness and a control backend. Compatibility adapters translate existing native hook dialects into AHP; conforming harnesses can implement AHP directly.
@@ -8,7 +8,7 @@ AHP standardizes the boundary between a harness and a control backend. Compatibi
 Existing harness ─> compatibility adapter ─> AHP backend
 Conforming harness ────────────────────────> AHP backend
 ```
-## 2. AHP at a glance
+## AHP at a glance
 AHP is a small, vendor-neutral control-plane protocol that sits in an agent harness's runtime path. It gives the harness a standard way to ask external middleware for a bounded decision before an operation continues. The protocol standardizes the conversation between the harness and that middleware.
 AHP creates an admission-control boundary for agent operations:
 ```text
@@ -41,8 +41,8 @@ What we want to build is a small set of interoperable pieces:
 For the minimum v0.1 path, a harness is about to execute a tool call and emits `tool.before` through `hooks/intercept`. The request says that `deny` is available. Each matching backend returns either no effect or one `deny` effect. No effect means that backend has no objection; it does not bypass the harness's own permission checks. A denial stops the tool call. If a backend times out, crashes, or returns an invalid response, the harness applies that backend's configured failure policy rather than treating the failure as a decision.
 AHP also defines optional `hooks/observe` notifications for lifecycle events that do not require a response. This mode supports control-adjacent audit and compatibility use cases.
 This is a starting point, not the full standard. Later profiles can add effects such as requesting approval, replacing tool input, or injecting context, but only when a harness can advertise and enforce those semantics consistently.
-## 3. Scope
-### 3.1 Goals
+## Scope
+### Goals
 AHP v0.1 aims to:
 - Provide portable interception of tool calls before execution.
 - Define one mandatory and unambiguous control effect: `deny`.
@@ -54,7 +54,7 @@ AHP v0.1 aims to:
 - Preserve stable event, session, and tool-call identity.
 - Permit provider-specific fidelity data without making it portable contract data.
 - Make minimum conformance small and executable.
-### 3.2 Non-goals
+### Non-goals
 AHP v0.1 does not:
 - Replace OpenTelemetry or define metrics, logs, traces, exporters, or telemetry semantic conventions.
 - Replace MCP, ACP, A2A, a tool protocol, or an agent-client protocol.
@@ -66,18 +66,18 @@ AHP v0.1 does not:
 - Guarantee durable audit delivery through `hooks/observe`.
 - Require a daemon, service discovery system, streaming transport, or browser authorization flow.
 - Standardize native provider quirks such as exit codes, environment variables, or provider-specific response objects.
-## 4. Relationship to adjacent standards
-### 4.1 OpenTelemetry
+## Relationship to adjacent standards
+### OpenTelemetry
 OpenTelemetry is the preferred observability standard. AHP does not prescribe whether or how harnesses emit metrics, logs, or traces; implementations that provide observability can use OpenTelemetry independently of AHP.
 AHP is complementary because OpenTelemetry does not define a bounded request-response decision that pauses a tool call and applies a control effect. AHP implementations MAY carry W3C Trace Context in a namespaced extension for correlation. Core AHP conformance MUST NOT depend on OpenTelemetry support.
 A future companion document MAY define an AHP-to-OpenTelemetry mapping for hook requests, denials, failures, and latency. Such a mapping is not part of this Working Draft.
-### 4.2 MCP, ACP, and A2A
+### MCP, ACP, and A2A
 - MCP connects agents or clients to tools, resources, and context providers.
 - ACP connects editors or clients to coding agents.
 - A2A connects agents to other agents.
 - AHP connects an agent harness to external runtime-control middleware.
 AHP must work when a harness runs directly, so it is not defined as an ACP extension. AHP may intercept calls to MCP tools, but it does not change the MCP tool protocol.
-### 4.3 Prior-art principles adopted by v0.1
+### Prior-art principles adopted by v0.1
 This Working Draft adopts the following design guidance:
 - From Kubernetes admission webhooks: distinguish an intentional rejection from a webhook failure, and configure explicit failure behavior.
 - From CloudEvents: use stable event identity, typed events, timestamps, extensibility, and duplicate-aware delivery.

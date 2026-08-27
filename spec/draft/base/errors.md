@@ -1,6 +1,6 @@
 # JSON-RPC errors
 
-## 16. JSON-RPC errors
+## JSON-RPC errors
 Backends use standard JSON-RPC error responses. AHP reserves these server-error codes:
 <table>
 <tr>

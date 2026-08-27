@@ -1,7 +1,7 @@
 # Tool interception
 
-## 12. Effects
-### 12.1 Effect list
+## Effects
+### Effect list
 
 <a id="AHP-DEC-001"></a>
 **AHP-DEC-001 — MUST.** A successful interception result contains either an empty `effects` array or exactly one valid `deny` effect.
@@ -11,7 +11,7 @@ For v0.1, the array MUST contain either:
 - No effects, or
 - Exactly one `deny` effect.
 Multiple `deny` effects from one backend are invalid. Effect ordering and combinations are reserved for a later version.
-### 12.2 `deny`
+### `deny`
 
 <a id="AHP-DEC-002"></a>
 **AHP-DEC-002 — MUST.** A harness that accepts a valid `deny` effect does not execute the represented operation.
@@ -50,7 +50,7 @@ Multiple `deny` effects from one backend are invalid. Effect ordering and combin
 </table>
 A valid `deny` effect is an explicit policy result. It MUST deny regardless of whether the interceptor is configured `fail-open` or `fail-closed`.
 A backend SHOULD avoid placing secrets, stack traces, or sensitive policy internals in `reason` because the harness may show it to a user or model.
-### 12.3 No `allow` effect
+### No `allow` effect
 
 <a id="AHP-DEC-003"></a>
 **AHP-DEC-003 — MUST NOT.** An empty effect list is not an authorization grant and does not bypass harness permissions, sandboxing, or approval.

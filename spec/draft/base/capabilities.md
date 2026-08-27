@@ -1,6 +1,6 @@
 # Capabilities
 
-## 11. Capabilities
+## Capabilities
 
 <a id="AHP-CAP-001"></a>
 **AHP-CAP-001 — MUST.** A harness advertises only effects it can enforce for the current interception, and a backend returns only advertised effects.

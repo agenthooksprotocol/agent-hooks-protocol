@@ -1,7 +1,7 @@
 # HTTP binding
 
-## 18. HTTP binding
-### 18.1 Request and response
+## HTTP binding
+### Request and response
 
 <a id="AHP-HTTP-001"></a>
 **AHP-HTTP-001 — MUST.** The HTTP binding sends one JSON-RPC object per POST with a JSON media type and returns at most one JSON-RPC response object.
@@ -15,10 +15,10 @@ Requirements:
 - Any other HTTP status is an operational failure.
 - Redirects MUST NOT be followed unless explicitly enabled for the configured endpoint.
 AHP v0.1 does not use SSE, streaming responses, or a corresponding HTTP `GET` endpoint.
-### 18.2 TLS
+### TLS
 Remote endpoints MUST use `https`. Plain `http` MAY be used only for loopback addresses or explicitly controlled local development environments.
 Implementations MUST validate server certificates using platform trust policy unless a deployment explicitly configures a narrower trust root. Disabling certificate validation is NOT RECOMMENDED.
-### 18.3 Authentication
+### Authentication
 AHP v0.1 defines one portable HTTP authentication profile: static bearer authentication through a credential reference.
 The registration document names an environment variable or implementation-defined secret reference. The harness resolves it at runtime and sends:
 ```text

@@ -22,7 +22,6 @@ class SnapshotCheckerTests(unittest.TestCase):
             "schema",
             "fixtures",
             "conformance",
-            "proposals",
             "tools",
             "docs",
             "governance",

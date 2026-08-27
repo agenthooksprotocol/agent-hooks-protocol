@@ -1,6 +1,6 @@
 # Open questions
 
-## 24. Open questions for v0.1 review
+## Open questions for v0.1 review
 1. Is the coarse `tool.kind` taxonomy useful and stable enough to require, or should it be optional until a separate tool-projection profile exists?
 2. Should globally unique `event.id` be required, or should uniqueness be defined as the CloudEvents-style pair `(source, id)`?
 3. Is exact version matching acceptable during v0.x, or should v0.1 define a stateless supported-version range?
