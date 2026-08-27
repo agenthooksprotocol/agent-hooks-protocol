@@ -8,4 +8,4 @@
 5. Build a harness conformance runner covering ordering and failure policy.
 6. Test adapters for at least two native harness dialects.
 7. Implement one independent policy backend.
-8. Resolve the open questions using implementation evidence before declaring v0.1 stable.
+8. Resolve the open questions using implementation evidence before publishing the first date-stamped stable release.

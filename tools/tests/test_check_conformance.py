@@ -67,6 +67,79 @@ class SnapshotCheckerTests(unittest.TestCase):
             ),
         )
 
+    def test_august_proposal_updates_span_every_artifact_layer(self) -> None:
+        requirements = self.read_json("spec/draft/requirements.json")
+        by_id = {
+            requirement["id"]: requirement
+            for requirement in requirements["requirements"]
+        }
+        self.assertEqual(
+            "Every `hooks/intercept` request contains `capabilities.effects`, "
+            "and a Tool Interception harness includes `deny` there for "
+            "`tool.before`.",
+            by_id["AHP-CAP-002"]["text"],
+        )
+        self.assertEqual(
+            "A harness sends an event to a backend only when that backend has "
+            "a subscription whose `events` array includes the exact event name "
+            "and whose `mode` matches the delivery method.",
+            by_id["AHP-REG-002"]["text"],
+        )
+
+        registration = self.read_json("schema/draft/registration.schema.json")
+        intercept_subscription = registration["$defs"]["interceptSubscription"]
+        self.assertEqual(
+            "tool.before",
+            intercept_subscription["properties"]["events"]["items"]["const"],
+        )
+        self.assertEqual(
+            "intercept",
+            intercept_subscription["properties"]["mode"]["const"],
+        )
+        request = self.read_json("schema/draft/intercept-request.schema.json")
+        params = request["allOf"][1]["properties"]["params"]
+        self.assertIn("capabilities", params["required"])
+        self.assertEqual(
+            "deny",
+            params["properties"]["capabilities"]["allOf"][1]["properties"][
+                "effects"
+            ]["contains"]["const"],
+        )
+
+        fixture_manifest = self.read_json("fixtures/draft/manifest.json")
+        fixture_cases = {
+            case["id"]: case for case in fixture_manifest["cases"]
+        }
+        self.assertFalse(
+            fixture_cases[
+                "registration.intercept-observation-event.invalid"
+            ]["expectedValid"]
+        )
+        self.assertFalse(
+            fixture_cases[
+                "http.intercept-request-effects-missing.invalid"
+            ]["expectedValid"]
+        )
+
+        conformance = self.read_json("conformance/draft/manifest.json")
+        covered = {
+            requirement
+            for profile in conformance["profiles"]
+            for requirement in profile["requirements"]
+        }
+        self.assertTrue({"AHP-CAP-002", "AHP-REG-002"} <= covered)
+        base_profile = (
+            self.root / "conformance/draft/profiles/base.md"
+        ).read_text(encoding="utf-8")
+        tool_profile = (
+            self.root / "conformance/draft/profiles/tool-interception.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("exact event-name subscription", base_profile)
+        self.assertIn("mode matches the delivery method", base_profile)
+        self.assertIn("`capabilities.effects`, including `deny`", tool_profile)
+        self.assertFalse((self.root / "proposals").exists())
+        self.assertFalse((self.root / "spec/source-migration.json").exists())
+
     def test_rejects_cross_root_version_mismatch(self) -> None:
         manifest = self.read_json("schema/draft/manifest.json")
         manifest["snapshotVersion"] = "2026-08-27"
