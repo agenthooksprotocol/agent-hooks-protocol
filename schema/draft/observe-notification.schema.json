@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/observe-notification.schema.json",
-  "title": "AHP hooks/observe Notification (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. Observation is a JSON-RPC notification and therefore has no id.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/observe-notification.schema.json",
+  "title": "AHP hooks/observe Notification (Draft)",
+  "$comment": "Mutable AHP draft. Observation is a JSON-RPC notification and therefore has no id.",
   "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001"],
   "allOf": [
     {"$ref": "common.schema.json#/$defs/notification"},

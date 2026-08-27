@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/common.schema.json",
-  "title": "AHP v0.1 Common Types (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1; not a stable standard.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/common.schema.json",
+  "title": "AHP Common Types (Draft)",
+  "$comment": "Mutable AHP draft; not a stable standard.",
   "x-requirements": ["AHP-RPC-001", "AHP-VER-001", "AHP-CORE-003"],
   "$defs": {
-    "protocolVersion": {"const": "0.1"},
+    "protocolVersion": {"const": "draft"},
     "jsonRpcId": {
       "anyOf": [
         {"type": "string", "minLength": 1},

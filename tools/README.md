@@ -6,12 +6,12 @@
 python3 tools/check_conformance.py
 ```
 
-It resolves the `draft` specification, schema, fixture, and conformance roots as one logical snapshot by default. Pass `--snapshot <exact-semver>` to validate a frozen release snapshot.
+It resolves the `draft` specification, schema, fixture, and conformance roots as one logical snapshot by default. Pass `--snapshot <YYYY-MM-DD>` to validate a frozen release snapshot.
 
-The selected key must be `draft` or an exact `MAJOR.MINOR.PATCH` without a `v` prefix, prerelease suffix, build suffix, or numeric component with a leading zero. To validate one frozen snapshot explicitly:
+The selected key must be the literal `draft` or a real calendar date in exact `YYYY-MM-DD` form. To validate one frozen snapshot explicitly:
 
 ```sh
-python3 tools/check_conformance.py --snapshot 0.1.0
+python3 tools/check_conformance.py --snapshot 2026-08-27
 ```
 
 To discover and validate every frozen snapshot:
@@ -20,13 +20,9 @@ To discover and validate every frozen snapshot:
 python3 tools/check_frozen_snapshots.py
 ```
 
-To additionally compare every frozen snapshot that existed at a Git base revision:
+The frozen-snapshot checker scans the four parallel roots below, rejects every non-`draft` directory whose name is not a valid exact date, and passes each discovered version to `check_conformance.py`. A version present under only some roots therefore fails as an incomplete snapshot. It selects the chronologically newest exact-date release tag reachable from `HEAD` and compares every date snapshot present at that tag against the complete working tree. Modification, deletion, rename, replacement, or addition beneath a released version fails even when a refreshed manifest would otherwise match. A wholly new version remains allowed and must independently pass the normal complete-snapshot validation. When no release tag is reachable, the repository is in first-release bootstrap mode: internal snapshot validation still runs, but there is no released immutable baseline yet.
 
-```sh
-python3 tools/check_frozen_snapshots.py --base-revision <base-commit>
-```
-
-The frozen-snapshot checker scans the four parallel roots below, rejects every non-`draft` directory whose name is not exact SemVer, and passes each discovered version to `check_conformance.py`. A version present under only some roots therefore fails as an incomplete snapshot. With `--base-revision`, it also compares the complete Git tree for every exact-SemVer version present at that commit against the working tree. Modification, deletion, rename, replacement, or addition beneath an existing frozen version fails even when a refreshed manifest would otherwise match. A wholly new version remains allowed and must independently pass the normal complete-snapshot validation.
+Release preparation uses `python3 tools/freeze_snapshot.py YYYY-MM-DD`. The command validates the mutable draft, copies all four trees, retargets only the defined version/status/path/schema-ID and on-wire fields, refreshes copied hashes, validates the date snapshot in staging, and refuses an existing destination. Review and commit the resulting snapshot before creating the matching date tag.
 
 Each selected snapshot must exist under all four parallel roots:
 
@@ -37,18 +33,18 @@ fixtures/<snapshot>/
 conformance/<snapshot>/
 ```
 
-The directory key identifies the repository snapshot; it does not derive or replace the wire `protocolVersion`. The requirement and artifact manifests provide the revision metadata that the checker cross-checks. The checker does not create or retarget a frozen snapshot; freezing remains a reviewed publication step under the release policy.
+The directory key, manifest `snapshotVersion`, and on-wire `protocolVersion` must agree. They are all `draft` for mutable work and all the same publication date for a release. The requirement and artifact manifests provide the revision metadata that the checker cross-checks.
 
 It checks:
 
 - JSON parsing with duplicate-key rejection and basic Draft 2020-12 schema structure;
-- snapshot version agreement, public schema identifiers, and offline-only `$ref` resolution;
+- snapshot/status agreement, public schema identifiers, protocol-version constants, and offline-only `$ref` resolution;
 - golden fixture framing, schema outcomes, hashes, and request/event ID equality;
 - requirement ID uniqueness, requirement text hashes, document anchors, headings, and artifact references;
 - absence of private Notion URLs and broken relative Markdown links;
 - schema, fixture, and conformance profile manifest drift.
 
-CI fetches full history, runs the checker tests, validates `draft`, and runs `check_frozen_snapshots.py` against the pull-request base SHA or the pre-push SHA.
+CI fetches full history and tags, runs the checker tests, validates `draft`, and lets the Python frozen checker select the newest reachable released date tag.
 
 ## Supported JSON Schema subset
 
@@ -62,7 +58,7 @@ During unpublished artifact development, refresh manifest hashes with:
 python3 tools/check_conformance.py --update-manifests
 ```
 
-`--update-manifests` is limited to the mutable `draft` snapshot and only refreshes hashes already declared in its manifests. It is not an approval step or a release-freezing command. Frozen SemVer snapshots are immutable.
+`--update-manifests` is limited to the mutable `draft` snapshot and only refreshes hashes already declared in its manifests. It is not an approval step or a release-freezing command. Date-stamped snapshots are immutable.
 
 ## Focused checker tests
 
@@ -72,6 +68,6 @@ Run the focused checker tests with:
 python3 -m unittest discover tools/tests
 ```
 
-The suite exercises the snapshot resolver and structural safeguards independently of the command-line entrypoint, including cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, aggregate schema coverage, rejection of manifest updates for frozen snapshots, and full-tree comparison against a temporary Git repository. Run both the focused tests and `python3 tools/check_conformance.py` when changing checker behavior or any part of the logical draft snapshot.
+The suite exercises the snapshot resolver and structural safeguards independently of the command-line entrypoint, including literal-draft and calendar-date formats, release retargeting, cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, aggregate schema coverage, first-release behavior, newest reachable release-tag selection, rejection of manifest updates for frozen snapshots, and full-tree comparison against temporary Git repositories. Run both the focused tests and `python3 tools/check_conformance.py` when changing checker behavior or any part of the logical draft snapshot.
 
 The release freeze commands and required pre-tag validation are documented in the [release policy](../docs/RELEASES.md).

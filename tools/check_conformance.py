@@ -9,7 +9,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote, urlparse
@@ -17,7 +17,7 @@ from urllib.parse import unquote, urlparse
 ROOT = Path(__file__).resolve().parents[1]
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 REQ_RE = re.compile(r"\bAHP-[A-Z]+-\d{3}\b")
-SNAPSHOT_RE = re.compile(r"(?:draft|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))")
+DATE_SNAPSHOT_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
 PRIVATE_NOTION_RE = re.compile(
     r"(?:https?://(?:www\.)?notion\.(?:so|site)(?:/|\b)|" + "notion" + r"://)",
@@ -27,6 +27,19 @@ PRIVATE_NOTION_RE = re.compile(
 
 class CheckFailure(Exception):
     """Raised for malformed checker inputs."""
+
+
+def is_date_snapshot(value: str) -> bool:
+    if DATE_SNAPSHOT_RE.fullmatch(value) is None:
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def is_snapshot_key(value: object) -> bool:
+    return value == "draft" or isinstance(value, str) and is_date_snapshot(value)
 
 
 @dataclass(frozen=True)
@@ -41,13 +54,13 @@ class Snapshot:
     schema_manifest_path: Path
     fixture_manifest_path: Path
     conformance_manifest_path: Path
-    draft_version: str
+    snapshot_version: str
     protocol_version: str
 
     @classmethod
     def resolve(cls, root: Path, key: str = "draft") -> "Snapshot":
         root = root.resolve()
-        if not isinstance(key, str) or SNAPSHOT_RE.fullmatch(key) is None:
+        if not is_snapshot_key(key):
             raise CheckFailure(f"invalid snapshot key: {key!r}")
 
         spec_dir = root / "spec" / key
@@ -66,12 +79,24 @@ class Snapshot:
 
         requirements_path = spec_dir / "requirements.json"
         requirements = load_json(requirements_path, root)
-        draft_version = requirements.get("draftVersion")
+        snapshot_version = requirements.get("snapshotVersion")
         protocol_version = requirements.get("protocolVersion")
-        if not isinstance(draft_version, str) or not draft_version:
-            raise CheckFailure(f"{requirements_path.relative_to(root)}: missing draftVersion")
-        if not isinstance(protocol_version, str) or not protocol_version:
-            raise CheckFailure(f"{requirements_path.relative_to(root)}: missing protocolVersion")
+        expected_status = "Working Draft" if key == "draft" else "Published"
+        if requirements.get("status") != expected_status:
+            raise CheckFailure(
+                f"{requirements_path.relative_to(root)}: status must be "
+                f"{expected_status!r} for snapshot {key!r}"
+            )
+        if snapshot_version != key:
+            raise CheckFailure(
+                f"{requirements_path.relative_to(root)}: snapshotVersion must equal "
+                f"selected snapshot key {key!r}"
+            )
+        if protocol_version != key:
+            raise CheckFailure(
+                f"{requirements_path.relative_to(root)}: protocolVersion must equal "
+                f"selected snapshot key {key!r}"
+            )
 
         return cls(
             root=root,
@@ -84,7 +109,7 @@ class Snapshot:
             schema_manifest_path=schema_dir / "manifest.json",
             fixture_manifest_path=fixture_dir / "manifest.json",
             conformance_manifest_path=conformance_dir / "manifest.json",
-            draft_version=draft_version,
+            snapshot_version=snapshot_version,
             protocol_version=protocol_version,
         )
 
@@ -363,14 +388,38 @@ def check_schema_structure(snapshot: Snapshot, store: SchemaStore) -> list[str]:
             continue
         if schema.get("$schema") != DIALECT:
             errors.append(f"{label}: must declare Draft 2020-12")
-        if "Working Draft" not in schema.get("title", "") or "Working Draft" not in schema.get("$comment", ""):
-            errors.append(f"{label}: missing Working Draft markers")
-        expected_id = f"https://agenthooksprotocol.org/schemas/{snapshot.draft_version}/{path.name}"
+        if snapshot.key == "draft":
+            if "(Draft)" not in schema.get("title", ""):
+                errors.append(f"{label}: missing Draft title marker")
+            if "Mutable AHP draft" not in schema.get("$comment", ""):
+                errors.append(f"{label}: missing mutable-draft comment marker")
+        else:
+            if f"({snapshot.key})" not in schema.get("title", ""):
+                errors.append(f"{label}: missing published-version title marker")
+            if (
+                f"Published AHP protocol version {snapshot.key}"
+                not in schema.get("$comment", "")
+            ):
+                errors.append(f"{label}: missing published-version comment marker")
+        expected_id = (
+            f"https://agenthooksprotocol.org/schemas/"
+            f"{snapshot.snapshot_version}/{path.name}"
+        )
         if schema.get("$id") != expected_id:
             errors.append(f"{label}: unexpected $id")
         if schema.get("$id") in ids:
             errors.append(f"{label}: duplicate $id")
         ids.add(schema.get("$id", ""))
+        if path.name == "common.schema.json":
+            try:
+                declared_protocol_version = schema["$defs"]["protocolVersion"]["const"]
+            except (KeyError, TypeError):
+                declared_protocol_version = None
+            if declared_protocol_version != snapshot.protocol_version:
+                errors.append(
+                    f"{label}: protocolVersion constant must equal "
+                    f"{snapshot.protocol_version!r}"
+                )
         for node in iter_schema_nodes(schema):
             if "$ref" in node:
                 if not isinstance(node["$ref"], str):
@@ -581,11 +630,18 @@ def check_snapshot_versions(
     manifests: dict[str, dict[str, Any]],
 ) -> list[str]:
     errors: list[str] = []
+    expected_status = "Working Draft" if snapshot.key == "draft" else "Published"
     for label, manifest in manifests.items():
-        if manifest.get("draftVersion") != snapshot.draft_version:
+        if manifest.get("status") != expected_status:
             errors.append(
-                f"{label} manifest draftVersion mismatch: expected {snapshot.draft_version!r}, "
-                f"got {manifest.get('draftVersion')!r}"
+                f"{label} manifest status mismatch: expected {expected_status!r}, "
+                f"got {manifest.get('status')!r}"
+            )
+        if manifest.get("snapshotVersion") != snapshot.snapshot_version:
+            errors.append(
+                f"{label} manifest snapshotVersion mismatch: "
+                f"expected {snapshot.snapshot_version!r}, "
+                f"got {manifest.get('snapshotVersion')!r}"
             )
         if manifest.get("protocolVersion") != snapshot.protocol_version:
             errors.append(

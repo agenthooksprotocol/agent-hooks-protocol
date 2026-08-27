@@ -38,7 +38,7 @@ Example:
     "code": -32001,
     "message": "Unsupported AHP protocol version",
     "data": {
-      "supported": ["0.1"]
+      "supported": ["draft"]
     }
   }
 }

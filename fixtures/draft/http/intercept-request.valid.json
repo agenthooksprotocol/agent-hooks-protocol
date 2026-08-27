@@ -3,7 +3,7 @@
   "id": "evt_http_001",
   "method": "hooks/intercept",
   "params": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "event": {
       "id": "evt_http_001",
       "source": "https://harness.example/runtime/42",

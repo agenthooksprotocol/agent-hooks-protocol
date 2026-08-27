@@ -1,6 +1,6 @@
 # Golden fixtures
 
-**Status: Working Draft.** Fixtures under `draft/` target the exact schema revision declared by `spec/draft/requirements.json`.
+**Status: Working Draft.** Fixtures under `draft/` carry the literal on-wire `protocolVersion` `draft` and target the matching schema snapshot declared by `spec/draft/requirements.json`. Published fixture snapshots carry their `YYYY-MM-DD` publication version instead.
 
 - `stdio/*.jsonl` contains one JSON-RPC object per UTF-8 line. The multiline invalid case demonstrates a framing failure.
 - `http/*.json` contains one JSON-RPC object used as an HTTP JSON request or response body.

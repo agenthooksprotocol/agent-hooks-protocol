@@ -3,7 +3,7 @@
   "id": "evt_missing_effects",
   "method": "hooks/intercept",
   "params": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "event": {
       "id": "evt_missing_effects",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",

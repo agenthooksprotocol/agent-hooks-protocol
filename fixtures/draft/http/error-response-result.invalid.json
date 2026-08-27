@@ -6,7 +6,7 @@
     "message": "Backend failed while evaluating the request"
   },
   "result": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "effects": []
   }
 }

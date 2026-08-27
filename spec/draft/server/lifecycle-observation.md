@@ -4,9 +4,9 @@
 ### `tool.before`
 
 <a id="AHP-TB-001"></a>
-**AHP-TB-001 — MUST.** A `tool.before` event describes a tool call before execution and includes the common event, session, and tool fields required by this Working Draft.
+**AHP-TB-001 — MUST.** A `tool.before` event describes a tool call before execution and includes the common event, session, and tool fields required by this protocol revision.
 
-`tool.before` is the only interceptable event in v0.1.
+`tool.before` is the only interceptable event in this protocol revision.
 The harness MUST create it after the tool name and input are finalized for execution but before the tool causes any external side effect. AHP interception SHOULD occur before the harness displays its own permission prompt so an operation denied by organization policy does not generate an unnecessary prompt.
 A no-effect result means the harness continues its normal authorization and execution flow. It MUST NOT bypass built-in permissions, sandboxing, or user confirmation.
 If any interceptor denies the event, the harness MUST NOT execute the tool. The harness SHOULD present the denial reason to the user or agent unless local policy marks backend reasons as sensitive.

@@ -1,7 +1,7 @@
 {
   "status": "Working Draft",
-  "protocolVersion": "0.1",
-  "draftVersion": "0.1.0-draft.1",
+  "protocolVersion": "draft",
+  "snapshotVersion": "draft",
   "requirements": [
     {
       "id": "AHP-CORE-001",
@@ -55,8 +55,8 @@
       "anchor": "AHP-VER-001",
       "section": "Versioning",
       "profile": "base",
-      "text": "Every v0.1 request, notification, and successful result carries `protocolVersion` with the value `0.1`.",
-      "textSha256": "b192b1ee9d7de6018c89d0b5c967011001754829e00fdaae64eb6d02b1e0c1a0"
+      "text": "Every request, notification, and successful result carries `protocolVersion` equal to its protocol snapshot identifier.",
+      "textSha256": "376d3336d8770d0dcf8aef3bd724eacc39c49e3cb1c07abfb452f82296df935c"
     },
     {
       "id": "AHP-CORE-003",
@@ -88,8 +88,8 @@
       "anchor": "AHP-TB-001",
       "section": "`tool.before`",
       "profile": "tool-interception",
-      "text": "A `tool.before` event describes a tool call before execution and includes the common event, session, and tool fields required by this Working Draft.",
-      "textSha256": "31e4045442dfda65b909dbbe1731ec82269844df3b945195494b86491b986773"
+      "text": "A `tool.before` event describes a tool call before execution and includes the common event, session, and tool fields required by this protocol revision.",
+      "textSha256": "629a842f092227f86782fab574be603bbe5336c9bfeefd2381b99244aa7c6c0e"
     },
     {
       "id": "AHP-CAP-001",
@@ -220,8 +220,8 @@
       "anchor": "AHP-REG-001",
       "section": "Document shape",
       "profile": "base",
-      "text": "A portable registration document declares protocol version `0.1` and an ordered, non-empty `hooks` array.",
-      "textSha256": "e51b6c02c9158544312be339995ebce5dba5f13cb3406c4cedeb74fc683d53fb"
+      "text": "A portable registration document declares the selected snapshot as its `protocolVersion` and contains an ordered, non-empty `hooks` array.",
+      "textSha256": "e4f7e723f67e011798febdbb015141a3219a9756e1a100aa5bea266a65cc0d0d"
     },
     {
       "id": "AHP-REG-002",

@@ -7,7 +7,7 @@
 **AHP-DEC-001 — MUST.** A successful interception result contains either an empty `effects` array or exactly one valid `deny` effect.
 
 A successful intercept result MUST contain `effects`, which MUST be a JSON array.
-For v0.1, the array MUST contain either:
+For this protocol revision, the array MUST contain either:
 - No effects, or
 - Exactly one `deny` effect.
 Multiple `deny` effects from one backend are invalid. Effect ordering and combinations are reserved for a later version.
@@ -55,7 +55,7 @@ A backend SHOULD avoid placing secrets, stack traces, or sensitive policy intern
 <a id="AHP-DEC-003"></a>
 **AHP-DEC-003 — MUST NOT.** An empty effect list is not an authorization grant and does not bypass harness permissions, sandboxing, or approval.
 
-AHP v0.1 has no `allow` effect. An empty effect list means only that the current backend has no objection. It's not possible to:
+This protocol revision has no `allow` effect. An empty effect list means only that the current backend has no objection. It's not possible to:
 - Skip remaining interceptors.
 - Override a denial.
 - Bypass a host permission prompt.

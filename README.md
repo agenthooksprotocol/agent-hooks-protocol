@@ -6,14 +6,14 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 
 ## Working Draft artifacts
 
-- [Canonical v0.1 Working Draft specification](spec/draft/index.md)
+- [Canonical Working Draft specification](spec/draft/index.md)
 - [Stable requirement manifest](spec/draft/requirements.json)
 - [Versioned JSON Schemas](schema/README.md)
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
 
-The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
+The canonical Working Draft and each machine-readable artifact use the literal snapshot and wire identifier `draft` until publication.
 
 ## Repository snapshots
 
@@ -24,9 +24,9 @@ The four parallel `draft/` trees form one logical, mutable snapshot:
 - `fixtures/draft/` contains golden examples and their manifest; and
 - `conformance/draft/` contains conformance profiles and their manifest.
 
-A release freezes matching copies beneath the same exact SemVer key, such as `spec/0.1.0/`, `schema/0.1.0/`, `fixtures/0.1.0/`, and `conformance/0.1.0/`. There is no `latest/` alias: use `draft` for current work or an exact SemVer key for a published snapshot. The repository snapshot key is separate from the wire `protocolVersion`; for example, snapshot `0.1.0` can still describe wire protocol version `0.1`.
+A release freezes matching copies beneath the same publication-date key, such as `spec/2026-08-27/`, `schema/2026-08-27/`, `fixtures/2026-08-27/`, and `conformance/2026-08-27/`. There is no `latest/` alias: use `draft` for current work or an exact `YYYY-MM-DD` date for a published snapshot. The repository snapshot key and on-wire `protocolVersion` are identical: both are `draft` while mutable and both become the publication date when frozen.
 
-Validate the mutable snapshot with `python3 tools/check_conformance.py`, or a frozen snapshot with `python3 tools/check_conformance.py --snapshot 0.1.0`. See the [tooling guide](tools/README.md) for focused tests and the [release policy](docs/RELEASES.md) for the freeze procedure.
+Validate the mutable snapshot with `python3 tools/check_conformance.py`, or a frozen snapshot with `python3 tools/check_conformance.py --snapshot 2026-08-27`. See the [tooling guide](tools/README.md) for focused tests and the [release policy](docs/RELEASES.md) for the freeze procedure.
 
 ## Normative scope
 

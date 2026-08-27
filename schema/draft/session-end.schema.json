@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/session-end.schema.json",
-  "title": "AHP session.end Event (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. Tool fields apply only to tool events.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/session-end.schema.json",
+  "title": "AHP session.end Event (Draft)",
+  "$comment": "Mutable AHP draft. Tool fields apply only to tool events.",
   "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
   "type": "object",
   "required": ["id", "source", "type", "time", "session"],

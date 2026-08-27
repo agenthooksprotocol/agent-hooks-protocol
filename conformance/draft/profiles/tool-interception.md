@@ -1,6 +1,6 @@
 # Tool Interception profile
 
-**Status: Working Draft — `0.1.0-draft.1`.** This is a language-neutral description for the `tool.before` and `deny` behavior defined by the canonical Working Draft.
+**Status: Working Draft — `draft`.** This is a language-neutral description for the `tool.before` and `deny` behavior defined by the canonical specification.
 
 ## Harness observations
 
@@ -18,7 +18,7 @@ Without a matching `tool.before` intercept subscription, the harness sends no AH
 
 ## Backend observations
 
-Given a syntactically valid `hooks/intercept` request for protocol `0.1` and `tool.before`, the backend returns exactly one successful response containing either:
+Given a syntactically valid `hooks/intercept` request for protocol `draft` and `tool.before`, the backend returns exactly one successful response containing either:
 
 - `effects: []`; or
 - one advertised `deny` effect with a non-empty reason.

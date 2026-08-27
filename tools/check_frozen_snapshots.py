@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,9 +18,7 @@ import check_conformance
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT_ROOTS = ("spec", "schema", "fixtures", "conformance")
-EXACT_SEMVER_RE = re.compile(
-    r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)"
-)
+DATE_VERSION_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class FrozenSnapshotFailure(Exception):
@@ -30,6 +29,15 @@ class FrozenSnapshotFailure(Exception):
 class GitTreeEntry:
     mode: str
     object_id: str
+
+
+def is_date_version(value: str) -> bool:
+    if DATE_VERSION_RE.fullmatch(value) is None:
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
 
 
 def run_git(root: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
@@ -51,18 +59,18 @@ def run_git(root: Path, *args: str, input_bytes: bytes | None = None) -> bytes:
     return result.stdout
 
 
-def resolve_base_revision(root: Path, revision: str) -> str:
+def resolve_revision(root: Path, revision: str) -> str:
     if not revision:
-        raise FrozenSnapshotFailure("Git base revision must not be empty")
+        raise FrozenSnapshotFailure("Git revision must not be empty")
     output = run_git(root, "rev-parse", "--verify", f"{revision}^{{commit}}")
     return output.decode("ascii").strip()
 
 
-def base_snapshot_entries(
+def released_snapshot_entries(
     root: Path,
     revision: str,
-) -> tuple[str, dict[str, GitTreeEntry], set[str]]:
-    commit = resolve_base_revision(root, revision)
+) -> tuple[str, dict[str, GitTreeEntry], set[str], set[tuple[str, str]]]:
+    commit = resolve_revision(root, revision)
     output = run_git(
         root,
         "ls-tree",
@@ -75,6 +83,7 @@ def base_snapshot_entries(
     )
     entries: dict[str, GitTreeEntry] = {}
     versions: set[str] = set()
+    version_roots: set[tuple[str, str]] = set()
     for record in output.split(b"\0"):
         if not record:
             continue
@@ -90,7 +99,7 @@ def base_snapshot_entries(
         if (
             len(parts) < 3
             or parts[0] not in SNAPSHOT_ROOTS
-            or EXACT_SEMVER_RE.fullmatch(parts[1]) is None
+            or not is_date_version(parts[1])
         ):
             continue
         if object_type != "blob":
@@ -99,7 +108,32 @@ def base_snapshot_entries(
             )
         entries[path] = GitTreeEntry(mode=mode, object_id=object_id)
         versions.add(parts[1])
-    return commit, entries, versions
+        version_roots.add((parts[0], parts[1]))
+    return commit, entries, versions, version_roots
+
+
+def reachable_release_tags(root: Path, revision: str = "HEAD") -> tuple[str, ...]:
+    output = run_git(root, "tag", "--merged", revision, "--list")
+    tags: list[str] = []
+    for raw_tag in output.decode("utf-8").splitlines():
+        tag = raw_tag.strip()
+        if not tag:
+            continue
+        if DATE_VERSION_RE.fullmatch(tag) is not None:
+            if not is_date_version(tag):
+                raise FrozenSnapshotFailure(
+                    f"reachable release tag {tag!r} is not a valid calendar date"
+                )
+            tags.append(tag)
+    return tuple(sorted(tags))
+
+
+def newest_reachable_release_tag(
+    root: Path,
+    revision: str = "HEAD",
+) -> str | None:
+    tags = reachable_release_tags(root, revision)
+    return tags[-1] if tags else None
 
 
 def current_tree_entry(root: Path, path: Path) -> GitTreeEntry:
@@ -136,20 +170,39 @@ def current_snapshot_entries(
     return entries
 
 
-def check_immutable_base(root: Path, revision: str) -> list[str]:
-    commit, baseline, versions = base_snapshot_entries(root, revision)
+def check_immutable_release(root: Path, release_tag: str) -> list[str]:
+    commit, baseline, versions, version_roots = released_snapshot_entries(
+        root, release_tag
+    )
+    missing_release_roots = [
+        f"{root_name}/{release_tag}"
+        for root_name in SNAPSHOT_ROOTS
+        if (root_name, release_tag) not in version_roots
+    ]
+    if missing_release_roots:
+        raise FrozenSnapshotFailure(
+            f"release tag {release_tag!r} at {commit} does not contain its complete "
+            "date snapshot: " + ", ".join(missing_release_roots)
+        )
     current = current_snapshot_entries(root, versions)
     errors: list[str] = []
 
     baseline_paths = set(baseline)
     current_paths = set(current)
     for path in sorted(baseline_paths - current_paths):
-        errors.append(f"{path}: deleted from frozen snapshot present at base {commit}")
+        errors.append(
+            f"{path}: deleted from frozen snapshot released at {release_tag} ({commit})"
+        )
     for path in sorted(current_paths - baseline_paths):
-        errors.append(f"{path}: added to frozen snapshot present at base {commit}")
+        errors.append(
+            f"{path}: added to frozen snapshot released at {release_tag} ({commit})"
+        )
     for path in sorted(baseline_paths & current_paths):
         if baseline[path] != current[path]:
-            errors.append(f"{path}: modified from frozen snapshot present at base {commit}")
+            errors.append(
+                f"{path}: modified from frozen snapshot released at "
+                f"{release_tag} ({commit})"
+            )
     return errors
 
 
@@ -170,14 +223,14 @@ def discover_frozen_snapshots(root: Path = ROOT) -> tuple[str, ...]:
             snapshot = path.name
             if snapshot == "draft":
                 continue
-            if EXACT_SEMVER_RE.fullmatch(snapshot) is None:
+            if not is_date_version(snapshot):
                 try:
                     label = path.relative_to(root).as_posix()
                 except ValueError:
                     label = path.as_posix()
                 raise FrozenSnapshotFailure(
                     f"::error title=Invalid snapshot directory::{label}/ "
-                    "must use exact MAJOR.MINOR.PATCH"
+                    "must use a valid YYYY-MM-DD calendar date"
                 )
             snapshots.add(snapshot)
 
@@ -187,7 +240,7 @@ def discover_frozen_snapshots(root: Path = ROOT) -> tuple[str, ...]:
 def run(
     root: Path = ROOT,
     *,
-    base_revision: str | None = None,
+    revision: str = "HEAD",
     check_snapshot: Callable[[Path, str], check_conformance.CheckResult] = (
         check_conformance.run_checks
     ),
@@ -198,13 +251,14 @@ def run(
     stderr = sys.stderr if stderr is None else stderr
     try:
         snapshots = discover_frozen_snapshots(root)
+        release_tag = newest_reachable_release_tag(root, revision)
     except FrozenSnapshotFailure as exc:
         print(exc, file=stderr)
         return 1
 
-    if base_revision is not None:
+    if release_tag is not None:
         try:
-            immutable_errors = check_immutable_base(root, base_revision)
+            immutable_errors = check_immutable_release(root, release_tag)
         except FrozenSnapshotFailure as exc:
             print(exc, file=stderr)
             return 1
@@ -216,6 +270,12 @@ def run(
             for error in immutable_errors:
                 print(f"- {error}", file=stderr)
             return 1
+    else:
+        print(
+            "no reachable YYYY-MM-DD release tag; "
+            "validating first-release snapshot set",
+            file=stdout,
+        )
 
     for snapshot in snapshots:
         result = check_snapshot(root, snapshot)
@@ -231,14 +291,12 @@ def run(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--base-revision",
-        help=(
-            "Git commit whose existing exact-SemVer snapshot trees are immutable; "
-            "wholly new snapshot versions remain allowed"
-        ),
+        "--revision",
+        default="HEAD",
+        help="revision whose newest reachable YYYY-MM-DD release tag is authoritative",
     )
     args = parser.parse_args()
-    return run(base_revision=args.base_revision)
+    return run(revision=args.revision)
 
 
 if __name__ == "__main__":

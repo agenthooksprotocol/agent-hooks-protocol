@@ -15,7 +15,7 @@ Every `hooks/intercept` request MUST include:
   }
 }
 ```
-A harness claiming the v0.1 Tool Interception profile MUST advertise `deny` in `capabilities.effects` for `tool.before`, declaring that it accepts and enforces a valid `deny` effect. A backend MUST return only effects advertised in that request.
+A harness claiming the Tool Interception profile in this protocol revision MUST advertise `deny` in `capabilities.effects` for `tool.before`, declaring that it accepts and enforces a valid `deny` effect. A backend MUST return only effects advertised in that request.
 Returning an unadvertised effect is an operational protocol failure, not an implicit no-op. The harness MUST apply the interceptor's configured failure policy.
 Capabilities describe the current event and runtime, not only the harness product. A backend MUST NOT infer capabilities from provider name, provider version, transport, or native payload.
 Future standards may define additional core effects. Experimental effects MUST use reverse-DNS names, and the harness must advertise the exact extension effect before a backend returns it.

@@ -4,9 +4,9 @@
 ### Why only `deny`?
 Cross-harness research shows that denial is the smallest broadly meaningful control capability. Approval prompts, forced allow, input mutation, output replacement, context injection, and agent continuation differ significantly across harnesses.
 Starting with one effect makes conformance meaningful. It also prevents the first release from standardizing ambiguous semantics merely because similar provider fields exist.
-### Why capabilities if v0.1 has one effect?
+### Why capabilities when this protocol revision has one effect?
 Capabilities make requests self-describing and establish the evolution mechanism needed by heterogeneous harnesses. They also prevent a backend from assuming behavior from a provider name.
-The small redundancy in v0.1 is preferable to adding provider detection or an incompatible handshake later.
+The small redundancy in this protocol revision is preferable to adding provider detection or an incompatible handshake later.
 ### Why no `allow`?
 Existing systems use “allow” for incompatible concepts. An empty result cleanly means “this backend does not deny,” while the harness remains responsible for all other authorization.
 ### Why JSON-RPC?

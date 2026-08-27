@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/tool-after.schema.json",
-  "title": "AHP tool.after Event (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. output is optional because the specification permits omission after redaction or truncation.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/tool-after.schema.json",
+  "title": "AHP tool.after Event (Draft)",
+  "$comment": "Mutable AHP draft. output is optional because the specification permits omission after redaction or truncation.",
   "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
   "type": "object",
   "required": ["id", "source", "type", "time", "session", "tool"],

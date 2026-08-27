@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/tool-error.schema.json",
-  "title": "AHP tool.error Event (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. The specification requires error.message but does not assign JSON types to message, code, or category.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/tool-error.schema.json",
+  "title": "AHP tool.error Event (Draft)",
+  "$comment": "Mutable AHP draft. The specification requires error.message but does not assign JSON types to message, code, or category.",
   "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
   "type": "object",
   "required": ["id", "source", "type", "time", "session", "tool"],

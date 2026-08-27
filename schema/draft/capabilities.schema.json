@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/capabilities.schema.json",
-  "title": "AHP Interception Capabilities (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1; core v0.1 defines only deny.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/capabilities.schema.json",
+  "title": "AHP Interception Capabilities (Draft)",
+  "$comment": "Mutable AHP draft; the core draft defines only deny.",
   "x-requirements": ["AHP-CAP-001", "AHP-CAP-002"],
   "type": "object",
   "required": ["effects"],

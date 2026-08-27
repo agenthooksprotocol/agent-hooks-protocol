@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/tool-before.schema.json",
-  "title": "AHP tool.before Event (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. Unknown object fields remain permitted by the protocol.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/tool-before.schema.json",
+  "title": "AHP tool.before Event (Draft)",
+  "$comment": "Mutable AHP draft. Unknown object fields remain permitted by the protocol.",
   "x-requirements": ["AHP-TB-001", "AHP-CORE-003", "AHP-CORE-004"],
   "type": "object",
   "required": ["id", "source", "type", "time", "session", "tool"],

@@ -4,12 +4,12 @@
 ### Document shape
 
 <a id="AHP-REG-001"></a>
-**AHP-REG-001 — MUST.** A portable registration document declares protocol version `0.1` and an ordered, non-empty `hooks` array.
+**AHP-REG-001 — MUST.** A portable registration document declares the selected snapshot as its `protocolVersion` and contains an ordered, non-empty `hooks` array.
 
 A portable registration document is a JSON object with an ordered `hooks` array.
 ```json
 {
-  "protocolVersion": "0.1",
+  "protocolVersion": "draft",
   "hooks": [
     {
       "id": "com.example.policy",
@@ -88,7 +88,7 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 <tr>
 <td>`events`</td>
 <td>REQUIRED</td>
-<td>Non-empty array of exact event names. No matcher language in v0.1.</td>
+<td>Non-empty array of exact event names. No matcher language in this protocol revision.</td>
 </tr>
 <tr>
 <td>`mode`</td>
@@ -111,13 +111,13 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 <td>Boolean; defaults to `false`.</td>
 </tr>
 </table>
-An `intercept` subscription MUST contain only `tool.before` in v0.1. An `observe` subscription MUST NOT include `timeoutMs` or `failurePolicy`.
+An `intercept` subscription MUST contain only `tool.before` in this protocol revision. An `observe` subscription MUST NOT include `timeoutMs` or `failurePolicy`.
 ### Subscription dispatch
 
 <a id="AHP-REG-002"></a>
 **AHP-REG-002 — MUST.** A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.
 
-For dispatch, `hooks/intercept` matches only `intercept` mode and `hooks/observe` matches only `observe` mode. Event names are compared exactly; v0.1 defines no matcher language or separate `enabled` subscription state. If no subscription matches both the event name and delivery mode, the harness MUST NOT send that event to the backend.
+For dispatch, `hooks/intercept` matches only `intercept` mode and `hooks/observe` matches only `observe` mode. Event names are compared exactly; this protocol revision defines no matcher language or separate `enabled` subscription state. If no subscription matches both the event name and delivery mode, the harness MUST NOT send that event to the backend.
 ### stdio transport fields
 A stdio transport contains:
 - `type`: exact value `stdio`

@@ -1,7 +1,7 @@
 {
   "status": "Working Draft",
-  "draftVersion": "0.1.0-draft.1",
-  "protocolVersion": "0.1",
+  "snapshotVersion": "draft",
+  "protocolVersion": "draft",
   "cases": [
     {
       "id": "stdio.intercept-request.valid",
@@ -18,7 +18,7 @@
         "AHP-CAP-001",
         "AHP-CAP-002"
       ],
-      "sha256": "330c9b32ead511e7b2aabfadeb7c655ebeffdc239bce847aaf37b32e616ba5a0"
+      "sha256": "47e1065d63dd8c164cf9cc13c32e81380b1df9d2e589144d19565ea958ed1a3c"
     },
     {
       "id": "stdio.no-effect-response.valid",
@@ -32,7 +32,7 @@
         "AHP-DEC-001",
         "AHP-DEC-003"
       ],
-      "sha256": "1f696264bf08de9b038ac0f4b8c218caf30333cbdcdfa0853dacdeceb2d06348"
+      "sha256": "845c4c0711e9d8f79540f538b5e7fade846d9caf966f8e7caeba96c9de918eab"
     },
     {
       "id": "stdio.deny-response.valid",
@@ -46,7 +46,7 @@
         "AHP-DEC-001",
         "AHP-DEC-002"
       ],
-      "sha256": "94ba50393d90ba89e8fe217c524cc325fdaeb9fc768e944e7c0c30f4ab99b255"
+      "sha256": "2a4e08d692365b950477425c5d2959117759ac783359cda9aaa596a2831c78c2"
     },
     {
       "id": "stdio.intercept-request-multiline.invalid",
@@ -71,7 +71,7 @@
         "AHP-DEC-001",
         "AHP-STDIO-001"
       ],
-      "sha256": "08477ad93f806d290fbb733cebd4ef5ba44e4b5e63ba94701706dd95d4d71c01"
+      "sha256": "659a2091c99eda22a6d8c327515b1992a130678a062c0ee4742edc58d7945770"
     },
     {
       "id": "http.intercept-request.valid",
@@ -87,7 +87,7 @@
         "AHP-CAP-001",
         "AHP-CAP-002"
       ],
-      "sha256": "0d49cf5f0fc0d544b1172d4a41bba8b698e55d3b865bb65361361177051cd026"
+      "sha256": "21df5c59555366c7a72ab503e2c0b6d44497625db5ecc017cecb8b989a7ea1e1"
     },
     {
       "id": "http.intercept-request-effects-missing.invalid",
@@ -100,7 +100,7 @@
         "AHP-RPC-002",
         "AHP-CAP-002"
       ],
-      "sha256": "aea61691a63a89d6958298815b24d7b2c3ec36f8fa7ba4e1eade2ddc76549fac"
+      "sha256": "0ebd0d76c60e2a76bf32751f75f510f62cc5ecec1ed0025d2333487d198edc3b"
     },
     {
       "id": "http.deny-response.valid",
@@ -114,7 +114,7 @@
         "AHP-DEC-001",
         "AHP-DEC-002"
       ],
-      "sha256": "7ef539bcd14676f0a455f198767c77a98701ec99c88d959b5f7940b98c9dd6ca"
+      "sha256": "7f2ba9080147f2764f5c750a901c9c1b1fcfc215ea545879b4090f57757306f9"
     },
     {
       "id": "http.no-effect-response.valid",
@@ -128,7 +128,7 @@
         "AHP-DEC-001",
         "AHP-DEC-003"
       ],
-      "sha256": "284562dea56e60ef7df0f220ad10239a50e3b1ca97c2a99a9c24b664bbd84142"
+      "sha256": "a979ba577873365554d894f947070bb615796b76076ccc493ca71ae5fcaffc81"
     },
     {
       "id": "http.intercept-request-id-mismatch.invalid",
@@ -141,7 +141,7 @@
         "AHP-HTTP-001",
         "AHP-CORE-004"
       ],
-      "sha256": "7eee330bb20ddf0849a326fd93da7ea33692a79d43619f755b4f78154de57bdb"
+      "sha256": "80fc51a9e938abc3a6879e6ad2a0c6c3ab99e5c7d5f7d1fe89f444c1952e81c8"
     },
     {
       "id": "http.no-effect-response-version.invalid",
@@ -154,7 +154,7 @@
         "AHP-HTTP-001",
         "AHP-VER-001"
       ],
-      "sha256": "a1a491cf24c23b8e04483fb12e421dd0ca4330686f474731c3038a90710730d7"
+      "sha256": "5c3a64d03c6fc566af77af189f47d64201b94fae0cb9b8ec1006d0bf68171f0d"
     },
     {
       "id": "registration.portable.valid",
@@ -168,7 +168,7 @@
         "AHP-FAIL-001",
         "AHP-FAIL-002"
       ],
-      "sha256": "02637a43517ba27242049bad23e4b767f95e324213564c1c443c0d0b1f0d71be"
+      "sha256": "23030926d763052b081d11d5351e37f05bfbfb55d9cb043d5fa9930d27cf7fa9"
     },
     {
       "id": "registration.intercept-observation-event.invalid",
@@ -179,7 +179,7 @@
       "requirements": [
         "AHP-REG-002"
       ],
-      "sha256": "91eb086fab1aa2df23f1aa5989ef97d21083b0194e9b9426c6c5359c45061c09"
+      "sha256": "b73db8125230858ff280161b0a26f029ecc0aa8e5f173af1bd3dfb1038a19dab"
     },
     {
       "id": "registration.empty-hooks.invalid",
@@ -190,7 +190,7 @@
       "requirements": [
         "AHP-REG-001"
       ],
-      "sha256": "dd5cfd2d1d7af8bd872a15a457b94f7ab52f6b3e605ab4014f5d71ab496c1f97"
+      "sha256": "eb88e1e64adbd0d1c6f2d278eacef788752c8a5c9546336fdc2bd3ce0008aac5"
     },
     {
       "id": "registration.literal-token.invalid",
@@ -202,7 +202,7 @@
         "AHP-REG-001",
         "AHP-SEC-001"
       ],
-      "sha256": "6d50bacda3768fbe54199a2f8c0514b271c0690797fcc997dc270fe324c091f1"
+      "sha256": "9b8d462e2f79605a0b09a45ad4352d928965e412315c523d9ca276cdd789d446"
     },
     {
       "id": "registration.observe-policy-fields.invalid",
@@ -214,7 +214,7 @@
         "AHP-REG-001",
         "AHP-FAIL-001"
       ],
-      "sha256": "08e0a0d0c74253fc44919e08b3567e47d22dfd0c7ef234b3b230683baac23ad5"
+      "sha256": "8fb6104062562e3bef6bdce5f89725f03c4d5f2f3518d4d6e2b6bf97c1a815b7"
     },
     {
       "id": "http.error-response.valid",
@@ -227,7 +227,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-001"
       ],
-      "sha256": "6983daaed3d2fd95c81ff02f51de0c0c6dbea0275b688c5bec02380b0c3ce7d3"
+      "sha256": "96f737ffd1434cb30adad694f9108c11512b02ba252be33aabfc7883822195a3"
     },
     {
       "id": "http.error-response-result.invalid",
@@ -240,7 +240,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-001"
       ],
-      "sha256": "942c869ae52634714949f8aa24622a5edd9582e40f460293ec3fbf0e147ea0cb"
+      "sha256": "6040d118af5984e55417bf21955907220b2dbc122f75b0e13150b0baeddf3a88"
     },
     {
       "id": "http.observe-tool-before.valid",
@@ -256,7 +256,7 @@
         "AHP-RPC-002",
         "AHP-VER-001"
       ],
-      "sha256": "cab2aaeae3354b07efc6c0e710f53cc579bcfff2b2f9d0c373485bfa107d03e3"
+      "sha256": "cf727dcbfe3b623f60c330659af3b074cd8aec31c4f81b23aa3dd5c30dbae12c"
     },
     {
       "id": "http.observe-tool-after.valid",
@@ -272,7 +272,7 @@
         "AHP-RPC-002",
         "AHP-VER-001"
       ],
-      "sha256": "089506c61729c8b3845287510c7a12701fbfdbc8e7c6d51a692b55e1e5ab8c87"
+      "sha256": "3c0c021e919b9a8f21ff815329d382efd90a27d406e62a39b2787586744d6e3a"
     },
     {
       "id": "http.observe-tool-error.valid",
@@ -288,7 +288,7 @@
         "AHP-RPC-002",
         "AHP-VER-001"
       ],
-      "sha256": "e7f9bcb52c4f50a3dee7ce134dc940e8a053918fd038e288c5130862652e1a65"
+      "sha256": "3de76051d5e8d671e4b039009f865737fb2f71c0ad68f3609efd71c672c48e89"
     },
     {
       "id": "http.observe-session-start.valid",
@@ -304,7 +304,7 @@
         "AHP-RPC-002",
         "AHP-VER-001"
       ],
-      "sha256": "9baa8706d0faa11e3e5972d6d1f524245d92454870515591e895d7057387429f"
+      "sha256": "3d546388db40688aebc461cdd750feff9c4fd3f9dcddf58caae1c2f8bbcf97c7"
     },
     {
       "id": "http.observe-session-end.valid",
@@ -320,7 +320,7 @@
         "AHP-RPC-002",
         "AHP-VER-001"
       ],
-      "sha256": "83c30ea403a9c72f59e0fedb33f7a601d77bf04d92ee76b7d96b66142ac0ff86"
+      "sha256": "2fab66b4b8b6284c92b7d28f0b35316bcd61cae52e2405754690f778c337f65b"
     },
     {
       "id": "http.observe-with-id.invalid",
@@ -333,7 +333,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "cd11fa52c9ce94fabe4703238c87d277965c4297355b531a75bcdea04fe7e2f4"
+      "sha256": "9458b27c8a626fe0cbc0ab893411a78e92d0488d1e25a6cf3f35532fded71ada"
     },
     {
       "id": "http.observe-unknown-event.invalid",
@@ -346,7 +346,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "650165fb83e0cf260928b6fc3a9627f1e002395d189e06f71ba2fe5ea889806e"
+      "sha256": "11446ac910713320952e93e16f15a2ca6562b10a8a6cd9f0606180a823c85ec0"
     },
     {
       "id": "http.observe-tool-after-error.invalid",
@@ -360,7 +360,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "0e49c3c4563a56c6e5144d6a96222212b753d81254877aa4405bc0e053a21d79"
+      "sha256": "56bcf7080b365ac4d9997dbc505a84842ed46445ea9375856c3cce311af6bdd9"
     },
     {
       "id": "http.observe-tool-after-input-missing.invalid",
@@ -374,7 +374,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "72376a35baff31de51ada88ea7507c86d3793c7f1df2fdcbd9e9261009d50580"
+      "sha256": "52002910c472cd21a318c9c62fc23cef02900ed4d77e95705595c9a656c33fbc"
     },
     {
       "id": "http.observe-tool-error-message-missing.invalid",
@@ -388,7 +388,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "f09a71239af986d0f4a55c7f7a523a64cb3c492e0a42e02cd3ab209772d58fb7"
+      "sha256": "3310f9edcf80f3762b63b9277aed4884829b872523e136c6ca90e75cc0d52925"
     },
     {
       "id": "http.observe-tool-error-output.invalid",
@@ -402,7 +402,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "9e1dc210da8329023ba001f99c11c830a81aeba555671c0e4b539bf17f74a31d"
+      "sha256": "5b52d9b59d82c662d7607aad566718eafed67d21c5f842a8499a6075063e6661"
     },
     {
       "id": "http.observe-session-start-tool.invalid",
@@ -416,7 +416,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "44aa2021cfbd09af68c46b54227d90e30914dd1b695421e3d7f2e7d974879c38"
+      "sha256": "5f2971bad354db9ea34cff4a07cdbad0aea0c514052f43deea820545b82b26f8"
     },
     {
       "id": "http.observe-session-end-outcome.invalid",
@@ -430,7 +430,7 @@
         "AHP-HTTP-001",
         "AHP-RPC-002"
       ],
-      "sha256": "3d423dc1b3876f52140ef032f49c1fc0df3651320a6cd78cb138e11138e3d968"
+      "sha256": "3499119fa0e39c77533f167ba7c70faf63819f9a6b76a41f713321174bb9346d"
     }
   ]
 }

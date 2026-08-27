@@ -10,7 +10,7 @@ Each message MUST be one complete JSON-RPC object encoded as UTF-8 and terminate
 The backend reads protocol messages from `stdin` and writes protocol messages to `stdout`. It MAY write UTF-8 diagnostics to `stderr`.
 The backend MUST NOT write banners, logs, progress indicators, or other non-protocol content to `stdout`.
 ### Persistent lifecycle
-A persistent backend remains alive for multiple messages. The harness MUST correlate responses by JSON-RPC ID and MAY have only one outstanding v0.1 intercept request per persistent backend because interceptor evaluation is serial.
+A persistent backend remains alive for multiple messages. The harness MUST correlate responses by JSON-RPC ID and MAY have only one outstanding intercept request in this protocol revision per persistent backend because interceptor evaluation is serial.
 The harness SHOULD terminate a persistent backend that repeatedly emits malformed protocol output.
 ### Process-per-event lifecycle
 A process-per-event backend receives exactly one JSON-RPC message on `stdin`, followed by EOF. It writes at most one response and exits.

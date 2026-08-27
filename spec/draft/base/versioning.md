@@ -9,7 +9,7 @@
 **AHP-RPC-002 — MUST.** An interception that expects a decision uses a `hooks/intercept` request; one-way observation uses a `hooks/observe` notification.
 
 AHP uses [JSON-RPC 2.0](https://www.jsonrpc.org/specification). All messages MUST be UTF-8 encoded.
-AHP v0.1 defines two methods:
+This protocol revision defines two methods:
 <table>
 <tr>
 <td>Method</td>
@@ -30,15 +30,14 @@ AHP v0.1 defines two methods:
 <td>Deliver a one-way lifecycle event.</td>
 </tr>
 </table>
-Batch JSON-RPC messages MUST NOT be used in v0.1.
+Batch JSON-RPC messages MUST NOT be used in this protocol revision.
 ### Versioning
 
 <a id="AHP-VER-001"></a>
-**AHP-VER-001 — MUST.** Every v0.1 request, notification, and successful result carries `protocolVersion` with the value `0.1`.
+**AHP-VER-001 — MUST.** Every request, notification, and successful result carries `protocolVersion` equal to its protocol snapshot identifier.
 
-Every AHP params object MUST contain `protocolVersion` with the exact value `0.1`.
-A backend that does not support the supplied version MUST return the AHP JSON-RPC error `unsupported_protocol_version`. Because process-per-event backends cannot rely on a prior handshake, version and capabilities are carried on each intercept request.
-Compatible additive changes may be proposed within the `0.1` draft period, but published conformance artifacts MUST identify the exact schema revision they test. A later stable protocol must define a stronger negotiation and compatibility policy.
+Every AHP params object and every successful result MUST contain `protocolVersion` equal to the selected protocol snapshot identifier. The mutable working snapshot uses the literal identifier `draft` on the wire. Publication assigns the release date in `YYYY-MM-DD` form to the copied snapshot, its schemas and manifests, and every on-wire `protocolVersion`.
+A backend that does not support the supplied version MUST return the AHP JSON-RPC error `unsupported_protocol_version`. Because process-per-event backends cannot rely on a prior handshake, version and capabilities are carried on each intercept request. Implementations use exact-version matching; date ordering does not imply wire compatibility.
 ### Unknown fields
 
 <a id="AHP-CORE-003"></a>

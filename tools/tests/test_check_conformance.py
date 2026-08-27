@@ -11,6 +11,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "tools"))
 
 import check_conformance as checker
+import freeze_snapshot
 
 
 class SnapshotCheckerTests(unittest.TestCase):
@@ -68,12 +69,59 @@ class SnapshotCheckerTests(unittest.TestCase):
 
     def test_rejects_cross_root_version_mismatch(self) -> None:
         manifest = self.read_json("schema/draft/manifest.json")
-        manifest["draftVersion"] = "0.1.0-draft.other"
+        manifest["snapshotVersion"] = "2026-08-27"
         self.write_json("schema/draft/manifest.json", manifest)
 
         result = checker.run_checks(self.root)
 
-        self.assert_has_error(result, "schema manifest draftVersion mismatch")
+        self.assert_has_error(result, "schema manifest snapshotVersion mismatch")
+
+    def test_accepts_only_literal_draft_or_calendar_date_snapshot_keys(self) -> None:
+        valid = ("draft", "2024-02-29", "2026-08-27")
+        invalid = (
+            "Draft",
+            "latest",
+            "1.2.3",
+            "v2026-08-27",
+            "2026-8-27",
+            "2026-08-7",
+            "2026-02-29",
+            "2026-13-01",
+            "2026-00-01",
+            "2026-01-00",
+            "2026-01-32",
+        )
+
+        for key in valid:
+            with self.subTest(key=key):
+                self.assertTrue(checker.is_snapshot_key(key))
+        for key in invalid:
+            with self.subTest(key=key):
+                self.assertFalse(checker.is_snapshot_key(key))
+
+    def test_draft_aggregate_accepts_literal_draft_and_rejects_old_version(self) -> None:
+        snapshot = checker.Snapshot.resolve(self.root)
+        store = checker.SchemaStore(snapshot)
+        validator = checker.SubsetValidator(store)
+        aggregate_path = snapshot.schema_dir / "schema.json"
+        aggregate = store.load(aggregate_path)
+        fixture = self.read_json("fixtures/draft/http/intercept-request.valid.json")
+
+        self.assertEqual([], validator.validate(fixture, aggregate, aggregate_path))
+        fixture["params"]["protocolVersion"] = "1.2.3"
+        self.assertNotEqual([], validator.validate(fixture, aggregate, aggregate_path))
+
+    def test_rejects_protocol_version_constant_different_from_snapshot(self) -> None:
+        common = self.read_json("schema/draft/common.schema.json")
+        common["$defs"]["protocolVersion"]["const"] = "2026-08-27"
+        self.write_json("schema/draft/common.schema.json", common)
+
+        result = checker.run_checks(self.root)
+
+        self.assert_has_error(
+            result,
+            "protocolVersion constant must equal 'draft'",
+        )
 
     def test_rejects_missing_snapshot_root(self) -> None:
         shutil.rmtree(self.root / "fixtures/draft")
@@ -157,22 +205,96 @@ class SnapshotCheckerTests(unittest.TestCase):
         )
 
     def test_rejects_manifest_updates_for_frozen_snapshot(self) -> None:
-        for root_name in ("spec", "schema", "fixtures", "conformance"):
-            shutil.copytree(
-                self.root / root_name / "draft",
-                self.root / root_name / "0.1.0",
-            )
+        version = "2026-08-27"
+        freeze_snapshot.freeze_snapshot(self.root, version)
         manifest_paths = (
-            self.root / "schema/0.1.0/manifest.json",
-            self.root / "fixtures/0.1.0/manifest.json",
-            self.root / "conformance/0.1.0/manifest.json",
+            self.root / f"schema/{version}/manifest.json",
+            self.root / f"fixtures/{version}/manifest.json",
+            self.root / f"conformance/{version}/manifest.json",
         )
         before = {path: path.read_bytes() for path in manifest_paths}
 
-        result = checker.run_checks(self.root, "0.1.0", update=True)
+        result = checker.run_checks(self.root, version, update=True)
 
-        self.assert_has_error(result, "cannot update immutable frozen snapshot '0.1.0'")
+        self.assert_has_error(
+            result, f"cannot update immutable frozen snapshot '{version}'"
+        )
         self.assertEqual(before, {path: path.read_bytes() for path in manifest_paths})
+
+    def test_release_freeze_retargets_every_version_layer(self) -> None:
+        version = "2026-08-27"
+
+        freeze_snapshot.freeze_snapshot(self.root, version)
+
+        result = checker.run_checks(self.root, version)
+        self.assertEqual([], result.errors)
+        requirements = self.read_json(f"spec/{version}/requirements.json")
+        schema_manifest = self.read_json(f"schema/{version}/manifest.json")
+        fixture_manifest = self.read_json(f"fixtures/{version}/manifest.json")
+        conformance_manifest = self.read_json(
+            f"conformance/{version}/manifest.json"
+        )
+        common = self.read_json(f"schema/{version}/common.schema.json")
+        fixture = self.read_json(
+            f"fixtures/{version}/http/intercept-request.valid.json"
+        )
+
+        for metadata in (
+            requirements,
+            schema_manifest,
+            fixture_manifest,
+            conformance_manifest,
+        ):
+            self.assertEqual("Published", metadata["status"])
+            self.assertEqual(version, metadata["snapshotVersion"])
+            self.assertEqual(version, metadata["protocolVersion"])
+        self.assertEqual(
+            f"https://agenthooksprotocol.org/schemas/{version}/common.schema.json",
+            common["$id"],
+        )
+        self.assertEqual(version, common["$defs"]["protocolVersion"]["const"])
+        self.assertEqual(version, fixture["params"]["protocolVersion"])
+        self.assertTrue(
+            all(
+                item["path"].startswith(f"schema/{version}/")
+                for item in schema_manifest["documents"]
+            )
+        )
+        self.assertTrue(
+            all(
+                case["path"].startswith(f"fixtures/{version}/")
+                and case["schema"].startswith(f"schema/{version}/")
+                for case in fixture_manifest["cases"]
+            )
+        )
+        self.assertEqual(
+            f"spec/{version}/requirements.json",
+            conformance_manifest["canonicalRequirements"],
+        )
+        self.assertNotIn(
+            "protocol version `draft`",
+            (self.root / f"spec/{version}/base/index.md").read_text(
+                encoding="utf-8"
+            ),
+        )
+        for path in (self.root / f"fixtures/{version}").rglob("*.json*"):
+            if path.name != "manifest.json":
+                self.assertNotIn('"draft"', path.read_text(encoding="utf-8"))
+
+    def test_release_freeze_rejects_invalid_date_and_existing_destination(self) -> None:
+        with self.assertRaisesRegex(
+            freeze_snapshot.FreezeFailure,
+            "valid YYYY-MM-DD calendar date",
+        ):
+            freeze_snapshot.freeze_snapshot(self.root, "2026-02-29")
+
+        version = "2026-08-27"
+        (self.root / f"spec/{version}").mkdir()
+        with self.assertRaisesRegex(
+            freeze_snapshot.FreezeFailure,
+            "release destination already exists",
+        ):
+            freeze_snapshot.freeze_snapshot(self.root, version)
 
 
 if __name__ == "__main__":

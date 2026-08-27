@@ -2,7 +2,7 @@
   "jsonrpc": "2.0",
   "method": "hooks/observe",
   "params": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "event": {
       "id": "evt_observe_before_001",
       "source": "https://harness.example/runtime/42",

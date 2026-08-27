@@ -8,7 +8,7 @@
   "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
   "method": "hooks/intercept",
   "params": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "event": {
       "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
@@ -41,7 +41,7 @@ The JSON-RPC request `id` MUST equal `params.event.id`. A retry of the same even
   "jsonrpc": "2.0",
   "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
   "result": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "effects": []
   }
 }
@@ -53,7 +53,7 @@ An empty effect list means only that this interceptor requests no change. It doe
   "jsonrpc": "2.0",
   "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
   "result": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "effects": [
       {
         "type": "deny",
@@ -70,7 +70,7 @@ An empty effect list means only that this interceptor requests no change. It doe
   "jsonrpc": "2.0",
   "method": "hooks/observe",
   "params": {
-    "protocolVersion": "0.1",
+    "protocolVersion": "draft",
     "event": {
       "id": "evt_01JQ8Z7BEQW0X31TVPN5AZ1YJ6",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
@@ -250,7 +250,7 @@ If present, `agent` has a required `id` and an optional provider-defined `type`.
 </tr>
 </table>
 `callId` MUST remain identical across the `tool.before`, `tool.after`, and `tool.error` events for one tool invocation. If a native harness does not supply an ID, an adapter MUST synthesize a stable ID. A deterministic hash of session identity, turn identity, tool name, and input is one acceptable strategy.
-The v0.1 `kind` values are:
+This protocol revision defines these `kind` values:
 - `shell`
 - `file_read`
 - `file_write`

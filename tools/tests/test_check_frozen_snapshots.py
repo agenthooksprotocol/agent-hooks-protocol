@@ -27,6 +27,8 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        (self.root / "README.md").write_text("# Test repository\n", encoding="utf-8")
+        self.commit_all("test: initialize repository")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
@@ -100,6 +102,38 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
             .stdout.strip()
         )
 
+    def tag(self, name: str, revision: str = "HEAD") -> None:
+        subprocess.run(
+            ["git", "-C", str(self.root), "tag", name, revision],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    def orphan_commit(self, message: str = "test: unreachable release") -> str:
+        return (
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(self.root),
+                    "-c",
+                    "user.name=AHP Tests",
+                    "-c",
+                    "user.email=tests@example.com",
+                    "commit-tree",
+                    "HEAD^{tree}",
+                    "-m",
+                    message,
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            .stdout.strip()
+        )
+
     @staticmethod
     def passing_result(
         root: Path,
@@ -113,23 +147,25 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
             profile_count=1,
         )
 
-    def test_discovers_each_exact_semver_snapshot_once_in_sorted_order(self) -> None:
-        self.add_complete_snapshot("10.2.3")
-        self.add_complete_snapshot("0.1.0")
+    def test_discovers_each_exact_date_snapshot_once_in_sorted_order(self) -> None:
+        self.add_complete_snapshot("2026-08-27")
+        self.add_complete_snapshot("2024-11-05")
 
         self.assertEqual(
-            ("0.1.0", "10.2.3"),
+            ("2024-11-05", "2026-08-27"),
             frozen_checker.discover_frozen_snapshots(self.root),
         )
 
-    def test_rejects_non_semver_snapshot_directory_names(self) -> None:
+    def test_rejects_non_date_and_impossible_date_snapshot_directories(self) -> None:
         invalid_names = (
-            "v1.2.3",
-            "1.2",
-            "01.2.3",
-            "1.02.3",
-            "1.2.03",
-            "1.2.3-rc.1",
+            "1.2.3",
+            "v2026-08-27",
+            "2026-8-27",
+            "2026-08-7",
+            "2026-02-29",
+            "2026-13-01",
+            "2026-01-32",
+            "2026-08-27-RC",
             "latest",
         )
         for invalid_name in invalid_names:
@@ -138,13 +174,13 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
                 path.mkdir()
                 with self.assertRaisesRegex(
                     frozen_checker.FrozenSnapshotFailure,
-                    "must use exact MAJOR.MINOR.PATCH",
+                    "must use a valid YYYY-MM-DD calendar date",
                 ):
                     frozen_checker.discover_frozen_snapshots(self.root)
                 path.rmdir()
 
     def test_partial_snapshot_fails_through_conformance_checker(self) -> None:
-        self.add_snapshot("spec", "0.1.0")
+        self.add_snapshot("spec", "2026-08-27")
         stdout = io.StringIO()
         stderr = io.StringIO()
 
@@ -155,18 +191,18 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
         )
 
         self.assertEqual(1, exit_code)
-        self.assertEqual("", stdout.getvalue())
-        self.assertIn("snapshot '0.1.0' is incomplete", stderr.getvalue())
-        self.assertIn("missing schema root schema/0.1.0", stderr.getvalue())
-        self.assertIn("fixture root fixtures/0.1.0", stderr.getvalue())
+        self.assertIn("first-release snapshot set", stdout.getvalue())
+        self.assertIn("snapshot '2026-08-27' is incomplete", stderr.getvalue())
+        self.assertIn("missing schema root schema/2026-08-27", stderr.getvalue())
+        self.assertIn("fixture root fixtures/2026-08-27", stderr.getvalue())
         self.assertIn(
-            "conformance root conformance/0.1.0",
+            "conformance root conformance/2026-08-27",
             stderr.getvalue(),
         )
 
     def test_validates_every_discovered_snapshot_with_existing_checker(self) -> None:
-        self.add_complete_snapshot("1.0.0")
-        self.add_complete_snapshot("0.1.0")
+        self.add_complete_snapshot("2025-06-18")
+        self.add_complete_snapshot("2024-11-05")
         calls: list[tuple[Path, str]] = []
 
         def check_snapshot(
@@ -192,14 +228,15 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual(0, exit_code)
         self.assertEqual(
-            [(self.root, "0.1.0"), (self.root, "1.0.0")],
+            [(self.root, "2024-11-05"), (self.root, "2025-06-18")],
             calls,
         )
         self.assertEqual(2, stdout.getvalue().count("conformance checks passed"))
+        self.assertIn("first-release snapshot set", stdout.getvalue())
 
     def test_stops_after_first_failed_snapshot(self) -> None:
-        self.add_complete_snapshot("0.1.0")
-        self.add_complete_snapshot("1.0.0")
+        self.add_complete_snapshot("2024-11-05")
+        self.add_complete_snapshot("2025-06-18")
         calls: list[str] = []
 
         def check_snapshot(
@@ -223,12 +260,14 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
         )
 
         self.assertEqual(1, exit_code)
-        self.assertEqual(["0.1.0"], calls)
+        self.assertEqual(["2024-11-05"], calls)
 
-    def test_git_base_rejects_uncatalogued_spec_prose_change(self) -> None:
-        self.seed_snapshot_files("0.1.0")
-        base_revision = self.commit_all()
-        prose = self.root / "spec/0.1.0/uncatalogued.md"
+    def test_release_tag_rejects_uncatalogued_spec_prose_change(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        self.commit_all()
+        self.tag(version)
+        prose = self.root / f"spec/{version}/uncatalogued.md"
         prose.write_text(
             "# Frozen prose\n\nA backend MAY replace this text.\n",
             encoding="utf-8",
@@ -237,7 +276,6 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         exit_code = frozen_checker.run(
             self.root,
-            base_revision=base_revision,
             check_snapshot=self.passing_result,
             stdout=io.StringIO(),
             stderr=stderr,
@@ -245,40 +283,44 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertIn(
-            "spec/0.1.0/uncatalogued.md: modified from frozen snapshot",
+            f"spec/{version}/uncatalogued.md: modified from frozen snapshot",
             stderr.getvalue(),
         )
 
-    def test_git_base_rejects_manifest_refresh_that_blesses_frozen_edit(self) -> None:
-        self.seed_snapshot_files("0.1.0")
-        base_revision = self.commit_all()
-        prose = self.root / "spec/0.1.0/uncatalogued.md"
+    def test_release_tag_rejects_manifest_refresh_that_blesses_edit(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        self.commit_all()
+        self.tag(version)
+        prose = self.root / f"spec/{version}/uncatalogued.md"
         prose.write_text(prose.read_text(encoding="utf-8") + "\n", encoding="utf-8")
-        manifest = self.root / "schema/0.1.0/manifest.json"
+        manifest = self.root / f"schema/{version}/manifest.json"
         manifest.write_text('{"refreshed": true}\n', encoding="utf-8")
         stderr = io.StringIO()
 
         exit_code = frozen_checker.run(
             self.root,
-            base_revision=base_revision,
             check_snapshot=self.passing_result,
             stdout=io.StringIO(),
             stderr=stderr,
         )
 
         self.assertEqual(1, exit_code)
-        self.assertIn("spec/0.1.0/uncatalogued.md: modified", stderr.getvalue())
-        self.assertIn("schema/0.1.0/manifest.json: modified", stderr.getvalue())
+        self.assertIn(f"spec/{version}/uncatalogued.md: modified", stderr.getvalue())
+        self.assertIn(
+            f"schema/{version}/manifest.json: modified", stderr.getvalue()
+        )
 
-    def test_git_base_rejects_frozen_file_deletion(self) -> None:
-        self.seed_snapshot_files("0.1.0")
-        base_revision = self.commit_all()
-        (self.root / "fixtures/0.1.0/manifest.json").unlink()
+    def test_release_tag_rejects_frozen_file_deletion(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        self.commit_all()
+        self.tag(version)
+        (self.root / f"fixtures/{version}/manifest.json").unlink()
         stderr = io.StringIO()
 
         exit_code = frozen_checker.run(
             self.root,
-            base_revision=base_revision,
             check_snapshot=self.passing_result,
             stdout=io.StringIO(),
             stderr=stderr,
@@ -286,20 +328,47 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertIn(
-            "fixtures/0.1.0/manifest.json: deleted from frozen snapshot",
+            f"fixtures/{version}/manifest.json: deleted from frozen snapshot",
             stderr.getvalue(),
         )
 
-    def test_git_base_rejects_frozen_file_rename(self) -> None:
-        self.seed_snapshot_files("0.1.0")
-        base_revision = self.commit_all()
-        source = self.root / "conformance/0.1.0/manifest.json"
+    def test_release_tag_rejects_file_added_to_existing_snapshot(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        self.commit_all()
+        self.tag(version)
+        self.write_snapshot_file(
+            "schema",
+            version,
+            "added.schema.json",
+            "{}\n",
+        )
+        stderr = io.StringIO()
+
+        exit_code = frozen_checker.run(
+            self.root,
+            check_snapshot=self.passing_result,
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn(
+            f"schema/{version}/added.schema.json: added to frozen snapshot",
+            stderr.getvalue(),
+        )
+
+    def test_release_tag_rejects_frozen_file_rename(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        self.commit_all()
+        self.tag(version)
+        source = self.root / f"conformance/{version}/manifest.json"
         source.rename(source.with_name("profiles.json"))
         stderr = io.StringIO()
 
         exit_code = frozen_checker.run(
             self.root,
-            base_revision=base_revision,
             check_snapshot=self.passing_result,
             stdout=io.StringIO(),
             stderr=stderr,
@@ -307,18 +376,21 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual(1, exit_code)
         self.assertIn(
-            "conformance/0.1.0/manifest.json: deleted from frozen snapshot",
+            f"conformance/{version}/manifest.json: deleted from frozen snapshot",
             stderr.getvalue(),
         )
         self.assertIn(
-            "conformance/0.1.0/profiles.json: added to frozen snapshot",
+            f"conformance/{version}/profiles.json: added to frozen snapshot",
             stderr.getvalue(),
         )
 
-    def test_git_base_allows_wholly_new_complete_snapshot_set(self) -> None:
-        self.seed_snapshot_files("0.1.0")
-        base_revision = self.commit_all()
-        self.seed_snapshot_files("0.2.0")
+    def test_release_tag_allows_wholly_new_complete_snapshot_set(self) -> None:
+        released = "2024-11-05"
+        new = "2025-03-26"
+        self.seed_snapshot_files(released)
+        self.commit_all()
+        self.tag(released)
+        self.seed_snapshot_files(new)
         calls: list[str] = []
 
         def check_snapshot(
@@ -330,14 +402,125 @@ class FrozenSnapshotCheckerTests(unittest.TestCase):
 
         exit_code = frozen_checker.run(
             self.root,
-            base_revision=base_revision,
             check_snapshot=check_snapshot,
             stdout=io.StringIO(),
             stderr=io.StringIO(),
         )
 
         self.assertEqual(0, exit_code)
-        self.assertEqual(["0.1.0", "0.2.0"], calls)
+        self.assertEqual([released, new], calls)
+
+    def test_first_release_bootstrap_validates_new_snapshot_without_tag(self) -> None:
+        version = "2024-11-05"
+        self.seed_snapshot_files(version)
+        stdout = io.StringIO()
+        calls: list[str] = []
+
+        def check_snapshot(
+            root: Path,
+            snapshot: str,
+        ) -> check_conformance.CheckResult:
+            calls.append(snapshot)
+            return self.passing_result(root, snapshot)
+
+        exit_code = frozen_checker.run(
+            self.root,
+            check_snapshot=check_snapshot,
+            stdout=stdout,
+            stderr=io.StringIO(),
+        )
+
+        self.assertEqual(0, exit_code)
+        self.assertEqual([version], calls)
+        self.assertIn("first-release snapshot set", stdout.getvalue())
+
+    def test_selects_newest_reachable_release_date_as_baseline(self) -> None:
+        older = "2024-11-05"
+        newer = "2025-03-26"
+        self.seed_snapshot_files(older)
+        self.commit_all("test: first release")
+        self.tag(older)
+        self.seed_snapshot_files(newer)
+        self.commit_all("test: second release")
+        self.tag(newer)
+
+        self.assertEqual(
+            newer,
+            frozen_checker.newest_reachable_release_tag(self.root),
+        )
+
+        prose = self.root / f"spec/{older}/uncatalogued.md"
+        prose.write_text(prose.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        stderr = io.StringIO()
+        exit_code = frozen_checker.run(
+            self.root,
+            check_snapshot=self.passing_result,
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn(f"released at {newer}", stderr.getvalue())
+
+    def test_ignores_newer_release_tag_not_reachable_from_revision(self) -> None:
+        reachable = "2024-11-05"
+        unreachable = "2026-08-27"
+        self.seed_snapshot_files(reachable)
+        self.commit_all()
+        self.tag(reachable)
+        self.tag(unreachable, self.orphan_commit())
+
+        self.assertEqual(
+            reachable,
+            frozen_checker.newest_reachable_release_tag(self.root),
+        )
+
+    def test_release_tag_must_target_its_matching_snapshot(self) -> None:
+        snapshot = "2024-11-05"
+        retargeted_release = "2025-03-26"
+        self.seed_snapshot_files(snapshot)
+        self.commit_all()
+        self.tag(retargeted_release)
+        stderr = io.StringIO()
+
+        exit_code = frozen_checker.run(
+            self.root,
+            check_snapshot=self.passing_result,
+            stdout=io.StringIO(),
+            stderr=stderr,
+        )
+
+        self.assertEqual(1, exit_code)
+        self.assertIn(
+            f"release tag '{retargeted_release}'",
+            stderr.getvalue(),
+        )
+        self.assertIn(
+            f"does not contain its complete date snapshot",
+            stderr.getvalue(),
+        )
+
+    def test_rejects_impossible_calendar_date_release_tag(self) -> None:
+        self.seed_snapshot_files("2024-11-05")
+        self.commit_all()
+        self.tag("2026-02-29")
+
+        with self.assertRaisesRegex(
+            frozen_checker.FrozenSnapshotFailure,
+            "not a valid calendar date",
+        ):
+            frozen_checker.newest_reachable_release_tag(self.root)
+
+    def test_ignores_nonfinal_release_tags(self) -> None:
+        self.seed_snapshot_files("2024-11-05")
+        self.commit_all()
+        self.tag("2024-11-05-RC")
+        self.tag("v2024-11-05")
+        self.tag("1.2.3")
+
+        self.assertIsNone(
+            frozen_checker.newest_reachable_release_tag(self.root)
+        )
 
 
 if __name__ == "__main__":

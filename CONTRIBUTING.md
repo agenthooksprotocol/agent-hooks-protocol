@@ -48,7 +48,7 @@ python3 -m unittest discover tools/tests
 python3 tools/check_conformance.py
 ```
 
-Directories named with exact SemVer, such as the four matching `0.1.0/` directories, are frozen release snapshots. Do not edit them or run `--update-manifests` against them. Corrections require a new release under the [release policy](docs/RELEASES.md). To inspect a frozen snapshot, pass its exact SemVer key, for example `python3 tools/check_conformance.py --snapshot 0.1.0`.
+Directories named with exact publication dates, such as the four matching `2026-08-27/` directories, are frozen release snapshots. Do not edit them or run `--update-manifests` against them. Corrections require a new release under the [release policy](docs/RELEASES.md). To inspect a frozen snapshot, pass its exact `YYYY-MM-DD` key, for example `python3 tools/check_conformance.py --snapshot 2026-08-27`.
 
 Changes to protocol behavior or release policy still require the applicable public discussion and AHP proposal. A repository-only refactor that preserves normative text, requirements, and behavior can use the normal contribution process, but its pull request must state and verify that preservation. Markdown and JSON Schema remain the source artifacts; generated documentation, SDKs, adapters, and reference implementations are not substitutes for changes to those sources.
 

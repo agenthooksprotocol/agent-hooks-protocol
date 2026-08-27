@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/schema.json",
-  "title": "AHP v0.1 Wire Message (Working Draft)",
-  "$comment": "Working Draft 0.1.0-draft.1. This aggregate entrypoint selects every wire-message shape defined by AHP v0.1.",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/schema.json",
+  "title": "AHP Wire Message (Draft)",
+  "$comment": "Mutable AHP draft. This aggregate entrypoint selects every wire-message shape defined by the AHP draft.",
   "x-requirements": ["AHP-RPC-001", "AHP-RPC-002"],
   "oneOf": [
     {"$ref": "intercept-request.schema.json"},
