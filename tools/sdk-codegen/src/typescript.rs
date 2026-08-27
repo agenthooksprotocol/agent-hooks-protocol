@@ -1,7 +1,6 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-use serde_json::json;
 
 use crate::model::{AdditionalProperties, Ir, Shape};
 
@@ -15,7 +14,7 @@ pub fn emit(ir: &Ir) -> Result<String> {
     )?;
     writeln!(
         output,
-        "// The released schema is authoritative if this output conflicts with it.\n"
+        "// The source schema is authoritative if this output conflicts with it.\n"
     )?;
     writeln!(
         output,
@@ -53,11 +52,6 @@ pub fn emit(ir: &Ir) -> Result<String> {
         output,
         "const SCHEMAS: Record<string, SchemaNode> = {} as unknown as Record<string, SchemaNode>;",
         serde_json::to_string_pretty(&descriptors)?
-    )?;
-    writeln!(
-        output,
-        "const ROOTS = {} as const;\n",
-        serde_json::to_string_pretty(&json!(ir.roots))?
     )?;
     output.push_str(RUNTIME);
 
@@ -172,7 +166,7 @@ export type UnknownVariant<Discriminator extends string> = AdditionalProperties 
 
 export interface ParseDiagnostic {
   readonly path: string;
-  readonly code: "invalid_type" | "missing_required" | "literal_mismatch" | "unknown_enum" | "unknown_variant" | "invalid_known_variant" | "no_union_match" | "ambiguous_union" | "unsupported_protocol_version" | "invalid_json";
+  readonly code: "invalid_type" | "missing_required" | "literal_mismatch" | "unknown_enum" | "unknown_variant" | "invalid_known_variant" | "no_union_match" | "ambiguous_union" | "invalid_json";
   readonly severity: "error" | "warning";
   readonly message: string;
 }
@@ -202,13 +196,6 @@ const RUNTIME: &str = r#"function parseRoot(name: string, input: string | unknow
   }
   const diagnostics: ParseDiagnostic[] = [];
   checkNode(SCHEMAS[name], raw, "", diagnostics);
-  const root = ROOTS.find((candidate) => candidate.name === name);
-  if (root && "protocolVersionPointer" in root && root.protocolVersionPointer) {
-    const version = readPointer(raw, root.protocolVersionPointer);
-    if (version !== PROTOCOL_VERSION) {
-      diagnostics.push({ path: root.protocolVersionPointer, code: "unsupported_protocol_version", severity: "error", message: `Expected protocolVersion ${PROTOCOL_VERSION}` });
-    }
-  }
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return { ok: false, raw, diagnostics };
   return { ok: true, value: raw, raw, diagnostics };
 }
@@ -307,15 +294,6 @@ function isObject(value: JsonValue): value is Record<string, JsonValue> { return
 function sameJson(left: JsonValue, right: JsonValue): boolean { return JSON.stringify(left) === JSON.stringify(right); }
 function joinPath(path: string, key: string): string { return `${path}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`; }
 function error(diagnostics: ParseDiagnostic[], path: string, code: ParseDiagnostic["code"], message: string): void { diagnostics.push({ path, code, severity: "error", message }); }
-function readPointer(value: JsonValue, pointer: string): JsonValue | undefined {
-  let current: JsonValue | undefined = value;
-  for (const token of pointer.split("/").slice(1)) {
-    if (!isObject(current as JsonValue)) return undefined;
-    current = (current as Record<string, JsonValue>)[token.replace(/~1/g, "/").replace(/~0/g, "~")];
-  }
-  return current;
-}
-
 "#;
 
 #[cfg(test)]
@@ -331,9 +309,6 @@ mod tests {
             roots: vec![PublicRoot {
                 name: "Message".into(),
                 schema: "message.json".into(),
-                method: None,
-                protocol_version_pointer: None,
-                response_context_required: false,
             }],
             types: vec![NamedType {
                 name: "Message".into(),

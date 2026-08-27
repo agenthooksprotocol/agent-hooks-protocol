@@ -23,7 +23,6 @@ FIXTURE_MANIFEST = FIXTURE_DIR / "manifest.json"
 CONFORMANCE_MANIFEST = ROOT / "conformance" / "manifest.json"
 REQUIREMENTS = ROOT / "spec" / "requirements.json"
 MIGRATION = ROOT / "spec" / "source-migration.json"
-SDK_GENERATION_MANIFEST = ROOT / "sdk-generation" / DRAFT_VERSION / "manifest.json"
 REQ_RE = re.compile(r"\bAHP-[A-Z]+-\d{3}\b")
 PRIVATE_NOTION_RE = re.compile(
     r"(?:https?://(?:www\.)?notion\.(?:so|site)(?:/|\b)|" + "notion" + r"://)",
@@ -487,35 +486,12 @@ def resolve_pointer(document: Any, pointer: str, label: str) -> Any:
     return current
 
 
-def check_sdk_generation() -> tuple[list[str], int]:
+def check_sdk_generation() -> list[str]:
     errors: list[str] = []
-    manifest = load_json(SDK_GENERATION_MANIFEST)
-    if manifest.get("schemaRevision") != DRAFT_VERSION:
-        errors.append("SDK generation revision mismatch")
-
-    schema_pin = manifest.get("schemaManifest", {})
-    schema_path = root_path(schema_pin.get("path", ""))
-    if schema_path != SCHEMA_MANIFEST.resolve() or not schema_path.is_file():
-        errors.append("SDK generation schema manifest pin is invalid")
-    elif sha256(schema_path) != schema_pin.get("sha256"):
-        errors.append("SDK generation schema manifest hash drift")
-
-    profile_pin = manifest.get("profile", {})
-    cases_pin = manifest.get("compatibilityCases", {})
-    profile_path = root_path(profile_pin.get("path", ""))
-    cases_path = root_path(cases_pin.get("path", ""))
-    if not profile_path.is_file() or sha256(profile_path) != profile_pin.get("sha256"):
-        errors.append("SDK generation profile hash drift")
-    if not cases_path.is_file() or sha256(cases_path) != cases_pin.get("sha256"):
-        errors.append("SDK generation corpus hash drift")
-    profile = load_json(profile_path)
-    cases = load_json(cases_path)
-    if profile.get("schemaRevision") != DRAFT_VERSION or cases.get("schemaRevision") != DRAFT_VERSION:
-        errors.append("SDK generation profile or corpus revision mismatch")
-    if profile.get("protocolVersion") != manifest.get("protocolVersion"):
-        errors.append("SDK generation protocol version mismatch")
-
     schema_manifest = load_json(SCHEMA_MANIFEST)
+    if not isinstance(schema_manifest.get("protocolVersion"), str):
+        errors.append("schema manifest lacks protocolVersion")
+    profile = schema_manifest.get("sdkGeneration", {})
     schema_paths = {item["path"] for item in schema_manifest.get("documents", [])}
     stable_names = profile.get("stableNames", {})
     if len(set(stable_names.values())) != len(stable_names):
@@ -530,39 +506,17 @@ def check_sdk_generation() -> tuple[list[str], int]:
         except CheckFailure as exc:
             errors.append(str(exc))
 
-    known_names = set(stable_names.values())
-    for root in profile.get("publicRoots", []):
-        if root.get("name") not in known_names:
-            errors.append(f"SDK generation public root lacks stable name: {root.get('name')}")
-        if root.get("schema") not in schema_paths:
-            errors.append(f"SDK generation public root has unknown schema: {root.get('schema')}")
-
-    for discriminator in profile.get("discriminators", []):
-        schema = discriminator.get("schema", "")
-        if schema not in schema_paths:
-            errors.append(f"SDK generation discriminator has unknown schema: {schema}")
-            continue
-        try:
-            node = resolve_pointer(load_json(root_path(schema)), discriminator.get("pointer", ""), schema)
-            if not isinstance(node, dict) or not isinstance(node.get("oneOf"), list):
-                errors.append(
-                    f"SDK generation discriminator does not point to oneOf: "
-                    f"{schema}{discriminator.get('pointer')}"
-                )
-        except CheckFailure as exc:
-            errors.append(str(exc))
-
-    case_ids: set[str] = set()
-    for case in cases.get("cases", []):
-        case_id = case.get("id", "")
-        if not case_id or case_id in case_ids:
-            errors.append(f"SDK generation duplicate or empty case id: {case_id!r}")
-        case_ids.add(case_id)
-        if case.get("root") not in known_names:
-            errors.append(f"SDK generation case has unknown root: {case.get('root')}")
-        if not isinstance(case.get("canonicalValid"), bool):
-            errors.append(f"SDK generation case lacks canonicalValid boolean: {case_id}")
-    return errors, len(case_ids)
+    structural_keywords = {"type", "const", "enum", "oneOf", "anyOf", "allOf"}
+    for schema_path in schema_paths:
+        schema = load_json(root_path(schema_path))
+        if structural_keywords.intersection(schema) and f"{schema_path}#" not in stable_names:
+            errors.append(f"SDK generation schema root lacks stable name: {schema_path}")
+        for name in schema.get("$defs", {}):
+            pointer = name.replace("~", "~0").replace("/", "~1")
+            source = f"{schema_path}#/$defs/{pointer}"
+            if source not in stable_names:
+                errors.append(f"SDK generation schema definition lacks stable name: {source}")
+    return errors
 
 
 def check_private_links() -> list[str]:
@@ -618,14 +572,12 @@ def main() -> int:
         requirement_errors, requirement_count = check_requirements()
         errors.extend(requirement_errors)
         errors.extend(check_source_migration())
-        sdk_errors, sdk_case_count = check_sdk_generation()
-        errors.extend(sdk_errors)
+        errors.extend(check_sdk_generation())
         errors.extend(check_private_links())
     except (CheckFailure, KeyError, TypeError) as exc:
         errors.append(str(exc))
         fixture_count = 0
         requirement_count = 0
-        sdk_case_count = 0
 
     if errors:
         print(f"conformance checks failed ({len(errors)}):", file=sys.stderr)
@@ -635,7 +587,7 @@ def main() -> int:
     schema_count = len(list(SCHEMA_DIR.glob("*.schema.json")))
     print(
         f"conformance checks passed: {schema_count} schemas, {fixture_count} fixtures, "
-        f"{requirement_count} requirements, {sdk_case_count} SDK generation cases"
+        f"{requirement_count} requirements"
     )
     return 0
 

@@ -8,24 +8,15 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use crate::model::{
-    AdditionalProperties, GenerationManifest, Ir, NamedType, Profile, Property, SchemaManifest,
-    Shape, UnionMode,
+    AdditionalProperties, Ir, NamedType, Profile, Property, SchemaManifest, Shape, UnionMode,
 };
 
 pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
     let repository = repository
         .canonicalize()
         .with_context(|| format!("cannot open repository {}", repository.display()))?;
-    let generation_path = format!("sdk-generation/{revision}/manifest.json");
-    let generation: GenerationManifest = read_json(&safe_path(&repository, &generation_path)?)?;
-
-    ensure!(
-        generation.schema_revision == revision,
-        "generation manifest revision mismatch"
-    );
-
-    let schema_manifest_path = safe_path(&repository, &generation.schema_manifest.path)?;
-    verify_hash(&schema_manifest_path, &generation.schema_manifest.sha256)?;
+    let schema_manifest_path =
+        safe_path(&repository, &format!("schemas/{revision}/manifest.json"))?;
     let schema_manifest: SchemaManifest = read_json(&schema_manifest_path)?;
     ensure!(
         schema_manifest.draft_version == revision,
@@ -37,26 +28,7 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
         schema_manifest.dialect
     );
 
-    let profile_path = safe_path(&repository, &generation.profile.path)?;
-    verify_hash(&profile_path, &generation.profile.sha256)?;
-    let profile: Profile = read_json(&profile_path)?;
-    ensure!(
-        profile.schema_revision == revision,
-        "profile revision mismatch"
-    );
-    ensure!(
-        profile.protocol_version == generation.protocol_version,
-        "profile protocol version mismatch"
-    );
-
-    let cases_path = safe_path(&repository, &generation.compatibility_cases.path)?;
-    verify_hash(&cases_path, &generation.compatibility_cases.sha256)?;
-    let cases: Value = read_json(&cases_path)?;
-    ensure!(
-        cases.get("schemaRevision").and_then(Value::as_str) == Some(revision),
-        "compatibility corpus revision mismatch"
-    );
-
+    let profile = &schema_manifest.sdk_generation;
     let mut documents = BTreeMap::new();
     for document in &schema_manifest.documents {
         let path = safe_path(&repository, &document.path)?;
@@ -67,7 +39,7 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
     }
 
     let compiler = Compiler {
-        profile: &profile,
+        profile,
         documents: &documents,
     };
     compiler.validate_metadata()?;
@@ -88,11 +60,23 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
         });
     }
     types.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut roots = profile
+        .stable_names
+        .iter()
+        .filter_map(|(source, name)| {
+            let (schema, pointer) = source.split_once('#')?;
+            pointer.is_empty().then(|| crate::model::PublicRoot {
+                name: name.clone(),
+                schema: schema.to_owned(),
+            })
+        })
+        .collect::<Vec<_>>();
+    roots.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(Ir {
-        schema_revision: generation.schema_revision,
-        protocol_version: generation.protocol_version,
-        roots: profile.public_roots,
+        schema_revision: schema_manifest.draft_version,
+        protocol_version: schema_manifest.protocol_version,
+        roots,
         types,
     })
 }
@@ -104,54 +88,30 @@ struct Compiler<'a> {
 
 impl Compiler<'_> {
     fn validate_metadata(&self) -> Result<()> {
-        let stable_names: BTreeSet<_> = self.profile.stable_names.values().collect();
-        for root in &self.profile.public_roots {
-            ensure!(
-                stable_names.contains(&root.name),
-                "public root {} has no stable name",
-                root.name
-            );
-            ensure!(
-                self.documents.contains_key(&root.schema),
-                "unknown public root schema {}",
-                root.schema
-            );
-            if let Some(pointer) = &root.protocol_version_pointer {
+        for (document, schema) in self.documents {
+            let root_is_named_type = schema.as_object().is_some_and(|object| {
+                ["type", "const", "enum", "oneOf", "anyOf", "allOf"]
+                    .iter()
+                    .any(|keyword| object.contains_key(*keyword))
+            });
+            if root_is_named_type {
                 ensure!(
-                    pointer.starts_with('/'),
-                    "protocolVersion pointer must be absolute"
+                    self.profile
+                        .stable_names
+                        .contains_key(&format!("{document}#")),
+                    "schema root {document} needs a stable name in the schema manifest"
                 );
             }
-        }
-        for discriminator in &self.profile.discriminators {
-            let node = self.node(&discriminator.schema, &discriminator.pointer)?;
-            let variants = node.get("oneOf").and_then(Value::as_array).ok_or_else(|| {
-                anyhow!(
-                    "discriminator {}{} does not point to oneOf",
-                    discriminator.schema,
-                    discriminator.pointer
-                )
-            })?;
-            ensure!(!variants.is_empty(), "discriminator oneOf cannot be empty");
-            for variant in variants {
-                ensure!(
-                    find_const_property(
-                        self,
-                        &discriminator.schema,
-                        variant,
-                        &discriminator.property
-                    )?
-                    .is_some(),
-                    "oneOf variant lacks constant discriminator {}",
-                    discriminator.property
-                );
+            if let Some(definitions) = schema.get("$defs").and_then(Value::as_object) {
+                for name in definitions.keys() {
+                    let pointer = format!("{document}#/$defs/{}", escape_pointer(name));
+                    ensure!(
+                        self.profile.stable_names.contains_key(&pointer),
+                        "schema definition {pointer} needs a stable name in the schema manifest"
+                    );
+                }
             }
-        }
-        for document in self.documents.keys() {
-            self.validate_refs(
-                document,
-                self.documents.get(document).expect("document exists"),
-            )?;
+            self.validate_refs(document, schema)?;
         }
         Ok(())
     }
@@ -209,7 +169,7 @@ impl Compiler<'_> {
             let (target_document, target_pointer) = resolve_reference(document, reference)?;
             let key = format!("{target_document}#{target_pointer}");
             let name = self.profile.stable_names.get(&key).ok_or_else(|| {
-                anyhow!("reference target {key} needs a stable name in the generation profile")
+                anyhow!("reference target {key} needs a stable name in the schema manifest")
             })?;
             return Ok(Shape::Ref { name: name.clone() });
         }
@@ -323,12 +283,10 @@ impl Compiler<'_> {
         mode: UnionMode,
     ) -> Result<Shape> {
         ensure!(!values.is_empty(), "empty union at {document}#{pointer}");
-        let discriminator = self
-            .profile
-            .discriminators
-            .iter()
-            .find(|item| item.schema == document && item.pointer == pointer)
-            .map(|item| item.property.clone());
+        let discriminator = match mode {
+            UnionMode::OneOf => infer_discriminator(self, document, values)?,
+            UnionMode::AnyOf => None,
+        };
         let keyword = match mode {
             UnionMode::OneOf => "oneOf",
             UnionMode::AnyOf => "anyOf",
@@ -406,12 +364,42 @@ fn forbidden_property_sets(
     Ok(sets)
 }
 
-fn find_const_property(
+fn infer_discriminator(
+    compiler: &Compiler<'_>,
+    document: &str,
+    variants: &[Value],
+) -> Result<Option<String>> {
+    let properties = variants
+        .iter()
+        .map(|variant| const_string_properties(compiler, document, variant))
+        .collect::<Result<Vec<_>>>()?;
+    let Some(first) = properties.first() else {
+        return Ok(None);
+    };
+    let mut candidates = first
+        .keys()
+        .filter(|property| {
+            let values = properties
+                .iter()
+                .filter_map(|variant| variant.get(*property))
+                .collect::<BTreeSet<_>>();
+            values.len() == properties.len()
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    ensure!(
+        candidates.len() <= 1,
+        "oneOf has multiple possible discriminators: {}",
+        candidates.join(", ")
+    );
+    Ok(candidates.pop())
+}
+
+fn const_string_properties(
     compiler: &Compiler<'_>,
     document: &str,
     schema: &Value,
-    property: &str,
-) -> Result<Option<Value>> {
+) -> Result<BTreeMap<String, String>> {
     let mut document = document.to_owned();
     let mut schema = schema;
     if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
@@ -421,9 +409,16 @@ fn find_const_property(
     }
     Ok(schema
         .get("properties")
-        .and_then(|value| value.get(property))
-        .and_then(|value| value.get("const"))
-        .cloned())
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, property)| {
+            property
+                .get("const")
+                .and_then(Value::as_str)
+                .map(|value| (name.clone(), value.to_owned()))
+        })
+        .collect())
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
