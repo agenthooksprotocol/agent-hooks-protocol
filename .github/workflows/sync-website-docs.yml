@@ -1,0 +1,32 @@
+name: Sync website docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: Update website mirrors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create website installation token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.WEBSITE_SYNC_APP_ID }}
+          private-key: ${{ secrets.WEBSITE_SYNC_APP_PRIVATE_KEY }}
+          owner: agenthooksprotocol
+          repositories: website
+          permission-contents: write
+
+      - name: Dispatch website sync
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          gh api --method POST \
+            repos/agenthooksprotocol/website/dispatches \
+            --field event_type=sync-protocol-docs
