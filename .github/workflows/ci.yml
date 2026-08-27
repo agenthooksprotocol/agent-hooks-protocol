@@ -15,3 +15,22 @@ jobs:
       - uses: actions/checkout@v5
       - name: Validate schemas, fixtures, and manifests
         run: python3 tools/check_conformance.py
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Test SDK generator
+        run: cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
+      - name: Validate SDK generation profile
+        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision 0.1.0-draft.1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - name: Compile generated TypeScript
+        run: |
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision 0.1.0-draft.1 --language typescript \
+            --output "$RUNNER_TEMP/ahp.generated.ts"
+          mkdir -p "$RUNNER_TEMP/ahp-codegen"
+          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
+            --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs --skipLibCheck
+          node tools/sdk-codegen/tests/typescript-smoke.cjs \
+            "$RUNNER_TEMP/ahp-codegen/ahp.generated.js" "$GITHUB_WORKSPACE"

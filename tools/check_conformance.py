@@ -469,6 +469,56 @@ def check_source_migration() -> list[str]:
     return errors
 
 
+def resolve_pointer(document: Any, pointer: str, label: str) -> Any:
+    if pointer == "":
+        return document
+    if not pointer.startswith("/"):
+        raise CheckFailure(f"{label}: expected JSON Pointer")
+    current = document
+    for raw_token in pointer[1:].split("/"):
+        token = unquote(raw_token).replace("~1", "/").replace("~0", "~")
+        if isinstance(current, dict) and token in current:
+            current = current[token]
+        elif isinstance(current, list) and token.isdigit() and int(token) < len(current):
+            current = current[int(token)]
+        else:
+            raise CheckFailure(f"{label}: unresolved pointer {pointer!r}")
+    return current
+
+
+def check_sdk_generation() -> list[str]:
+    errors: list[str] = []
+    schema_manifest = load_json(SCHEMA_MANIFEST)
+    if not isinstance(schema_manifest.get("protocolVersion"), str):
+        errors.append("schema manifest lacks protocolVersion")
+    profile = schema_manifest.get("sdkGeneration", {})
+    schema_paths = {item["path"] for item in schema_manifest.get("documents", [])}
+    stable_names = profile.get("stableNames", {})
+    if len(set(stable_names.values())) != len(stable_names):
+        errors.append("SDK generation stable names are not unique")
+    for source, name in stable_names.items():
+        path_text, separator, pointer = source.partition("#")
+        if not separator or path_text not in schema_paths or not isinstance(name, str) or not name:
+            errors.append(f"SDK generation invalid stable name source: {source}")
+            continue
+        try:
+            resolve_pointer(load_json(root_path(path_text)), pointer, source)
+        except CheckFailure as exc:
+            errors.append(str(exc))
+
+    structural_keywords = {"type", "const", "enum", "oneOf", "anyOf", "allOf"}
+    for schema_path in schema_paths:
+        schema = load_json(root_path(schema_path))
+        if structural_keywords.intersection(schema) and f"{schema_path}#" not in stable_names:
+            errors.append(f"SDK generation schema root lacks stable name: {schema_path}")
+        for name in schema.get("$defs", {}):
+            pointer = name.replace("~", "~0").replace("/", "~1")
+            source = f"{schema_path}#/$defs/{pointer}"
+            if source not in stable_names:
+                errors.append(f"SDK generation schema definition lacks stable name: {source}")
+    return errors
+
+
 def check_private_links() -> list[str]:
     errors: list[str] = []
     allowed_suffixes = {".json", ".jsonl", ".md", ".py", ".yml", ".yaml", ".txt"}
@@ -522,6 +572,7 @@ def main() -> int:
         requirement_errors, requirement_count = check_requirements()
         errors.extend(requirement_errors)
         errors.extend(check_source_migration())
+        errors.extend(check_sdk_generation())
         errors.extend(check_private_links())
     except (CheckFailure, KeyError, TypeError) as exc:
         errors.append(str(exc))
@@ -534,7 +585,10 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
     schema_count = len(list(SCHEMA_DIR.glob("*.schema.json")))
-    print(f"conformance checks passed: {schema_count} schemas, {fixture_count} fixtures, {requirement_count} requirements")
+    print(
+        f"conformance checks passed: {schema_count} schemas, {fixture_count} fixtures, "
+        f"{requirement_count} requirements"
+    )
     return 0
 
 

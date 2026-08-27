@@ -13,6 +13,7 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
+- [Schema-driven SDK generation](tools/sdk-codegen/README.md)
 
 The proposal is non-normative. Its unresolved questions remain open. The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
 
