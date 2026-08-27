@@ -132,9 +132,10 @@ Validate the selected frozen snapshot before tagging:
 
 ```sh
 python3 tools/check_conformance.py --snapshot "$VERSION"
+python3 tools/check_frozen_snapshots.py --base-revision <review-base-commit>
 ```
 
-The checker validates this selected snapshot without creating, retargeting, or updating it. Review the copied paths and complete release diff, then create tag `v$VERSION` and the repository release only after the frozen validation passes. Never use `--update-manifests` with an exact-SemVer snapshot. A release must not silently change after publication; correct it with a new release using the appropriate version increment. Repository hosting metadata can be repaired without changing release contents if the repair is documented.
+The conformance checker validates the selected snapshot without creating, retargeting, or updating it. The frozen-snapshot checker independently compares every exact-SemVer snapshot present at the review base against its complete current tree across `spec/`, `schema/`, `fixtures/`, and `conformance/`; it permits the wholly new release set but rejects any change to an older set. Review the copied paths and complete release diff, then create tag `v$VERSION` and the repository release only after both validations pass. Never use `--update-manifests` with an exact-SemVer snapshot. A release must not silently change after publication; correct it with a new release using the appropriate version increment. Repository hosting metadata can be repaired without changing release contents if the repair is documented.
 
 ## Deprecation and removal
 

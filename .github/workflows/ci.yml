@@ -11,11 +11,15 @@ jobs:
   conformance:
     name: Conformance artifacts
     runs-on: ubuntu-latest
+    env:
+      FROZEN_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Test snapshot checker
         run: python3 -m unittest discover tools/tests
       - name: Validate draft snapshot
         run: python3 tools/check_conformance.py
       - name: Validate frozen snapshots
-        run: python3 tools/check_frozen_snapshots.py
+        run: python3 tools/check_frozen_snapshots.py --base-revision "$FROZEN_BASE_SHA"

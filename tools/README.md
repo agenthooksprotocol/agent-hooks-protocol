@@ -20,7 +20,13 @@ To discover and validate every frozen snapshot:
 python3 tools/check_frozen_snapshots.py
 ```
 
-The frozen-snapshot checker scans the four parallel roots below, rejects every non-`draft` directory whose name is not exact SemVer, and passes each discovered version to `check_conformance.py`. A version present under only some roots therefore fails as an incomplete snapshot.
+To additionally compare every frozen snapshot that existed at a Git base revision:
+
+```sh
+python3 tools/check_frozen_snapshots.py --base-revision <base-commit>
+```
+
+The frozen-snapshot checker scans the four parallel roots below, rejects every non-`draft` directory whose name is not exact SemVer, and passes each discovered version to `check_conformance.py`. A version present under only some roots therefore fails as an incomplete snapshot. With `--base-revision`, it also compares the complete Git tree for every exact-SemVer version present at that commit against the working tree. Modification, deletion, rename, replacement, or addition beneath an existing frozen version fails even when a refreshed manifest would otherwise match. A wholly new version remains allowed and must independently pass the normal complete-snapshot validation.
 
 Each selected snapshot must exist under all four parallel roots:
 
@@ -42,7 +48,7 @@ It checks:
 - absence of private Notion URLs and broken relative Markdown links;
 - schema, fixture, and conformance profile manifest drift.
 
-CI runs the checker tests, validates `draft`, and runs `check_frozen_snapshots.py`.
+CI fetches full history, runs the checker tests, validates `draft`, and runs `check_frozen_snapshots.py` against the pull-request base SHA or the pre-push SHA.
 
 ## Supported JSON Schema subset
 
@@ -66,6 +72,6 @@ Run the focused checker tests with:
 python3 -m unittest discover tools/tests
 ```
 
-The suite exercises the snapshot resolver and structural safeguards independently of the command-line entrypoint, including cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, aggregate schema coverage, and rejection of manifest updates for frozen snapshots. Run both the focused tests and `python3 tools/check_conformance.py` when changing checker behavior or any part of the logical draft snapshot.
+The suite exercises the snapshot resolver and structural safeguards independently of the command-line entrypoint, including cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, aggregate schema coverage, rejection of manifest updates for frozen snapshots, and full-tree comparison against a temporary Git repository. Run both the focused tests and `python3 tools/check_conformance.py` when changing checker behavior or any part of the logical draft snapshot.
 
 The release freeze commands and required pre-tag validation are documented in the [release policy](../docs/RELEASES.md).
