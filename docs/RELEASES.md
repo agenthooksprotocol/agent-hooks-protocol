@@ -61,10 +61,10 @@ Validate the selected frozen snapshot before tagging:
 
 ```sh
 python3 tools/check_conformance.py --snapshot "$VERSION"
-python3 tools/check_frozen_snapshots.py
+python3 tools/check_conformance.py --all
 ```
 
-The conformance checker validates the selected snapshot without updating it. The frozen checker selects the newest reachable released date tag and compares every date snapshot that existed there against its complete current tree across `spec/`, `schema/`, `fixtures/`, and `conformance/`. It permits a wholly new date set before that date is tagged but rejects modification, deletion, rename, replacement, or addition beneath an already released snapshot. With no reachable date tag, it treats the repository as a first-release bootstrap and still runs full internal validation.
+The first command validates the selected snapshot without updating it. In `--all` mode, the same checker validates `draft` and every dated snapshot, then selects the newest reachable released date tag and compares every date snapshot that existed there against its complete current tree across `spec/`, `schema/`, `fixtures/`, and `conformance/`. It permits a wholly new date set before that date is tagged but rejects modification, deletion, rename, replacement, or addition beneath an already released snapshot. With no reachable date tag, it treats the repository as a first-release bootstrap and still runs full internal validation.
 
 Review the copied paths and complete release diff, merge the release commit, and create the exact tag `$VERSION` at that commit only after both validations pass. Release date tags are immutable and must never be moved or reused. CI must fetch full history and tags so Python can select the authoritative baseline. Never use `--update-manifests` with a date snapshot. Correct a released protocol by publishing a new date snapshot.
 
