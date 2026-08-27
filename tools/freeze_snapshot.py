@@ -156,6 +156,18 @@ def retarget_schema(staging: Path, version: str) -> None:
     manifest["status"] = "Published"
     manifest["snapshotVersion"] = version
     manifest["protocolVersion"] = version
+    stable_names = manifest.get("sdkGeneration", {}).get("stableNames", {})
+    retargeted_names: dict[str, str] = {}
+    for source, name in stable_names.items():
+        path, separator, pointer = source.partition("#")
+        if not separator:
+            raise FreezeFailure(
+                f"{manifest_path}: SDK stable name source lacks #: {source!r}"
+            )
+        retargeted_names[
+            f"{retarget_path(path, 'schema', version)}#{pointer}"
+        ] = name
+    manifest["sdkGeneration"]["stableNames"] = retargeted_names
     for document in manifest["documents"]:
         document["path"] = retarget_path(document.get("path"), "schema", version)
         document["sha256"] = sha256(staging / document["path"])

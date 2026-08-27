@@ -19,3 +19,22 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover tools/tests
       - name: Validate protocol snapshots
         run: PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Test SDK generator
+        run: cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
+      - name: Validate SDK generation profile
+        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision draft
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - name: Compile generated TypeScript
+        run: |
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision draft --language typescript \
+            --output "$RUNNER_TEMP/ahp.generated.ts"
+          mkdir -p "$RUNNER_TEMP/ahp-codegen"
+          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
+            --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs --skipLibCheck
+          node tools/sdk-codegen/tests/typescript-smoke.cjs \
+            "$RUNNER_TEMP/ahp-codegen/ahp.generated.js" "$GITHUB_WORKSPACE"

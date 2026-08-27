@@ -12,6 +12,7 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
+- [Schema-driven SDK generation](tools/sdk-codegen/README.md)
 
 The canonical Working Draft and each machine-readable artifact use the literal snapshot and wire identifier `draft` until publication.
 

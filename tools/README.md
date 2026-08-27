@@ -42,7 +42,8 @@ It checks:
 - golden fixture framing, schema outcomes, hashes, and request/event ID equality;
 - requirement ID uniqueness, requirement text hashes, document anchors, headings, and artifact references;
 - absence of private Notion URLs and broken relative Markdown links;
-- schema, fixture, and conformance profile manifest drift.
+- schema, fixture, and conformance profile manifest drift; and
+- SDK-generation protocol version and stable names for schema roots and definitions in the schema manifest.
 
 CI fetches full history, runs the standard-library checker tests, and invokes `check_conformance.py --all`; the Python checker owns snapshot discovery and newest-reachable-release-tag selection.
 
@@ -52,7 +53,7 @@ The built-in fixture validator supports the keywords used by this repository: `$
 
 This validator is intentionally not presented as a complete JSON Schema implementation. The schemas declare Draft 2020-12 and can also be consumed by a conforming general-purpose validator. The local subset keeps repository CI deterministic and dependency-free.
 
-During unpublished artifact development, refresh manifest hashes with:
+While Working Draft artifacts are changing, refresh manifest hashes with:
 
 ```sh
 python3 tools/check_conformance.py --update-manifests
@@ -71,3 +72,17 @@ python3 -m unittest discover tools/tests
 The suite exercises the snapshot resolver, `--all` behavior, and structural safeguards, including literal-draft and calendar-date formats, release retargeting, cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, aggregate schema coverage, first-release behavior, newest reachable release-tag selection, rejection of manifest updates for frozen snapshots, and full-tree comparison against temporary Git repositories. Run both the focused tests and `python3 tools/check_conformance.py --all` when changing checker behavior or any part of a logical snapshot.
 
 The release freeze commands and required pre-tag validation are documented in the [release policy](../docs/RELEASES.md).
+
+## SDK model generator
+
+The Rust generator reads SDK-generation metadata directly from the schema manifest and emits a language-neutral IR or TypeScript wire models and loss-preserving structural codecs:
+
+```sh
+cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+  check --revision draft
+
+cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+  generate --revision draft --language typescript --output /tmp/ahp.generated.ts
+```
+
+The structural codecs preserve unknown JSON but do not replace canonical Draft 2020-12 validation. See [`tools/sdk-codegen/README.md`](sdk-codegen/README.md).

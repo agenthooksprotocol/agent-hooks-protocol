@@ -337,6 +337,12 @@ class SnapshotCheckerTests(unittest.TestCase):
         )
         self.assertTrue(
             all(
+                source.startswith(f"schema/{version}/")
+                for source in schema_manifest["sdkGeneration"]["stableNames"]
+            )
+        )
+        self.assertTrue(
+            all(
                 case["path"].startswith(f"fixtures/{version}/")
                 and case["schema"].startswith(f"schema/{version}/")
                 for case in fixture_manifest["cases"]
