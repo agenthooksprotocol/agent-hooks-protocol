@@ -571,7 +571,7 @@ fn unique_field_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
 }
 
 fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
-    unique_identifier(type_identifier(value), used)
+    unique_upper_camel_identifier(type_identifier(value), used)
 }
 
 fn unique_variant_identifier(value: &Value, index: usize, used: &mut BTreeSet<String>) -> String {
@@ -588,7 +588,7 @@ fn unique_variant_identifier(value: &Value, index: usize, used: &mut BTreeSet<St
         Value::Array(_) => format!("Array {}", index + 1),
         Value::Object(_) => format!("Object {}", index + 1),
     };
-    unique_identifier(type_identifier(&label), used)
+    unique_upper_camel_identifier(type_identifier(&label), used)
 }
 
 fn unique_union_variant_identifier(
@@ -615,14 +615,14 @@ fn unique_union_variant_identifier(
         Shape::Intersection { .. } => "Intersection".to_owned(),
         Shape::Ref { name } => name.clone(),
     };
-    unique_identifier(type_identifier(&label), used)
+    unique_upper_camel_identifier(type_identifier(&label), used)
 }
 
-fn unique_identifier(base: String, used: &mut BTreeSet<String>) -> String {
+fn unique_upper_camel_identifier(base: String, used: &mut BTreeSet<String>) -> String {
     let mut candidate = base.clone();
     let mut suffix = 2;
     while !used.insert(candidate.clone()) {
-        candidate = format!("{base}_{suffix}");
+        candidate = format!("{base}{suffix}");
         suffix += 1;
     }
     candidate
@@ -772,8 +772,9 @@ impl<'de> Deserialize<'de> for Integer {
 
 /// Presence of an optional object member. Unlike `Option`, this distinguishes
 /// an absent member from a present member whose schema accepts JSON null.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum Presence<T> {
+    #[default]
     Missing,
     Present(T),
 }
@@ -788,12 +789,6 @@ impl<T> Presence<T> {
             Self::Missing => Presence::Missing,
             Self::Present(value) => Presence::Present(value),
         }
-    }
-}
-
-impl<T> Default for Presence<T> {
-    fn default() -> Self {
-        Self::Missing
     }
 }
 
@@ -1554,14 +1549,14 @@ mod tests {
         };
         let source = emit(&ir).unwrap();
         assert!(source.contains("pub type FooBar = String"));
-        assert!(source.contains("pub type FooBar_2 = String"));
-        assert!(source.contains("pub type JsonValue_2 = String"));
-        assert!(source.contains("pub type BTreeMap_2 = String"));
-        assert!(source.contains("pub type Deserialize_2 = String"));
-        assert!(source.contains("pub type String_2 = String"));
-        assert!(source.contains("pub type Vec_2 = String"));
-        assert!(source.contains("pub type Box_2 = String"));
-        assert!(source.contains("pub type Result_2 = String"));
+        assert!(source.contains("pub type FooBar2 = String"));
+        assert!(source.contains("pub type JsonValue2 = String"));
+        assert!(source.contains("pub type BTreeMap2 = String"));
+        assert!(source.contains("pub type Deserialize2 = String"));
+        assert!(source.contains("pub type String2 = String"));
+        assert!(source.contains("pub type Vec2 = String"));
+        assert!(source.contains("pub type Box2 = String"));
+        assert!(source.contains("pub type Result2 = String"));
         assert!(source.contains("pub fn parse_root_2("));
         assert!(source.contains("pub fn parse_root_3("));
     }
@@ -1580,9 +1575,26 @@ mod tests {
             .collect::<BTreeSet<_>>();
         assert_eq!(
             unique_type_identifier("json-value", &mut types),
-            "JsonValue_2"
+            "JsonValue2"
         );
         assert_eq!(unique_type_identifier("foo-bar", &mut types), "FooBar");
-        assert_eq!(unique_type_identifier("foo_bar", &mut types), "FooBar_2");
+        assert_eq!(unique_type_identifier("foo_bar", &mut types), "FooBar2");
+
+        let mut variants = BTreeSet::from(["Unknown".to_owned()]);
+        assert_eq!(
+            unique_variant_identifier(&Value::String("unknown".into()), 0, &mut variants),
+            "Unknown2"
+        );
+        let mut union_variants = BTreeSet::from(["Unknown".to_owned()]);
+        assert_eq!(
+            unique_union_variant_identifier(
+                &Shape::Ref {
+                    name: "Unknown".into(),
+                },
+                0,
+                &mut union_variants,
+            ),
+            "Unknown2"
+        );
     }
 }

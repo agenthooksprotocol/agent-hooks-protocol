@@ -110,7 +110,8 @@ RS
 "${cargo_command[@]}" test --quiet --manifest-path "$temporary/emitter/Cargo.toml"
 "${cargo_command[@]}" run --quiet --manifest-path "$temporary/emitter/Cargo.toml" -- \
     "$temporary/consumer/src/recursive.rs" "$temporary/consumer/src/collision.rs"
-printf '\npub mod recursive;\npub mod collision;\n' >>"$temporary/consumer/src/lib.rs"
+printf '\n#[allow(dead_code)]\npub mod recursive;\n#[allow(dead_code)]\npub mod collision;\n' \
+  >>"$temporary/consumer/src/lib.rs"
 
 cat >"$temporary/consumer/Cargo.toml" <<'TOML'
 [package]
@@ -291,5 +292,6 @@ fn reports_structural_failures_and_keeps_valid_json_raw() {
 }
 RS
 
-AHP_REPOSITORY="$repository" "${cargo_command[@]}" test --quiet --manifest-path "$temporary/consumer/Cargo.toml"
+AHP_REPOSITORY="$repository" RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-D warnings" \
+  "${cargo_command[@]}" test --quiet --manifest-path "$temporary/consumer/Cargo.toml"
 echo "generated Rust codec smoke tests passed"
