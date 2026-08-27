@@ -17,6 +17,8 @@ The tracked proposal is non-normative and records provenance and unresolved desi
 - [Basic protocol](basic/index.md)
 - [Transport bindings](basic/transports/index.md)
 - [Protocol features](features/index.md)
+  - [Harness role guide](features/harness/index.md)
+  - [Backend role guide](features/backend/index.md)
 - [Design rationale and references](rationale.md)
 - [Open questions](open-questions.md)
 - [Proposed implementation plan](implementation-plan.md)
