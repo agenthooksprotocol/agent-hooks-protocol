@@ -16,8 +16,9 @@ A conformance claim records:
 2. Requests, notifications, and successful results contain `protocolVersion: "0.1"` at the specified payload location.
 3. Unknown object fields do not invalidate an otherwise valid message. Unknown event, effect, and enum values remain unsupported semantics.
 4. Extension keys use reverse-DNS names.
-5. A harness validates portable registration before use and preserves event identity across retries.
-6. A backend returns a defined JSON-RPC error for unsupported request semantics and sends no response to a notification.
-7. No successful AHP result weakens host authorization, permission, approval, or sandbox controls.
+5. A harness validates portable registration before use and sends an event to a backend only for an exact event-name subscription whose mode matches the delivery method.
+6. A harness preserves event identity across retries.
+7. A backend returns a defined JSON-RPC error for unsupported request semantics and sends no response to a notification.
+8. No successful AHP result weakens host authorization, permission, approval, or sandbox controls.
 
 A Base Protocol claim is incomplete without a capability-profile claim and at least one transport-binding claim.

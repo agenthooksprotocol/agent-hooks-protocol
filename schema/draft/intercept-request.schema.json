@@ -3,7 +3,7 @@
   "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/intercept-request.schema.json",
   "title": "AHP hooks/intercept Request for tool.before (Working Draft)",
   "$comment": "Working Draft 0.1.0-draft.1. The request id/event id equality is also checked by conformance tooling.",
-  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001", "AHP-TB-001", "AHP-CAP-001"],
+  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001", "AHP-TB-001", "AHP-CAP-001", "AHP-CAP-002"],
   "allOf": [
     {"$ref": "common.schema.json#/$defs/request"},
     {

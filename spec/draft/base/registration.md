@@ -112,6 +112,12 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 </tr>
 </table>
 An `intercept` subscription MUST contain only `tool.before` in v0.1. An `observe` subscription MUST NOT include `timeoutMs` or `failurePolicy`.
+### Subscription dispatch
+
+<a id="AHP-REG-002"></a>
+**AHP-REG-002 — MUST.** A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.
+
+For dispatch, `hooks/intercept` matches only `intercept` mode and `hooks/observe` matches only `observe` mode. Event names are compared exactly; v0.1 defines no matcher language or separate `enabled` subscription state. If no subscription matches both the event name and delivery mode, the harness MUST NOT send that event to the backend.
 ### stdio transport fields
 A stdio transport contains:
 - `type`: exact value `stdio`

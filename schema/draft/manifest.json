@@ -6,7 +6,7 @@
   "documents": [
     {
       "path": "schema/draft/capabilities.schema.json",
-      "sha256": "bec68d4e3a94fc525d61aab54763ecbbb1fa5b07816b9aa0ee39f603b44d3499"
+      "sha256": "dcd8dbb734c415279c53f2d8a40ba4832c69e0ba453f54f9c9f40fbf82ee3caa"
     },
     {
       "path": "schema/draft/common.schema.json",
@@ -30,7 +30,7 @@
     },
     {
       "path": "schema/draft/intercept-request.schema.json",
-      "sha256": "fe411612d2ab61a15f199e546c64431adf03ec308f1f9f1ab5b05a6567b594e4"
+      "sha256": "8c052be7adb5c89cc17279c5b71832007f1361ff865dd8b5673f831352cff304"
     },
     {
       "path": "schema/draft/json-rpc-message.schema.json",
@@ -42,7 +42,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "94e73ba874953fa50b3420cc378427d826fdd18f852b75fdf21e9f33278c2cf2"
+      "sha256": "4b15336bba2baf2493e2bf10fff074f57fd54bb71ba14c8d10e61b89defd88a2"
     },
     {
       "path": "schema/draft/schema.json",

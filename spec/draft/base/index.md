@@ -13,7 +13,7 @@ The Base Protocol is divided across:
 
 ## Terminology and roles
 <table>
-<col>
+<colgroup>
 <col>
 <col>
 </colgroup>
@@ -28,6 +28,10 @@ The Base Protocol is divided across:
 <tr>
 <td>**Backend**</td>
 <td>The external policy, security, approval, or middleware component receiving AHP messages. It is the AHP server.</td>
+</tr>
+<tr>
+<td>**Subscription**</td>
+<td>An entry in a backend's registration that selects exact event names and a delivery mode, together with any mode-specific timeout and failure behavior.</td>
 </tr>
 <tr>
 <td>**Interceptor**</td>
@@ -88,15 +92,15 @@ A conforming backend MUST also:
 ### Tool Interception profile
 The Tool Interception profile is the minimum control capability defined by v0.1. It standardizes `tool.before` interception and the `deny` effect; it does not define the conceptual limit of future AHP event profiles.
 To claim this profile as a harness, an implementation MUST support registration of one or more `tool.before` intercept subscriptions and MUST advertise and enforce `deny`.
-Given a valid configuration containing one or more enabled intercept subscriptions for `tool.before`, when the harness is about to execute a tool call covered by those subscriptions, it MUST:
+Given a valid configuration containing one or more intercept subscriptions for `tool.before`, when the harness is about to execute a tool call covered by those subscriptions, it MUST:
 - Construct and send `tool.before` through `hooks/intercept`.
-- Advertise `deny` for the event.
+- Advertise `deny` in the event's `capabilities.effects` array, declaring that the harness accepts and enforces a valid `deny` effect.
 - Enforce each interceptor's configured deadline and failure policy.
 - Execute matching interceptors serially in deterministic configuration order.
 - Preserve event, session, and call identifiers across retries.
 - Stop tool execution after an explicit denial or fail-closed operational failure.
 - Continue to apply its own permissions, sandboxing, and approval flow if the chain completes without denial.
-If no enabled intercept subscription covers `tool.before`, AHP imposes no additional decision step and the harness continues its normal authorization flow. In v0.1, a subscription covers an event only when its `events` array contains that exact event name.
+The harness MUST send an event to a backend only when that backend's registration contains a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method. If no intercept subscription matches `tool.before`, AHP adds no decision step and the harness continues its normal authorization flow.
 To claim this profile as a backend, given a syntactically valid `hooks/intercept` request with protocol version `0.1` and event type `tool.before`, an implementation MUST return either an empty effect list or one valid `deny` effect.
 ### Lifecycle Observation profile
 The Lifecycle Observation profile is OPTIONAL. A conforming implementation of this profile supports `hooks/observe` and one or more events defined in the [event model](events.md#event-model).
@@ -135,7 +139,7 @@ Every conforming implementation test suite should verify, as applicable to its r
 Harness tests should additionally verify registration validation, response validation, and stable event IDs. Backend tests should additionally verify response ID correlation and portable behavior without `native` or `extensions`.
 ### Tool Interception harness tests
 A harness claiming the Tool Interception profile should verify:
-- No AHP decision step occurs when no enabled subscription covers `tool.before`
+- No AHP decision step occurs when no subscription covers `tool.before`
 - Correct `hooks/intercept` request shape and JSON-RPC/event ID equality
 - Required `tool.before` fields
 - Stable event, session, and call IDs across retries

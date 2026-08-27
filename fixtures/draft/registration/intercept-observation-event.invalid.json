@@ -1,0 +1,21 @@
+{
+  "protocolVersion": "0.1",
+  "hooks": [
+    {
+      "id": "com.example.invalid_interceptor",
+      "transport": {
+        "type": "stdio",
+        "command": "invalid-interceptor",
+        "lifecycle": "persistent"
+      },
+      "subscriptions": [
+        {
+          "events": ["tool.after"],
+          "mode": "intercept",
+          "timeoutMs": 500,
+          "failurePolicy": "fail-closed"
+        }
+      ]
+    }
+  ]
+}

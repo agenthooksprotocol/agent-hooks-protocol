@@ -3,7 +3,7 @@
   "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/registration.schema.json",
   "title": "AHP Portable Registration (Working Draft)",
   "$comment": "Working Draft 0.1.0-draft.1. Backend id uniqueness is also checked by conformance tooling.",
-  "x-requirements": ["AHP-REG-001", "AHP-FAIL-001", "AHP-FAIL-002"],
+  "x-requirements": ["AHP-REG-001", "AHP-REG-002", "AHP-FAIL-001", "AHP-FAIL-002"],
   "type": "object",
   "required": ["protocolVersion", "hooks"],
   "properties": {

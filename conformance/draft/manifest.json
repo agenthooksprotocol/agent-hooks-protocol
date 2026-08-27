@@ -7,7 +7,7 @@
     {
       "id": "base",
       "path": "conformance/draft/profiles/base.md",
-      "sha256": "9a01498e507550484d76983b194827418c31696a37d54cb5d80bb5b3aee688ef",
+      "sha256": "5b13bda22e6dea2745f8105030b2e98bf7e91e61e454a3c741a64d7dfa826922",
       "roles": [
         "harness",
         "backend"
@@ -21,13 +21,14 @@
         "AHP-CORE-003",
         "AHP-EXT-001",
         "AHP-REG-001",
+        "AHP-REG-002",
         "AHP-SEC-001"
       ]
     },
     {
       "id": "tool-interception",
       "path": "conformance/draft/profiles/tool-interception.md",
-      "sha256": "61553879401e4815e36a6cec0437009907afda537814df1aa514f3b88a73315f",
+      "sha256": "8e84a1e56fcc33b621e7c8ebee8fd974d257c2a1858538f5c9494b980af3c3f2",
       "roles": [
         "harness",
         "backend"
@@ -35,6 +36,7 @@
       "requirements": [
         "AHP-TB-001",
         "AHP-CAP-001",
+        "AHP-CAP-002",
         "AHP-DEC-001",
         "AHP-DEC-002",
         "AHP-DEC-003",
@@ -47,7 +49,7 @@
     {
       "id": "lifecycle-observation",
       "path": "conformance/draft/profiles/lifecycle-observation.md",
-      "sha256": "55d76bdb26dc5bbaca54de6747acea3e57edab703affafd97b0084df19144c88",
+      "sha256": "014bff9ff39595076769583227720883ad5367a6c25096f89ee1498b3707c57a",
       "roles": [
         "harness",
         "backend"

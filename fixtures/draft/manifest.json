@@ -15,7 +15,8 @@
         "AHP-RPC-002",
         "AHP-STDIO-001",
         "AHP-TB-001",
-        "AHP-CAP-001"
+        "AHP-CAP-001",
+        "AHP-CAP-002"
       ],
       "sha256": "330c9b32ead511e7b2aabfadeb7c655ebeffdc239bce847aaf37b32e616ba5a0"
     },
@@ -83,9 +84,23 @@
         "AHP-HTTP-001",
         "AHP-RPC-002",
         "AHP-TB-001",
-        "AHP-CAP-001"
+        "AHP-CAP-001",
+        "AHP-CAP-002"
       ],
       "sha256": "0d49cf5f0fc0d544b1172d4a41bba8b698e55d3b865bb65361361177051cd026"
+    },
+    {
+      "id": "http.intercept-request-effects-missing.invalid",
+      "path": "fixtures/draft/http/intercept-request-effects-missing.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-request.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-002",
+        "AHP-CAP-002"
+      ],
+      "sha256": "aea61691a63a89d6958298815b24d7b2c3ec36f8fa7ba4e1eade2ddc76549fac"
     },
     {
       "id": "http.deny-response.valid",
@@ -149,10 +164,22 @@
       "expectedValid": true,
       "requirements": [
         "AHP-REG-001",
+        "AHP-REG-002",
         "AHP-FAIL-001",
         "AHP-FAIL-002"
       ],
       "sha256": "02637a43517ba27242049bad23e4b767f95e324213564c1c443c0d0b1f0d71be"
+    },
+    {
+      "id": "registration.intercept-observation-event.invalid",
+      "path": "fixtures/draft/registration/intercept-observation-event.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-002"
+      ],
+      "sha256": "91eb086fab1aa2df23f1aa5989ef97d21083b0194e9b9426c6c5359c45061c09"
     },
     {
       "id": "registration.empty-hooks.invalid",

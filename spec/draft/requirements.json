@@ -103,6 +103,17 @@
       "textSha256": "c50eced1fde9ac1d5f727ae1b5fdffc139f6afebe073c620c30aedc43239d00b"
     },
     {
+      "id": "AHP-CAP-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/capabilities.md",
+      "anchor": "AHP-CAP-002",
+      "section": "Capabilities",
+      "profile": "tool-interception",
+      "text": "Every `hooks/intercept` request contains `capabilities.effects`, and a Tool Interception harness includes `deny` there for `tool.before`.",
+      "textSha256": "04602846c0ff7ada491773b0b851977c6b3f812158e551dc83fc24c1a57cda71"
+    },
+    {
       "id": "AHP-DEC-001",
       "status": "active",
       "level": "MUST",
@@ -211,6 +222,17 @@
       "profile": "base",
       "text": "A portable registration document declares protocol version `0.1` and an ordered, non-empty `hooks` array.",
       "textSha256": "e51b6c02c9158544312be339995ebce5dba5f13cb3406c4cedeb74fc683d53fb"
+    },
+    {
+      "id": "AHP-REG-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/registration.md",
+      "anchor": "AHP-REG-002",
+      "section": "Subscription dispatch",
+      "profile": "base",
+      "text": "A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.",
+      "textSha256": "44c172339172372930e4ae8ad879af75f01ff03b9a6be55566b819fef35da9e8"
     },
     {
       "id": "AHP-SEC-001",
