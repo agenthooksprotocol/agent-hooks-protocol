@@ -1,6 +1,6 @@
 # Base Protocol profile
 
-**Status: Working Draft — `0.1.0-draft.1`.** The canonical requirements remain in `spec/working-draft.md`; this profile is a language-neutral test description.
+**Status: Working Draft — `0.1.0-draft.1`.** The canonical requirements remain in `spec/draft/requirements.json`; this profile is a language-neutral test description.
 
 ## Claim inputs
 

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/session-start.schema.json",
+  "title": "AHP session.start Event (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1. Tool fields apply only to tool events, and outcome applies only to session.end.",
+  "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
+  "type": "object",
+  "required": ["id", "source", "type", "time", "session"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "format": "uri"},
+    "type": {"const": "session.start"},
+    "time": {"type": "string", "format": "date-time"},
+    "session": {"$ref": "common.schema.json#/$defs/session"},
+    "native": {"$ref": "common.schema.json#/$defs/native"},
+    "extensions": {"$ref": "extensions.schema.json"}
+  },
+  "not": {
+    "anyOf": [
+      {"required": ["tool"]},
+      {"required": ["outcome"]}
+    ]
+  }
+}

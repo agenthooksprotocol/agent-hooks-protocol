@@ -6,21 +6,36 @@ The project is at an early stage. All current protocol artifacts are Working Dra
 
 ## Working Draft artifacts
 
-- [Canonical v0.1 Working Draft specification](spec/working-draft.md)
+- [Canonical v0.1 Working Draft specification](spec/draft/index.md)
 - [AHP-0001 source proposal and provenance record](proposals/AHP-0001.md)
-- [Stable requirement manifest](spec/requirements.json)
-- [Versioned JSON Schemas](schemas/README.md)
+- [Stable requirement manifest](spec/draft/requirements.json)
+- [Versioned JSON Schemas](schema/README.md)
 - [Golden fixtures](fixtures/README.md)
 - [Conformance profiles](conformance/README.md)
 - [Dependency-free validation tooling](tools/README.md)
 
 The proposal is non-normative. Its unresolved questions remain open. The canonical Working Draft and each machine-readable artifact identify their own status and exact draft revision.
 
+## Repository snapshots
+
+The four parallel `draft/` trees form one logical, mutable snapshot:
+
+- `spec/draft/` contains the Markdown specification and requirement manifest;
+- `schema/draft/` contains the JSON Schemas and schema manifest;
+- `fixtures/draft/` contains golden examples and their manifest; and
+- `conformance/draft/` contains conformance profiles and their manifest.
+
+A release freezes matching copies beneath the same exact SemVer key, such as `spec/0.1.0/`, `schema/0.1.0/`, `fixtures/0.1.0/`, and `conformance/0.1.0/`. There is no `latest/` alias: use `draft` for current work or an exact SemVer key for a published snapshot. The repository snapshot key is separate from the wire `protocolVersion`; for example, snapshot `0.1.0` can still describe wire protocol version `0.1`.
+
+Validate the mutable snapshot with `python3 tools/check_conformance.py`, or a frozen snapshot with `python3 tools/check_conformance.py --snapshot 0.1.0`. See the [tooling guide](tools/README.md) for focused tests and the [release policy](docs/RELEASES.md) for the freeze procedure.
+
 ## Normative scope
 
 AHP is language-neutral. Normative protocol requirements must be expressible without depending on a programming language, runtime, framework, or vendor.
 
 Only repository material that an AHP release explicitly identifies as normative defines the protocol. All implementations, SDKs, bindings, examples, adapters, and generated artifacts are non-normative. This includes every TypeScript SDK or TypeScript implementation. If an SDK or example conflicts with the normative protocol, the normative protocol takes precedence.
+
+Markdown and JSON Schema are the source artifacts in this repository. Generated documentation, SDKs, adapters, and reference implementations do not replace them as sources of truth.
 
 ## Participate
 

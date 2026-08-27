@@ -31,6 +31,27 @@ Security, conduct, personal data, and legally sensitive details can require priv
 
 Reviewers can ask for changes, additional evidence, or an AHP proposal. Approval and merge authority follow [GOVERNANCE.md](GOVERNANCE.md); CODEOWNERS is only a review-routing mechanism.
 
+## Working with protocol snapshots
+
+Current protocol work lives in four parallel directories that make up one logical snapshot: `spec/draft/`, `schema/draft/`, `fixtures/draft/`, and `conformance/draft/`. Keep changes across those roots consistent, including repository-relative paths, version metadata, hashes, and manifest entries.
+
+Use the draft snapshot for unpublished changes. Refresh expected artifact hashes only when the underlying draft changes are intentional:
+
+```sh
+python3 tools/check_conformance.py --update-manifests
+```
+
+Then run the focused checker tests and validate the draft:
+
+```sh
+python3 -m unittest discover tools/tests
+python3 tools/check_conformance.py
+```
+
+Directories named with exact SemVer, such as the four matching `0.1.0/` directories, are frozen release snapshots. Do not edit them or run `--update-manifests` against them. Corrections require a new release under the [release policy](docs/RELEASES.md). To inspect a frozen snapshot, pass its exact SemVer key, for example `python3 tools/check_conformance.py --snapshot 0.1.0`.
+
+Changes to protocol behavior or release policy still require the applicable public discussion and AHP proposal. A repository-only refactor that preserves normative text, requirements, and behavior can use the normal contribution process, but its pull request must state and verify that preservation. Markdown and JSON Schema remain the source artifacts; generated documentation, SDKs, adapters, and reference implementations are not substitutes for changes to those sources.
+
 ## Developer Certificate of Origin
 
 This project uses the [Developer Certificate of Origin 1.1](https://developercertificate.org/). Add a `Signed-off-by` trailer to every commit:

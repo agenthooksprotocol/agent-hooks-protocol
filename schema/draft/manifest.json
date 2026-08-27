@@ -1,0 +1,72 @@
+{
+  "status": "Working Draft",
+  "draftVersion": "0.1.0-draft.1",
+  "protocolVersion": "0.1",
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "documents": [
+    {
+      "path": "schema/draft/capabilities.schema.json",
+      "sha256": "bec68d4e3a94fc525d61aab54763ecbbb1fa5b07816b9aa0ee39f603b44d3499"
+    },
+    {
+      "path": "schema/draft/common.schema.json",
+      "sha256": "277b6ce07ed18f1f8bbee276551029433f9961656d5762f1eb4d86458b86386e"
+    },
+    {
+      "path": "schema/draft/deny-effect.schema.json",
+      "sha256": "3214cf7115770b9111b68257068223aa2925a32430d1082f471ce808fea742f5"
+    },
+    {
+      "path": "schema/draft/extensions.schema.json",
+      "sha256": "db3e1963317fdadd298dae9f28adc86ade08b383b762e6ef13a7d78f7b6d9d9f"
+    },
+    {
+      "path": "schema/draft/intercept-deny-response.schema.json",
+      "sha256": "bdb2e5175f344e0b5198604516d97fc054bbf673b4fb6821f6576904b269198e"
+    },
+    {
+      "path": "schema/draft/intercept-no-effect-response.schema.json",
+      "sha256": "9042b508b1c193a636ac96cdb13299b56a6bfb346477a855f01571045ab64d0d"
+    },
+    {
+      "path": "schema/draft/intercept-request.schema.json",
+      "sha256": "fe411612d2ab61a15f199e546c64431adf03ec308f1f9f1ab5b05a6567b594e4"
+    },
+    {
+      "path": "schema/draft/json-rpc-message.schema.json",
+      "sha256": "23c903229f7694f2e4135e80eecfa1c40eb048628108b0a1011f7a1418ed03f6"
+    },
+    {
+      "path": "schema/draft/observe-notification.schema.json",
+      "sha256": "fc462f2eacfb7cc8647b18fac944d6eb5c832b7e52d6ed921050ea695886ddbd"
+    },
+    {
+      "path": "schema/draft/registration.schema.json",
+      "sha256": "94e73ba874953fa50b3420cc378427d826fdd18f852b75fdf21e9f33278c2cf2"
+    },
+    {
+      "path": "schema/draft/schema.json",
+      "sha256": "03e04fa4b18cc544a0495687e147ccc9e3458642561db56c7c74ef76f669c840"
+    },
+    {
+      "path": "schema/draft/session-end.schema.json",
+      "sha256": "005d5694d26ffdebcc0579f4ddc37d2b917a2735bde9d8d3e0f0331b81fa56c4"
+    },
+    {
+      "path": "schema/draft/session-start.schema.json",
+      "sha256": "2aa14b145492ea549d4df16fa6b28637079a545f89086cb0cf424e65086126f7"
+    },
+    {
+      "path": "schema/draft/tool-after.schema.json",
+      "sha256": "cd4e0ec148340934a2ece9d55ca773e25723ec71c1bd7eec17c2e747fa573581"
+    },
+    {
+      "path": "schema/draft/tool-before.schema.json",
+      "sha256": "61e52342fa67868e99385ef26946bca885926ff54dc1d5ca641ad4a5dd2694a5"
+    },
+    {
+      "path": "schema/draft/tool-error.schema.json",
+      "sha256": "62e9227e7f0ab25f7a21669d76da5e4d12f786cc628c58c4d09dd169d50dd915"
+    }
+  ]
+}

@@ -1,12 +1,13 @@
 {
   "status": "Working Draft",
   "draftVersion": "0.1.0-draft.1",
-  "canonicalRequirements": "spec/requirements.json",
+  "protocolVersion": "0.1",
+  "canonicalRequirements": "spec/draft/requirements.json",
   "profiles": [
     {
       "id": "base",
-      "path": "conformance/profiles/base.md",
-      "sha256": "462ad25b57813488818933dc429ede9c517784f0fc18b118075a9a66fc85fba8",
+      "path": "conformance/draft/profiles/base.md",
+      "sha256": "34a54394b79be3629c2dd0957f2889d47e12124d6235fa5ea3e5b0a37f385a91",
       "roles": [
         "harness",
         "backend"
@@ -25,7 +26,7 @@
     },
     {
       "id": "tool-interception",
-      "path": "conformance/profiles/tool-interception.md",
+      "path": "conformance/draft/profiles/tool-interception.md",
       "sha256": "61553879401e4815e36a6cec0437009907afda537814df1aa514f3b88a73315f",
       "roles": [
         "harness",
@@ -45,7 +46,7 @@
     },
     {
       "id": "lifecycle-observation",
-      "path": "conformance/profiles/lifecycle-observation.md",
+      "path": "conformance/draft/profiles/lifecycle-observation.md",
       "sha256": "55d76bdb26dc5bbaca54de6747acea3e57edab703affafd97b0084df19144c88",
       "roles": [
         "harness",
@@ -57,7 +58,7 @@
     },
     {
       "id": "stdio",
-      "path": "conformance/profiles/stdio-binding.md",
+      "path": "conformance/draft/profiles/stdio-binding.md",
       "sha256": "94101d8744c227857a5a3876cd8dabbbb0e3b72f1462efcd01677993ec48f5e5",
       "roles": [
         "harness",
@@ -69,7 +70,7 @@
     },
     {
       "id": "http",
-      "path": "conformance/profiles/http-binding.md",
+      "path": "conformance/draft/profiles/http-binding.md",
       "sha256": "f5e4363057863914012ef7b69517f0fca75173f55d798a08dbe4bf480787564f",
       "roles": [
         "harness",

@@ -6,15 +6,36 @@
 python3 tools/check_conformance.py
 ```
 
+It resolves the `draft` specification, schema, fixture, and conformance roots as one logical snapshot by default. Pass `--snapshot <exact-semver>` to validate a frozen release snapshot.
+
+The selected key must be `draft` or an exact `MAJOR.MINOR.PATCH` without a `v` prefix, prerelease suffix, build suffix, or numeric component with a leading zero. For example:
+
+```sh
+python3 tools/check_conformance.py --snapshot 0.1.0
+```
+
+Each selected snapshot must exist under all four parallel roots:
+
+```text
+spec/<snapshot>/
+schema/<snapshot>/
+fixtures/<snapshot>/
+conformance/<snapshot>/
+```
+
+The directory key identifies the repository snapshot; it does not derive or replace the wire `protocolVersion`. The requirement and artifact manifests provide the revision metadata that the checker cross-checks. The checker does not create or retarget a frozen snapshot; freezing remains a reviewed publication step under the release policy.
+
 It checks:
 
 - JSON parsing with duplicate-key rejection and basic Draft 2020-12 schema structure;
-- immutable draft identifiers and offline-only `$ref` resolution;
+- snapshot version agreement, public schema identifiers, and offline-only `$ref` resolution;
 - golden fixture framing, schema outcomes, hashes, and request/event ID equality;
 - requirement ID uniqueness, requirement text hashes, document anchors, headings, and artifact references;
-- source migration proposal hash and preserved open-question count;
-- absence of private Notion URLs;
+- source migration proposal hash, preserved open-question count, and original top-level section hashes;
+- absence of private Notion URLs and broken relative Markdown links;
 - schema, fixture, and conformance profile manifest drift.
+
+CI runs the checker tests, validates `draft`, discovers exact-SemVer directories across all four roots, and validates each frozen snapshot. A missing parallel root or a non-SemVer frozen directory therefore fails validation.
 
 ## Supported JSON Schema subset
 
@@ -28,4 +49,16 @@ During unpublished artifact development, refresh manifest hashes with:
 python3 tools/check_conformance.py --update-manifests
 ```
 
-Published immutable draft artifacts must not be edited in place.
+`--update-manifests` is limited to the mutable `draft` snapshot and only refreshes hashes already declared in its manifests. It is not an approval step or a release-freezing command. Frozen SemVer snapshots are immutable.
+
+## Focused checker tests
+
+Run the focused checker tests with:
+
+```sh
+python3 -m unittest discover tools/tests
+```
+
+The suite exercises the snapshot resolver and structural safeguards independently of the command-line entrypoint, including cross-root version agreement, required parallel roots, path confinement, manifest hash drift, offline schema references, preserved split-spec content, aggregate schema coverage, and rejection of manifest updates for frozen snapshots. Run both the focused tests and `python3 tools/check_conformance.py` when changing checker behavior or any part of the logical draft snapshot.
+
+The release freeze commands and required pre-tag validation are documented in the [release policy](../docs/RELEASES.md).

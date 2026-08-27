@@ -10,3 +10,11 @@
 /SECURITY.md @danielkov
 /CODE_OF_CONDUCT.md @danielkov
 /CONTRIBUTING.md @danielkov
+
+# Route parallel draft/frozen snapshots and their validation together.
+/spec/ @danielkov
+/schema/ @danielkov
+/fixtures/ @danielkov
+/conformance/ @danielkov
+/tools/ @danielkov
+/.github/workflows/ci.yml @danielkov

@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "0.1",
+    "event": {
+      "id": "evt_session_end_002",
+      "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
+      "type": "session.end",
+      "time": "2026-08-24T09:15:00Z",
+      "session": {"id": "sess_observe_123"},
+      "outcome": "timed_out"
+    }
+  }
+}

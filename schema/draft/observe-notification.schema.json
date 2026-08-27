@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/observe-notification.schema.json",
+  "title": "AHP hooks/observe Notification (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1. Observation is a JSON-RPC notification and therefore has no id.",
+  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001"],
+  "allOf": [
+    {"$ref": "common.schema.json#/$defs/notification"},
+    {
+      "type": "object",
+      "properties": {
+        "method": {"const": "hooks/observe"},
+        "params": {
+          "type": "object",
+          "required": ["protocolVersion", "event"],
+          "properties": {
+            "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+            "event": {
+              "oneOf": [
+                {"$ref": "tool-before.schema.json"},
+                {"$ref": "tool-after.schema.json"},
+                {"$ref": "tool-error.schema.json"},
+                {"$ref": "session-start.schema.json"},
+                {"$ref": "session-end.schema.json"}
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

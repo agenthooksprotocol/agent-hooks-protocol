@@ -4,13 +4,128 @@
   "sourceFetchedAt": "2026-08-26T22:33:03.854Z",
   "privateSourceLocationStored": false,
   "proposalPath": "proposals/AHP-0001.md",
-  "proposalSha256": "f142a1c3dc255d67ccac1719f626148008a3b7a4af0e8a2872e122b8209cdf1c",
-  "canonicalPath": "spec/working-draft.md",
+  "proposalSha256": "5bdfe4fac258525af5971d794f172f5e99ae2944dd9a762068dc82cba72cccb1",
+  "canonicalPath": "spec/draft/index.md",
   "openQuestionsPreserved": 12,
   "migrationNotes": [
     "Notion page, collection, discussion, and user identifiers were omitted.",
     "Private source links were omitted.",
     "Public reference links and all substantive proposal sections were preserved.",
     "Canonical Working Draft context and stable requirement identifiers were added without resolving the source proposal Section 23 questions."
-  ]
+  ],
+  "sectionHashScope": "Complete top-level Markdown section from its level-two heading through the byte before the next level-two heading, or end of file.",
+  "topLevelSections": {
+    "Abstract": {
+      "targetPath": "spec/draft/index.md",
+      "sha256": "7421231d7fbf892c2fcfff93f398748d26bd39d7f0a2ab5342168403d1005032"
+    },
+    "Status of this document": {
+      "targetPath": "spec/draft/index.md",
+      "sha256": "92e93b0ab95b4022202beeb3b75e3ae9c2941d0f527aa748847c5acefeefa774"
+    },
+    "1. Problem": {
+      "targetPath": "spec/draft/architecture.md",
+      "sha256": "f8803caf73a80680d643f1e160ca4b77b2ed2a2964c7878fe3f0be11cc2e20a7"
+    },
+    "2. AHP at a glance": {
+      "targetPath": "spec/draft/architecture.md",
+      "sha256": "b9c386466a0fe286e15cfef28a075c979a436d35385acf228b2a096d24504b80"
+    },
+    "3. Scope": {
+      "targetPath": "spec/draft/architecture.md",
+      "sha256": "17823d3ee1ceb538c573ee19e2e9d81f8c70a95bba7bb09553773238802b32db"
+    },
+    "4. Relationship to adjacent standards": {
+      "targetPath": "spec/draft/architecture.md",
+      "sha256": "b6f9123e2de91ea8dfef6dab566cc6172b795d63174a2773ea4a87a5e45d0c15"
+    },
+    "5. Terminology and roles": {
+      "targetPath": "spec/draft/basic/index.md",
+      "sha256": "d1dc46c72b514a758d078449855d496c4d2e2a923492017e6705380cebcd17b0"
+    },
+    "6. Conformance profiles": {
+      "targetPath": "spec/draft/basic/index.md",
+      "sha256": "129eab8de19afe2098294783f9588d1fe8741dd0df36f165108fabd0ec29ce5d"
+    },
+    "7. Protocol model": {
+      "targetPath": "spec/draft/basic/versioning.md",
+      "sha256": "60d19141064216064fb1e07f59c630c17693910c4ade2f4bb0ee601e01c6d554"
+    },
+    "8. Common message envelope": {
+      "targetPath": "spec/draft/features/events.md",
+      "sha256": "5dab234a5f223440473ae78d34f08625b35d3ba9bb9e7a622c3c4432dc2b09a3"
+    },
+    "9. Event model": {
+      "targetPath": "spec/draft/features/events.md",
+      "sha256": "3f43191cc2f8e94070006641e8c3ec5022c7dca011d67abef35fb3c7be6e3faf"
+    },
+    "10. Event lifecycle": {
+      "targetPath": "spec/draft/features/lifecycle-observation.md",
+      "sha256": "bf49b40cafe738bf9ab325deea72736ef115f2812504385e001ae9dcd3129e1b"
+    },
+    "11. Capabilities": {
+      "targetPath": "spec/draft/basic/capabilities.md",
+      "sha256": "765997e1fde3ed0d76c00e44cbdde4de2b732427c9d2fd49c6e02a3355b58dce"
+    },
+    "12. Effects": {
+      "targetPath": "spec/draft/features/tool-interception.md",
+      "sha256": "2f5b446d21c0f30ae3da9e5fa31e03a59d8a9e39c1db5b93117f6cfc6936d45c"
+    },
+    "13. Composition": {
+      "targetPath": "spec/draft/basic/composition.md",
+      "sha256": "a1374bf67bfbbbf79b2640119a6726220bf8e036a2a88f2b1bb225d5c1ff5763"
+    },
+    "14. Failure semantics": {
+      "targetPath": "spec/draft/basic/failure.md",
+      "sha256": "f4f01f027295e09e35dff6f131efbe5f23cb06094b619df5a2c4e2c8ac30b0cc"
+    },
+    "15. Duplicate delivery and retries": {
+      "targetPath": "spec/draft/basic/failure.md",
+      "sha256": "0a7b5ec1471927155a0a032e12acc6fa44e40b863e5acd71111627194352a950"
+    },
+    "16. JSON-RPC errors": {
+      "targetPath": "spec/draft/basic/errors.md",
+      "sha256": "aa211d62a254db0b3345c0360b62f30026229ad1dbeadf4eceb0e8f2015d738e"
+    },
+    "17. stdio binding": {
+      "targetPath": "spec/draft/basic/transports/stdio.md",
+      "sha256": "513ec17c81caf370f0c0ae12962cea029d4d4c7c7765e50f0e73a98b69325cc0"
+    },
+    "18. HTTP binding": {
+      "targetPath": "spec/draft/basic/transports/http.md",
+      "sha256": "f64eef82e9dd97f4131a65f2a3d2bfee6b50372a266ee649dfb9961a68600f32"
+    },
+    "19. Portable registration": {
+      "targetPath": "spec/draft/basic/registration.md",
+      "sha256": "1573cce89049cf3df767df1bc0b17f4d43f51df810d3e96cc90ef3a42529d475"
+    },
+    "20. Privacy and security": {
+      "targetPath": "spec/draft/basic/index.md",
+      "sha256": "54156dda0abf8dfb7561190114a87a46f3434a64f0edb3ff2a0ac2e8225217ba"
+    },
+    "21. Conformance tests": {
+      "targetPath": "spec/draft/basic/index.md",
+      "sha256": "fa66657a5d60ea007b05201af5710bc0b977f6db300cbdb9ec83360900d48d09"
+    },
+    "22. Compatibility-adapter requirements": {
+      "targetPath": "spec/draft/features/adapters.md",
+      "sha256": "ff8a714da142fcf5f7a74f140c8864bb3a0f12177f0ef9c28e21219d70bb9d29"
+    },
+    "23. Design rationale": {
+      "targetPath": "spec/draft/rationale.md",
+      "sha256": "56e6de4f54838b69615a0ad8072f33293e08da0cfe2a46830eac10d9071c9585"
+    },
+    "24. Open questions for v0.1 review": {
+      "targetPath": "spec/draft/open-questions.md",
+      "sha256": "65eaf087479524d2b013fd9c4eefddeb050eb1031352c598eda5ac3e329ba443"
+    },
+    "25. Proposed implementation plan": {
+      "targetPath": "spec/draft/implementation-plan.md",
+      "sha256": "7c42b80de3a837c78f8abec1766cae5d25c3e08432bd9e766daf75a3d48d4ded"
+    },
+    "26. References": {
+      "targetPath": "spec/draft/rationale.md",
+      "sha256": "0dadad2ec7850b3549ceecda54dc568bb5432d2e162d037771a9d5ff592cd2bb"
+    }
+  }
 }

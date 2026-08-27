@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/0.1.0-draft.1/tool-error.schema.json",
+  "title": "AHP tool.error Event (Working Draft)",
+  "$comment": "Working Draft 0.1.0-draft.1. The specification requires error.message but does not assign JSON types to message, code, or category.",
+  "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
+  "type": "object",
+  "required": ["id", "source", "type", "time", "session", "tool"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "format": "uri"},
+    "type": {"const": "tool.error"},
+    "time": {"type": "string", "format": "date-time"},
+    "session": {"$ref": "common.schema.json#/$defs/session"},
+    "tool": {
+      "type": "object",
+      "required": ["callId", "name", "kind", "input", "error"],
+      "properties": {
+        "callId": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "kind": {
+          "enum": ["shell", "file_read", "file_write", "file_edit", "search", "fetch", "task", "mcp", "other"]
+        },
+        "input": {"type": "object"},
+        "error": {
+          "type": "object",
+          "required": ["message"],
+          "properties": {
+            "message": {},
+            "code": {},
+            "category": {}
+          }
+        },
+        "mcp": {"type": "object"}
+      },
+      "not": {"required": ["output"]}
+    },
+    "native": {"$ref": "common.schema.json#/$defs/native"},
+    "extensions": {"$ref": "extensions.schema.json"}
+  }
+}
