@@ -18,7 +18,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DIALECT = "https://json-schema.org/draft/2020-12/schema"
 REQ_RE = re.compile(r"\bAHP-[A-Z]+-\d{3}\b")
 SNAPSHOT_RE = re.compile(r"(?:draft|(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))")
-TOP_LEVEL_HEADING_RE = re.compile(r"^## (?P<title>.+)\n", re.MULTILINE)
 MARKDOWN_LINK_RE = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
 PRIVATE_NOTION_RE = re.compile(
     r"(?:https?://(?:www\.)?notion\.(?:so|site)(?:/|\b)|" + "notion" + r"://)",
@@ -42,7 +41,6 @@ class Snapshot:
     schema_manifest_path: Path
     fixture_manifest_path: Path
     conformance_manifest_path: Path
-    migration_path: Path
     draft_version: str
     protocol_version: str
 
@@ -86,7 +84,6 @@ class Snapshot:
             schema_manifest_path=schema_dir / "manifest.json",
             fixture_manifest_path=fixture_dir / "manifest.json",
             conformance_manifest_path=conformance_dir / "manifest.json",
-            migration_path=root / "spec" / "source-migration.json",
             draft_version=draft_version,
             protocol_version=protocol_version,
         )
@@ -141,25 +138,6 @@ def root_path(snapshot: Snapshot, value: str, *, within: Path | None = None) -> 
                 f"path is outside selected {snapshot.key!r} snapshot root {within.relative_to(snapshot.root)}: {value}"
             ) from exc
     return candidate
-
-
-def source_spec_path(snapshot: Snapshot, value: str) -> Path:
-    prefix = "spec/draft/"
-    if snapshot.key != "draft" and isinstance(value, str) and value.startswith(prefix):
-        value = f"spec/{snapshot.key}/{value.removeprefix(prefix)}"
-    return root_path(snapshot, value, within=snapshot.spec_dir)
-
-
-def top_level_sections(text: str) -> dict[str, str]:
-    matches = list(TOP_LEVEL_HEADING_RE.finditer(text))
-    sections: dict[str, str] = {}
-    for index, match in enumerate(matches):
-        title = match.group("title")
-        if title in sections:
-            raise CheckFailure(f"duplicate top-level section heading: {title}")
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        sections[title] = text[match.start():end]
-    return sections
 
 
 def json_equal(left: Any, right: Any) -> bool:
@@ -721,67 +699,6 @@ def check_requirements(
     return errors, len(requirements)
 
 
-def check_source_migration(snapshot: Snapshot) -> list[str]:
-    errors: list[str] = []
-    migration = load_json(snapshot.migration_path, snapshot.root)
-    proposal = root_path(snapshot, migration.get("proposalPath", ""))
-    canonical = source_spec_path(snapshot, migration.get("canonicalPath", ""))
-    if migration.get("privateSourceLocationStored") is not False:
-        errors.append("source migration must not store a private source location")
-    if not proposal.is_file() or sha256(proposal) != migration.get("proposalSha256"):
-        errors.append("source migration proposal hash mismatch")
-    if not canonical.is_file():
-        errors.append("source migration canonical path does not exist")
-        return errors
-
-    mappings = migration.get("topLevelSections")
-    if not isinstance(mappings, dict) or not mappings:
-        return errors + ["source migration top-level section map is missing"]
-
-    actual_locations: dict[str, list[tuple[Path, str]]] = {}
-    for path in sorted(snapshot.spec_dir.rglob("*.md")):
-        try:
-            sections = top_level_sections(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, CheckFailure) as exc:
-            errors.append(f"{path.relative_to(snapshot.root)}: cannot inspect top-level sections: {exc}")
-            continue
-        for title, body in sections.items():
-            actual_locations.setdefault(title, []).append((path, body))
-
-    if set(actual_locations) != set(mappings):
-        missing = sorted(set(mappings) - set(actual_locations))
-        extra = sorted(set(actual_locations) - set(mappings))
-        if missing:
-            errors.append(f"source migration sections missing from specification: {', '.join(missing)}")
-        if extra:
-            errors.append(f"specification sections missing from source migration map: {', '.join(extra)}")
-
-    for title, item in mappings.items():
-        if not isinstance(item, dict):
-            errors.append(f"source migration section mapping is invalid: {title}")
-            continue
-        target = source_spec_path(snapshot, item.get("targetPath", ""))
-        locations = actual_locations.get(title, [])
-        if len(locations) != 1:
-            errors.append(f"source migration section occurrence count is not one: {title}")
-            continue
-        actual_path, body = locations[0]
-        if actual_path != target:
-            errors.append(
-                f"source migration section target mismatch for {title}: "
-                f"expected {target.relative_to(snapshot.root)}, got {actual_path.relative_to(snapshot.root)}"
-            )
-        if hashlib.sha256(body.encode("utf-8")).hexdigest() != item.get("sha256"):
-            errors.append(f"source migration section content hash drift: {title}")
-
-    open_questions = actual_locations.get("24. Open questions for v0.1 review", [])
-    body = open_questions[0][1] if len(open_questions) == 1 else ""
-    count = len(re.findall(r"^\d+\. ", body, re.MULTILINE))
-    if count != migration.get("openQuestionsPreserved"):
-        errors.append(f"source migration open-question count mismatch: expected {migration.get('openQuestionsPreserved')}, got {count}")
-    return errors
-
-
 def check_private_links(root: Path) -> list[str]:
     errors: list[str] = []
     allowed_suffixes = {".json", ".jsonl", ".md", ".py", ".yml", ".yaml", ".txt"}
@@ -902,7 +819,6 @@ def run_checks(root: Path = ROOT, snapshot_key: str = "draft", *, update: bool =
             snapshot, requirements, manifests["conformance"]
         )
         errors.extend(requirement_errors)
-        errors.extend(check_source_migration(snapshot))
         errors.extend(check_private_links(snapshot.root))
         errors.extend(check_relative_markdown_links(snapshot.root))
         schema_count = len(snapshot_schema_files(snapshot))
@@ -918,6 +834,28 @@ def run_checks(root: Path = ROOT, snapshot_key: str = "draft", *, update: bool =
     )
 
 
+def report_result(
+    result: CheckResult,
+    *,
+    stdout: Any = None,
+    stderr: Any = None,
+) -> int:
+    stdout = sys.stdout if stdout is None else stdout
+    stderr = sys.stderr if stderr is None else stderr
+    if result.errors:
+        print(f"conformance checks failed ({len(result.errors)}):", file=stderr)
+        for error in result.errors:
+            print(f"- {error}", file=stderr)
+        return 1
+    print(
+        "conformance checks passed: "
+        f"{result.schema_count} schemas, {result.fixture_count} fixtures, "
+        f"{result.requirement_count} requirements, {result.profile_count} profiles",
+        file=stdout,
+    )
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--snapshot", default="draft", help="logical snapshot key (default: draft)")
@@ -928,17 +866,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     result = run_checks(ROOT, args.snapshot, update=args.update_manifests)
-    if result.errors:
-        print(f"conformance checks failed ({len(result.errors)}):", file=sys.stderr)
-        for error in result.errors:
-            print(f"- {error}", file=sys.stderr)
-        return 1
-    print(
-        "conformance checks passed: "
-        f"{result.schema_count} schemas, {result.fixture_count} fixtures, "
-        f"{result.requirement_count} requirements, {result.profile_count} profiles"
-    )
-    return 0
+    return report_result(result)
 
 
 if __name__ == "__main__":

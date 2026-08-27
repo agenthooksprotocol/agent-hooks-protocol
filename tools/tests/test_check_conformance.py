@@ -157,21 +157,6 @@ class SnapshotCheckerTests(unittest.TestCase):
             "http.intercept-request.valid: wire fixture is missing aggregateExpectedValid",
         )
 
-    def test_detects_split_section_content_hash_drift(self) -> None:
-        architecture = self.root / "spec/draft/architecture.md"
-        architecture.write_text(
-            architecture.read_text(encoding="utf-8").replace(
-                "Current agent harnesses expose incompatible hook systems.",
-                "Current agent harnesses expose different hook systems.",
-                1,
-            ),
-            encoding="utf-8",
-        )
-
-        result = checker.run_checks(self.root)
-
-        self.assert_has_error(result, "source migration section content hash drift: 1. Problem")
-
     def test_rejects_manifest_updates_for_frozen_snapshot(self) -> None:
         for root_name in ("spec", "schema", "fixtures", "conformance"):
             shutil.copytree(

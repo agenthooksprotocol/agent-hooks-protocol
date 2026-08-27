@@ -7,7 +7,7 @@
     {
       "id": "base",
       "path": "conformance/draft/profiles/base.md",
-      "sha256": "34a54394b79be3629c2dd0957f2889d47e12124d6235fa5ea3e5b0a37f385a91",
+      "sha256": "9a01498e507550484d76983b194827418c31696a37d54cb5d80bb5b3aee688ef",
       "roles": [
         "harness",
         "backend"
