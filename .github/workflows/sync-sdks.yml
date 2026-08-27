@@ -25,6 +25,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+        with:
+          components: rustfmt
       - name: Verify schemas and generator
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
