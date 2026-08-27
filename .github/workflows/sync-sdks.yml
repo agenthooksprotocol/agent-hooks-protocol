@@ -154,6 +154,4 @@ jobs:
           commit-message: "chore: sync generated schemas from ${{ github.sha }}"
           title: "chore: sync generated AHP schemas"
           body: |
-            Generated from [`${{ github.repository }}@${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
-
-            The canonical schemas remain authoritative. Generated parsers perform structural parsing and do not replace Draft 2020-12 validation.
+            Generated SDK update from [`${{ github.repository }}@${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
