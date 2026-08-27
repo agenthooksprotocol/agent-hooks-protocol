@@ -1,6 +1,6 @@
 mod compiler;
+mod langs;
 mod model;
-mod typescript;
 
 use std::env;
 use std::fs;
@@ -60,7 +60,7 @@ fn run() -> Result<()> {
         format!("{}\n", serde_json::to_string_pretty(&ir)?)
     } else {
         match language.as_deref() {
-            Some("typescript") => typescript::emit(&ir)?,
+            Some("typescript") => langs::typescript::emit(&ir)?,
             Some(other) => bail!("unsupported language {other:?}; available: typescript"),
             None => bail!("--language or --emit-ir is required"),
         }
