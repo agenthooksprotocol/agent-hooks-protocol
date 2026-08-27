@@ -1,0 +1,157 @@
+name: Sync SDKs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "schemas/**"
+      - "conformance/manifest.json"
+      - "tools/sdk-codegen/**"
+      - ".github/workflows/sync-sdks.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    name: Verify and generate SDKs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+      - name: Verify schemas and generator
+        run: |
+          python3 tools/check_conformance.py
+          cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
+          revision=$(jq -r .draftVersion conformance/manifest.json)
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            check --revision "$revision"
+      - name: Generate SDK sources and locks
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          revision=$(jq -r .draftVersion conformance/manifest.json)
+          manifest="schemas/$revision/manifest.json"
+          manifest_sha256=$(sha256sum "$manifest" | cut -d' ' -f1)
+          for language in typescript python go rust; do
+            mkdir -p "generated/$language"
+            case "$language" in
+              typescript) source=generated.ts ;;
+              python) source=generated.py ;;
+              go) source=generated.go ;;
+              rust) source=generated.rs ;;
+            esac
+            cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+              generate --revision "$revision" --language "$language" \
+              --output "generated/$language/$source"
+            jq -n \
+              --arg sourceRepository "$GITHUB_REPOSITORY" \
+              --arg sourceCommit "$SOURCE_COMMIT" \
+              --arg schemaRevision "$revision" \
+              --arg manifestSha256 "$manifest_sha256" \
+              --arg language "$language" \
+              '{sourceRepository: $sourceRepository, sourceCommit: $sourceCommit, schemaRevision: $schemaRevision, manifestSha256: $manifestSha256, generator: "ahp-codegen", language: $language}' \
+              > "generated/$language/ahp-codegen.lock.json"
+          done
+          gofmt -w generated/go/generated.go
+          rustfmt +1.88.0 generated/rust/generated.rs
+      - name: Test generated TypeScript
+        run: |
+          npx --yes --package typescript@5.9.3 tsc generated/typescript/generated.ts \
+            --outDir "$RUNNER_TEMP/typescript" --strict --target ES2022 \
+            --module commonjs --skipLibCheck --noUncheckedIndexedAccess \
+            --exactOptionalPropertyTypes
+          node tools/sdk-codegen/tests/typescript-smoke.cjs \
+            "$RUNNER_TEMP/typescript/generated.js" "$GITHUB_WORKSPACE"
+      - name: Test generated Python
+        run: python3 tools/sdk-codegen/tests/python-smoke.py generated/python/generated.py "$GITHUB_WORKSPACE"
+      - name: Test generated Go
+        run: tools/sdk-codegen/tests/go-smoke.sh generated/go/generated.go "$GITHUB_WORKSPACE"
+      - name: Test generated Rust
+        env:
+          AHP_RUST_TOOLCHAIN: "1.88.0"
+        run: tools/sdk-codegen/tests/rust-smoke.sh generated/rust/generated.rs "$GITHUB_WORKSPACE"
+      - name: Upload generated SDKs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: generated-sdks-${{ github.sha }}
+          path: generated
+          if-no-files-found: error
+          retention-days: 1
+
+  sync:
+    name: Sync ${{ matrix.language }} SDK
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: typescript
+            repository: typescript-sdk
+            artifact: typescript/generated.ts
+            output: packages/sdk/src/generated.ts
+          - language: python
+            repository: python-sdk
+            artifact: python/generated.py
+            output: src/agent_hooks_protocol/generated.py
+          - language: go
+            repository: go-sdk
+            artifact: go/generated.go
+            output: generated.go
+          - language: rust
+            repository: rust-sdk
+            artifact: rust/generated.rs
+            output: src/generated.rs
+    steps:
+      - name: Download generated SDKs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: generated-sdks-${{ github.sha }}
+          path: generated
+      - name: Generate installation token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.SDK_SYNC_APP_ID }}
+          private-key: ${{ secrets.SDK_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ matrix.repository }}
+      - name: Check out SDK
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: ${{ github.repository_owner }}/${{ matrix.repository }}
+          token: ${{ steps.app-token.outputs.token }}
+          path: sdk
+          persist-credentials: false
+      - name: Install generated files
+        env:
+          ARTIFACT: ${{ matrix.artifact }}
+          OUTPUT: ${{ matrix.output }}
+          LANGUAGE: ${{ matrix.language }}
+        run: |
+          install -D "generated/$ARTIFACT" "sdk/$OUTPUT"
+          install -D "generated/$LANGUAGE/ahp-codegen.lock.json" "sdk/ahp-codegen.lock.json"
+      - name: Open or update SDK pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          path: sdk
+          token: ${{ steps.app-token.outputs.token }}
+          base: main
+          branch: automation/schema-sync
+          delete-branch: true
+          add-paths: |
+            ${{ matrix.output }}
+            ahp-codegen.lock.json
+          commit-message: "chore: sync generated schemas from ${{ github.sha }}"
+          title: "chore: sync generated AHP schemas"
+          body: |
+            Generated from [`${{ github.repository }}@${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}).
+
+            The canonical schemas remain authoritative. Generated parsers perform structural parsing and do not replace Draft 2020-12 validation.
