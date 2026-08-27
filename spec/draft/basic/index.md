@@ -3,6 +3,7 @@
 The basic protocol is divided across:
 
 - [Protocol model and versioning](versioning.md)
+- [Messages and events](events.md)
 - [Capabilities](capabilities.md)
 - [Composition](composition.md)
 - [Failure semantics and retries](failure.md)

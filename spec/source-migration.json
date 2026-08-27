@@ -52,15 +52,15 @@
       "sha256": "60d19141064216064fb1e07f59c630c17693910c4ade2f4bb0ee601e01c6d554"
     },
     "8. Common message envelope": {
-      "targetPath": "spec/draft/features/events.md",
+      "targetPath": "spec/draft/basic/events.md",
       "sha256": "5dab234a5f223440473ae78d34f08625b35d3ba9bb9e7a622c3c4432dc2b09a3"
     },
     "9. Event model": {
-      "targetPath": "spec/draft/features/events.md",
+      "targetPath": "spec/draft/basic/events.md",
       "sha256": "3f43191cc2f8e94070006641e8c3ec5022c7dca011d67abef35fb3c7be6e3faf"
     },
     "10. Event lifecycle": {
-      "targetPath": "spec/draft/features/lifecycle-observation.md",
+      "targetPath": "spec/draft/server/lifecycle-observation.md",
       "sha256": "bf49b40cafe738bf9ab325deea72736ef115f2812504385e001ae9dcd3129e1b"
     },
     "11. Capabilities": {
@@ -68,7 +68,7 @@
       "sha256": "765997e1fde3ed0d76c00e44cbdde4de2b732427c9d2fd49c6e02a3355b58dce"
     },
     "12. Effects": {
-      "targetPath": "spec/draft/features/tool-interception.md",
+      "targetPath": "spec/draft/server/tool-interception.md",
       "sha256": "2f5b446d21c0f30ae3da9e5fa31e03a59d8a9e39c1db5b93117f6cfc6936d45c"
     },
     "13. Composition": {
@@ -108,7 +108,7 @@
       "sha256": "fa66657a5d60ea007b05201af5710bc0b977f6db300cbdb9ec83360900d48d09"
     },
     "22. Compatibility-adapter requirements": {
-      "targetPath": "spec/draft/features/adapters.md",
+      "targetPath": "spec/draft/client/adapters.md",
       "sha256": "ff8a714da142fcf5f7a74f140c8864bb3a0f12177f0ef9c28e21219d70bb9d29"
     },
     "23. Design rationale": {
