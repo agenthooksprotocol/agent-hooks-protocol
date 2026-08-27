@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt_http_error_002",
+  "error": {
+    "code": -32004,
+    "message": "Backend failed while evaluating the request"
+  },
+  "result": {
+    "protocolVersion": "draft",
+    "effects": []
+  }
+}

@@ -109,9 +109,9 @@ mod tests {
     #[test]
     fn current_profile_compiles() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let ir = compiler::compile(&repository, "0.1.0-draft.1").unwrap();
-        assert_eq!(ir.schema_revision, "0.1.0-draft.1");
-        assert_eq!(ir.roots.len(), 9);
+        let ir = compiler::compile(&repository, "draft").unwrap();
+        assert_eq!(ir.schema_revision, "draft");
+        assert_eq!(ir.roots.len(), 15);
         assert!(ir.types.iter().any(|item| item.name == "InterceptRequest"));
     }
 }

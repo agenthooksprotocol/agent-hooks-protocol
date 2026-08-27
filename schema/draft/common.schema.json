@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/common.schema.json",
+  "title": "AHP Common Types (Draft)",
+  "$comment": "Mutable AHP draft; not a stable standard.",
+  "x-requirements": ["AHP-RPC-001", "AHP-VER-001", "AHP-CORE-003"],
+  "$defs": {
+    "protocolVersion": {"const": "draft"},
+    "jsonRpcId": {
+      "anyOf": [
+        {"type": "string", "minLength": 1},
+        {"type": "integer"}
+      ]
+    },
+    "jsonRpcResponseId": {
+      "anyOf": [
+        {"$ref": "#/$defs/jsonRpcId"},
+        {"type": "null"}
+      ]
+    },
+    "request": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "method", "params"],
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "id": {"$ref": "#/$defs/jsonRpcId"},
+        "method": {"type": "string", "minLength": 1},
+        "params": {"type": "object"}
+      }
+    },
+    "notification": {
+      "type": "object",
+      "required": ["jsonrpc", "method", "params"],
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "method": {"type": "string", "minLength": 1},
+        "params": {"type": "object"}
+      },
+      "not": {"required": ["id"]}
+    },
+    "successResponse": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "result"],
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "id": {"$ref": "#/$defs/jsonRpcResponseId"},
+        "result": {"type": "object"}
+      },
+      "not": {"required": ["error"]}
+    },
+    "errorResponse": {
+      "type": "object",
+      "required": ["jsonrpc", "id", "error"],
+      "properties": {
+        "jsonrpc": {"const": "2.0"},
+        "id": {"$ref": "#/$defs/jsonRpcResponseId"},
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {"type": "integer"},
+            "message": {"type": "string"},
+            "data": {}
+          }
+        }
+      },
+      "not": {"required": ["result"]}
+    },
+    "session": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "cwd": {"type": "string"},
+        "workspaceRoots": {"type": "array", "items": {"type": "string"}},
+        "model": {"type": "string"},
+        "agent": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": {"type": "string", "minLength": 1},
+            "type": {"type": "string"}
+          }
+        }
+      }
+    },
+    "native": {
+      "type": "object",
+      "required": ["provider", "eventName", "payload"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "eventName": {"type": "string", "minLength": 1},
+        "payload": {"type": "object"}
+      }
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "status": "Working Draft",
+  "snapshotVersion": "draft",
+  "protocolVersion": "draft",
+  "dialect": "https://json-schema.org/draft/2020-12/schema",
+  "sdkGeneration": {
+    "stableNames": {
+      "schema/draft/capabilities.schema.json#": "Capabilities",
+      "schema/draft/common.schema.json#/$defs/errorResponse": "JsonRpcErrorResponse",
+      "schema/draft/common.schema.json#/$defs/jsonRpcId": "JsonRpcId",
+      "schema/draft/common.schema.json#/$defs/jsonRpcResponseId": "JsonRpcResponseId",
+      "schema/draft/common.schema.json#/$defs/native": "NativeEvent",
+      "schema/draft/common.schema.json#/$defs/notification": "JsonRpcNotification",
+      "schema/draft/common.schema.json#/$defs/protocolVersion": "ProtocolVersion",
+      "schema/draft/common.schema.json#/$defs/request": "JsonRpcRequest",
+      "schema/draft/common.schema.json#/$defs/session": "Session",
+      "schema/draft/common.schema.json#/$defs/successResponse": "JsonRpcSuccessResponse",
+      "schema/draft/deny-effect.schema.json#": "DenyEffect",
+      "schema/draft/extensions.schema.json#": "Extensions",
+      "schema/draft/intercept-deny-response.schema.json#": "InterceptDenyResponse",
+      "schema/draft/intercept-no-effect-response.schema.json#": "InterceptNoEffectResponse",
+      "schema/draft/intercept-request.schema.json#": "InterceptRequest",
+      "schema/draft/json-rpc-message.schema.json#": "JsonRpcMessage",
+      "schema/draft/observe-notification.schema.json#": "ObserveNotification",
+      "schema/draft/registration.schema.json#": "Registration",
+      "schema/draft/registration.schema.json#/$defs/authentication": "Authentication",
+      "schema/draft/registration.schema.json#/$defs/backend": "Backend",
+      "schema/draft/registration.schema.json#/$defs/httpTransport": "HttpTransport",
+      "schema/draft/registration.schema.json#/$defs/interceptSubscription": "InterceptSubscription",
+      "schema/draft/registration.schema.json#/$defs/observeSubscription": "ObserveSubscription",
+      "schema/draft/registration.schema.json#/$defs/reverseDns": "ReverseDnsName",
+      "schema/draft/registration.schema.json#/$defs/stdioTransport": "StdioTransport",
+      "schema/draft/schema.json#": "WireMessage",
+      "schema/draft/session-end.schema.json#": "SessionEndEvent",
+      "schema/draft/session-start.schema.json#": "SessionStartEvent",
+      "schema/draft/tool-after.schema.json#": "ToolAfterEvent",
+      "schema/draft/tool-before.schema.json#": "ToolBeforeEvent",
+      "schema/draft/tool-error.schema.json#": "ToolErrorEvent"
+    }
+  },
+  "documents": [
+    {
+      "path": "schema/draft/capabilities.schema.json",
+      "sha256": "86df74f313d4b615dea800490c1bc66881bf7be50f23c5a7877c9b5ee4cce560"
+    },
+    {
+      "path": "schema/draft/common.schema.json",
+      "sha256": "eabcfe3ecc4f1b0ba7d3fcc77614386dae3d5f6fa18843ba13fda67396e34f70"
+    },
+    {
+      "path": "schema/draft/deny-effect.schema.json",
+      "sha256": "54d798325b266f77925ce81d052d14f305d322b4db41a12be762363b795252db"
+    },
+    {
+      "path": "schema/draft/extensions.schema.json",
+      "sha256": "09a9e65edae23917a1a4341a86567e7c7b514ed6f5a60201c574492894826a5d"
+    },
+    {
+      "path": "schema/draft/intercept-deny-response.schema.json",
+      "sha256": "e2e7f41d43db177b8761a6a4475a5a25b25ad3ed499ce56baa12b570e8932ff1"
+    },
+    {
+      "path": "schema/draft/intercept-no-effect-response.schema.json",
+      "sha256": "1af965094b74f39c08d241eee5abd856ff7025d34c1638395d6309d214229b75"
+    },
+    {
+      "path": "schema/draft/intercept-request.schema.json",
+      "sha256": "a2627ec8ef83d68d0a357e33e7965a221336e47b00189e9783ff381c96f87a0d"
+    },
+    {
+      "path": "schema/draft/json-rpc-message.schema.json",
+      "sha256": "562d8719249cc6e004a1e60778c0843e58fa03b96d8b484ad3172c2bd38ed65a"
+    },
+    {
+      "path": "schema/draft/observe-notification.schema.json",
+      "sha256": "e7bfdd5dca338aa0a1e56995a28f1157dbe507f1ad8bba39ce519a53ba31d358"
+    },
+    {
+      "path": "schema/draft/registration.schema.json",
+      "sha256": "d03e6c23dde5bdcea076318cfbcf074c00dd84f09b0b713329ce02650200017e"
+    },
+    {
+      "path": "schema/draft/schema.json",
+      "sha256": "60a3e3a10faac6daa4a928b1ec07dd214b64b7ca993b87149e9ba1ec2f47150d"
+    },
+    {
+      "path": "schema/draft/session-end.schema.json",
+      "sha256": "a1448dc381f8df8cbed4131dee185acf68ea920c8fe16d810d40a92f52a8c3c4"
+    },
+    {
+      "path": "schema/draft/session-start.schema.json",
+      "sha256": "4c6a262535f26f3dfcba584553c0cc2f1994017c479c6aaf616e7896e38de96c"
+    },
+    {
+      "path": "schema/draft/tool-after.schema.json",
+      "sha256": "5bf13629d1c0d607378e50ecdda1274ac1054c6d2732ee9127fd7d5bbaf4a599"
+    },
+    {
+      "path": "schema/draft/tool-before.schema.json",
+      "sha256": "fbced659b80ad85f9ea6638da3798211fd99dc7c05ee1d934f72d5f8c476df29"
+    },
+    {
+      "path": "schema/draft/tool-error.schema.json",
+      "sha256": "a835d29c5bc8919a6f548797f3db2457aa600d27dbbb7bbc8e08d61ad4213ccf"
+    }
+  ]
+}

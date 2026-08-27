@@ -2,7 +2,7 @@
 
 `ahp-codegen` is the official schema-driven SDK model generator. It reads the schema manifest directly; stable SDK names live in that manifest so schema and generation changes are reviewed together. Every named schema-document root receives parse and encode entrypoints. If generated output conflicts with its source schema, the schema takes precedence. Implementations may use this generator, another generator, or handwritten models.
 
-Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema revision, and generator version.
+Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, and generator version.
 
 ## Compatibility model
 
@@ -18,13 +18,13 @@ From the repository root:
 
 ```sh
 cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-  check --revision 0.1.0-draft.1
+  check --revision draft
 
 cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-  generate --revision 0.1.0-draft.1 --language typescript \
+  generate --revision draft --language typescript \
   --output /tmp/ahp.generated.ts
 ```
 
 Use `--emit-ir` instead of `--language` to inspect the language-neutral lowering. The first emitter is TypeScript; later emitters consume the same IR and compatibility behavior.
 
-Draft `0.1.0-draft.1` permits integer request IDs and null response IDs. The TypeScript structural codec accepts only safely representable JSON integers; an arbitrary-precision parser is required to losslessly ingest larger draft.1 integers from text. String-only request IDs require a future schema change; generation does not silently alter the schema.
+The current `draft` snapshot permits integer request IDs and null response IDs. The TypeScript structural codec accepts only safely representable JSON integers; an arbitrary-precision parser is required to losslessly ingest larger integers from text. String-only request IDs require a future schema change; generation does not silently alter the schema.

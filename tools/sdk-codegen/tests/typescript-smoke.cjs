@@ -8,7 +8,7 @@ if (!generatedPath || !repositoryPath) {
 const sdk = require(path.resolve(generatedPath));
 const fixture = (relative) => JSON.parse(fs.readFileSync(path.join(repositoryPath, relative), "utf8"));
 
-const registration = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+const registration = fixture("fixtures/draft/registration/portable.valid.json");
 registration.futureRoot = { nested: true };
 registration.hooks[0].transport.futureNested = 7;
 let result = sdk.parseRegistration(registration);
@@ -26,7 +26,7 @@ if (!result.ok || !result.diagnostics.some((item) => item.code === "unknown_vari
 encoded = JSON.parse(sdk.encodeRegistration(result.value));
 if (!encoded.hooks[0].transport.deeply.preserved) throw new Error("unknown variant payload was lost");
 
-const noDefault = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+const noDefault = fixture("fixtures/draft/registration/portable.valid.json");
 delete noDefault.hooks[1].subscriptions[1].includeNative;
 result = sdk.parseRegistration(noDefault);
 if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
@@ -35,7 +35,7 @@ if (Object.prototype.hasOwnProperty.call(encoded.hooks[1].subscriptions[1], "inc
   throw new Error("decoder fabricated an absent default");
 }
 
-const request = fixture("fixtures/0.1.0-draft.1/http/intercept-request.valid.json");
+const request = fixture("fixtures/draft/http/intercept-request.valid.json");
 result = sdk.parseJsonRpcMessage(request);
 if (!result.ok) throw new Error(`request envelope did not select exactly one branch: ${JSON.stringify(result.diagnostics)}`);
 request.params.event.tool.kind = "future_tool";
@@ -44,7 +44,7 @@ if (!result.ok || !result.diagnostics.some((item) => item.code === "unknown_enum
   throw new Error(`unknown enum value was not preserved: ${JSON.stringify(result.diagnostics)}`);
 }
 
-const deny = fixture("fixtures/0.1.0-draft.1/http/deny-response.valid.json");
+const deny = fixture("fixtures/draft/http/deny-response.valid.json");
 deny.result.effects[0].code = null;
 result = sdk.parseInterceptDenyResponse(deny);
 if (result.ok || result.raw.result.effects[0].code !== null) {
@@ -57,7 +57,7 @@ if (result.ok || !result.diagnostics.some((item) => item.code === "no_union_matc
   throw new Error("invalid result/error envelope selected a union branch");
 }
 
-const malformed = fixture("fixtures/0.1.0-draft.1/registration/portable.valid.json");
+const malformed = fixture("fixtures/draft/registration/portable.valid.json");
 malformed.hooks[0].transport = { type: "http" };
 result = sdk.parseRegistration(malformed);
 if (result.ok || !result.diagnostics.some((item) => item.code === "invalid_known_variant")) {

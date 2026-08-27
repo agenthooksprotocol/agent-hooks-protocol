@@ -16,10 +16,10 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
         .canonicalize()
         .with_context(|| format!("cannot open repository {}", repository.display()))?;
     let schema_manifest_path =
-        safe_path(&repository, &format!("schemas/{revision}/manifest.json"))?;
+        safe_path(&repository, &format!("schema/{revision}/manifest.json"))?;
     let schema_manifest: SchemaManifest = read_json(&schema_manifest_path)?;
     ensure!(
-        schema_manifest.draft_version == revision,
+        schema_manifest.snapshot_version == revision,
         "schema manifest revision mismatch"
     );
     ensure!(
@@ -37,7 +37,7 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
         validate_schema_node(&value, &document.path, "")?;
         documents.insert(document.path.clone(), value);
     }
-    let common_document = format!("schemas/{revision}/common.schema.json");
+    let common_document = format!("schema/{revision}/common.schema.json");
     let common_schema = documents
         .get(&common_document)
         .ok_or_else(|| anyhow!("schema manifest lacks {common_document}"))?;
@@ -83,7 +83,7 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
     roots.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(Ir {
-        schema_revision: schema_manifest.draft_version,
+        schema_revision: schema_manifest.snapshot_version,
         protocol_version: schema_manifest.protocol_version,
         roots,
         types,
@@ -715,12 +715,12 @@ mod tests {
 
     #[test]
     fn rejects_network_references() {
-        assert!(resolve_reference("schemas/a.json", "https://example.com/a.json").is_err());
+        assert!(resolve_reference("schema/a.json", "https://example.com/a.json").is_err());
     }
 
     #[test]
     fn rejects_parent_references() {
-        assert!(resolve_reference("schemas/v/a.json", "../a.json").is_err());
+        assert!(resolve_reference("schema/v/a.json", "../a.json").is_err());
     }
 
     #[test]

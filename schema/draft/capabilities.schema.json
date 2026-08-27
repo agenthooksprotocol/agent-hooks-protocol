@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/capabilities.schema.json",
+  "title": "AHP Interception Capabilities (Draft)",
+  "$comment": "Mutable AHP draft; the core draft defines only deny.",
+  "x-requirements": ["AHP-CAP-001", "AHP-CAP-002"],
+  "type": "object",
+  "required": ["effects"],
+  "properties": {
+    "effects": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "anyOf": [
+          {"const": "deny"},
+          {"type": "string", "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"}
+        ]
+      }
+    }
+  }
+}

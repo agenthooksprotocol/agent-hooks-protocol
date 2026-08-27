@@ -1,0 +1,249 @@
+{
+  "status": "Working Draft",
+  "protocolVersion": "draft",
+  "snapshotVersion": "draft",
+  "requirements": [
+    {
+      "id": "AHP-CORE-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/index.md",
+      "anchor": "AHP-CORE-001",
+      "section": "Conformance profiles",
+      "profile": "base",
+      "text": "A conformance claim identifies the implementation role, each implemented transport binding, and each implemented capability profile.",
+      "textSha256": "0bb239abb3b7451ae87c13c2c5c73c987d3dacb1bdc11f20ac0985fedb08c674"
+    },
+    {
+      "id": "AHP-CORE-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/index.md",
+      "anchor": "AHP-CORE-002",
+      "section": "Conformance profiles",
+      "profile": "base",
+      "text": "A conforming implementation implements the Base Protocol profile and at least one capability profile.",
+      "textSha256": "1ad023ca323f0ee0056a36d08f1af480622303e50aee9d4cdce27e9194aef842"
+    },
+    {
+      "id": "AHP-RPC-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/versioning.md",
+      "anchor": "AHP-RPC-001",
+      "section": "JSON-RPC",
+      "profile": "base",
+      "text": "Protocol messages use UTF-8 JSON-RPC 2.0.",
+      "textSha256": "d4229b96428bcc48dcd50d517e0ccf2345fe8ebdc91fdf61fbc1dd66bcea1a58"
+    },
+    {
+      "id": "AHP-RPC-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/versioning.md",
+      "anchor": "AHP-RPC-002",
+      "section": "JSON-RPC",
+      "profile": "base",
+      "text": "An interception that expects a decision uses a `hooks/intercept` request; one-way observation uses a `hooks/observe` notification.",
+      "textSha256": "fe80bc624747441b72ff64b7a079dfe9c8835d0d7c76dce6a89104d275373386"
+    },
+    {
+      "id": "AHP-VER-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/versioning.md",
+      "anchor": "AHP-VER-001",
+      "section": "Versioning",
+      "profile": "base",
+      "text": "Every request, notification, and successful result carries `protocolVersion` equal to its protocol snapshot identifier.",
+      "textSha256": "376d3336d8770d0dcf8aef3bd724eacc39c49e3cb1c07abfb452f82296df935c"
+    },
+    {
+      "id": "AHP-CORE-003",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/versioning.md",
+      "anchor": "AHP-CORE-003",
+      "section": "Unknown fields",
+      "profile": "base",
+      "text": "Receivers ignore unknown object fields unless a claimed extension defines their meaning, while senders do not use unknown fields to alter core semantics.",
+      "textSha256": "ce2913ff8d081f3cb3227209b607e53c453c8ef3f6ae03f9b8521b2f550fc4d8"
+    },
+    {
+      "id": "AHP-EXT-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/events.md",
+      "anchor": "AHP-EXT-001",
+      "section": "Extensions",
+      "profile": "base",
+      "text": "Extension keys use reverse-DNS names and core behavior does not depend on an extension unless that dependency is explicitly declared.",
+      "textSha256": "e57db1a42e18ed24c60b2f4df5f85b46dd399f770dd1c010e19e48a3cc016079"
+    },
+    {
+      "id": "AHP-TB-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/server/lifecycle-observation.md",
+      "anchor": "AHP-TB-001",
+      "section": "`tool.before`",
+      "profile": "tool-interception",
+      "text": "A `tool.before` event describes a tool call before execution and includes the common event, session, and tool fields required by this protocol revision.",
+      "textSha256": "629a842f092227f86782fab574be603bbe5336c9bfeefd2381b99244aa7c6c0e"
+    },
+    {
+      "id": "AHP-CAP-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/capabilities.md",
+      "anchor": "AHP-CAP-001",
+      "section": "Capabilities",
+      "profile": "tool-interception",
+      "text": "A harness advertises only effects it can enforce for the current interception, and a backend returns only advertised effects.",
+      "textSha256": "c50eced1fde9ac1d5f727ae1b5fdffc139f6afebe073c620c30aedc43239d00b"
+    },
+    {
+      "id": "AHP-CAP-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/capabilities.md",
+      "anchor": "AHP-CAP-002",
+      "section": "Capabilities",
+      "profile": "tool-interception",
+      "text": "Every `hooks/intercept` request contains `capabilities.effects`, and a Tool Interception harness includes `deny` there for `tool.before`.",
+      "textSha256": "04602846c0ff7ada491773b0b851977c6b3f812158e551dc83fc24c1a57cda71"
+    },
+    {
+      "id": "AHP-DEC-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/server/tool-interception.md",
+      "anchor": "AHP-DEC-001",
+      "section": "Effect list",
+      "profile": "tool-interception",
+      "text": "A successful interception result contains either an empty `effects` array or exactly one valid `deny` effect.",
+      "textSha256": "e492122789e3b5e67909d7e89c1b22b44bdda47f5c4b83d78843257a00ac9911"
+    },
+    {
+      "id": "AHP-DEC-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/server/tool-interception.md",
+      "anchor": "AHP-DEC-002",
+      "section": "`deny`",
+      "profile": "tool-interception",
+      "text": "A harness that accepts a valid `deny` effect does not execute the represented operation.",
+      "textSha256": "f5841d12c4394e435a238861b4eb3f8c65e247d252e981fdaac0eac7eec40449"
+    },
+    {
+      "id": "AHP-DEC-003",
+      "status": "active",
+      "level": "MUST NOT",
+      "document": "spec/draft/server/tool-interception.md",
+      "anchor": "AHP-DEC-003",
+      "section": "No `allow` effect",
+      "profile": "tool-interception",
+      "text": "An empty effect list is not an authorization grant and does not bypass harness permissions, sandboxing, or approval.",
+      "textSha256": "358a67acc4e87deb921386d04e7eb1517b0f2cfba915c3f7bb59ce651debb2d7"
+    },
+    {
+      "id": "AHP-COMP-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/composition.md",
+      "anchor": "AHP-COMP-001",
+      "section": "Interceptor order",
+      "profile": "tool-interception",
+      "text": "Matching interceptors run serially in deterministic registration order and evaluation stops on denial or a fail-closed operational failure.",
+      "textSha256": "bef4fda2308fd817184cacf330cbd5c1e681908e0413119e7929431413a743e1"
+    },
+    {
+      "id": "AHP-FAIL-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/failure.md",
+      "anchor": "AHP-FAIL-001",
+      "section": "Failure policy",
+      "profile": "tool-interception",
+      "text": "Each intercept subscription declares `fail-open` or `fail-closed`, and the harness applies that policy to operational failures.",
+      "textSha256": "0bac900c7ce4de4c3440ca9e2e241778fcf7fc3919bcc7747454dcf9d0961dab"
+    },
+    {
+      "id": "AHP-FAIL-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/failure.md",
+      "anchor": "AHP-FAIL-002",
+      "section": "Deadlines",
+      "profile": "tool-interception",
+      "text": "The harness enforces each configured interception deadline; retries remain bounded by the original deadline.",
+      "textSha256": "ae7aaf195102958a927ba62db8c9237a91b4a9b27f89838d2790dce6b29d714f"
+    },
+    {
+      "id": "AHP-CORE-004",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/failure.md",
+      "anchor": "AHP-CORE-004",
+      "section": "Duplicate delivery and retries",
+      "profile": "base",
+      "text": "A retry preserves event, session, and tool-call identities and event content, and a backend tolerates duplicate delivery.",
+      "textSha256": "90663747e25b213f99ae76b0447e01c7236430f66573584a2800825ab884f0d2"
+    },
+    {
+      "id": "AHP-STDIO-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/transports/stdio.md",
+      "anchor": "AHP-STDIO-001",
+      "section": "Framing",
+      "profile": "stdio",
+      "text": "The stdio binding uses one UTF-8 JSON-RPC object per line on standard output, and diagnostics do not appear on standard output.",
+      "textSha256": "2b49c89fa4b45f23c1604f495db1611e33be01453dc617c8064f95bfeb040916"
+    },
+    {
+      "id": "AHP-HTTP-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/transports/http.md",
+      "anchor": "AHP-HTTP-001",
+      "section": "Request and response",
+      "profile": "http",
+      "text": "The HTTP binding sends one JSON-RPC object per POST with a JSON media type and returns at most one JSON-RPC response object.",
+      "textSha256": "6ef06ee239aeaccc1a6907e8406c75daeb7d9c4526c396ea3cb4678b6250ed61"
+    },
+    {
+      "id": "AHP-REG-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/registration.md",
+      "anchor": "AHP-REG-001",
+      "section": "Document shape",
+      "profile": "base",
+      "text": "A portable registration document declares the selected snapshot as its `protocolVersion` and contains an ordered, non-empty `hooks` array.",
+      "textSha256": "e4f7e723f67e011798febdbb015141a3219a9756e1a100aa5bea266a65cc0d0d"
+    },
+    {
+      "id": "AHP-REG-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/registration.md",
+      "anchor": "AHP-REG-002",
+      "section": "Subscription dispatch",
+      "profile": "base",
+      "text": "A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.",
+      "textSha256": "44c172339172372930e4ae8ad879af75f01ff03b9a6be55566b819fef35da9e8"
+    },
+    {
+      "id": "AHP-SEC-001",
+      "status": "active",
+      "level": "MUST NOT",
+      "document": "spec/draft/base/index.md",
+      "anchor": "AHP-SEC-001",
+      "section": "Authorization boundary",
+      "profile": "base",
+      "text": "AHP does not weaken host authorization, permissions, approval, or sandbox controls; successful no-effect processing only means no AHP denial occurred.",
+      "textSha256": "6fc2a9742a1d78b50b624b304febc588f284dbb50f354d022fbfa6d1dfc9d745"
+    }
+  ]
+}

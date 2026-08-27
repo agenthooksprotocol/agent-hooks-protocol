@@ -1,0 +1,86 @@
+{
+  "status": "Working Draft",
+  "snapshotVersion": "draft",
+  "protocolVersion": "draft",
+  "canonicalRequirements": "spec/draft/requirements.json",
+  "profiles": [
+    {
+      "id": "base",
+      "path": "conformance/draft/profiles/base.md",
+      "sha256": "69a708000af572ae141c7ec6e158b79aca77939f47cdb96e81c6d3ffaa4991e1",
+      "roles": [
+        "harness",
+        "backend"
+      ],
+      "requirements": [
+        "AHP-CORE-001",
+        "AHP-CORE-002",
+        "AHP-RPC-001",
+        "AHP-RPC-002",
+        "AHP-VER-001",
+        "AHP-CORE-003",
+        "AHP-EXT-001",
+        "AHP-REG-001",
+        "AHP-REG-002",
+        "AHP-SEC-001"
+      ]
+    },
+    {
+      "id": "tool-interception",
+      "path": "conformance/draft/profiles/tool-interception.md",
+      "sha256": "4d4c53d6f1cb19f26bba105b4ee2b096af0607a5db097e323a754473253f54b8",
+      "roles": [
+        "harness",
+        "backend"
+      ],
+      "requirements": [
+        "AHP-TB-001",
+        "AHP-CAP-001",
+        "AHP-CAP-002",
+        "AHP-DEC-001",
+        "AHP-DEC-002",
+        "AHP-DEC-003",
+        "AHP-COMP-001",
+        "AHP-FAIL-001",
+        "AHP-FAIL-002",
+        "AHP-CORE-004"
+      ]
+    },
+    {
+      "id": "lifecycle-observation",
+      "path": "conformance/draft/profiles/lifecycle-observation.md",
+      "sha256": "29202f9a00d052db4a116e2b5ab2ee7aa1cae9fb74637e558785667012e84afa",
+      "roles": [
+        "harness",
+        "backend"
+      ],
+      "requirements": [
+        "AHP-RPC-002"
+      ]
+    },
+    {
+      "id": "stdio",
+      "path": "conformance/draft/profiles/stdio-binding.md",
+      "sha256": "5c53689bae4e15bd587a28d29150f68b0e96e8320bc916a176becd2c17c3b8d7",
+      "roles": [
+        "harness",
+        "backend"
+      ],
+      "requirements": [
+        "AHP-STDIO-001"
+      ]
+    },
+    {
+      "id": "http",
+      "path": "conformance/draft/profiles/http-binding.md",
+      "sha256": "b2c6ea6ee9b5ed668ad72088fe0ecf557378211f16c3820fb850eb0824943462",
+      "roles": [
+        "harness",
+        "backend"
+      ],
+      "requirements": [
+        "AHP-HTTP-001"
+      ]
+    }
+  ]
+}
