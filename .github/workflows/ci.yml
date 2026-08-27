@@ -35,6 +35,36 @@ jobs:
             --output "$RUNNER_TEMP/ahp.generated.ts"
           mkdir -p "$RUNNER_TEMP/ahp-codegen"
           npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
-            --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs --skipLibCheck
+            --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs \
+            --skipLibCheck --noUncheckedIndexedAccess --exactOptionalPropertyTypes
           node tools/sdk-codegen/tests/typescript-smoke.cjs \
             "$RUNNER_TEMP/ahp-codegen/ahp.generated.js" "$GITHUB_WORKSPACE"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Test generated Python
+        run: |
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision draft --language python \
+            --output "$RUNNER_TEMP/ahp_generated.py"
+          python3 tools/sdk-codegen/tests/python-smoke.py \
+            "$RUNNER_TEMP/ahp_generated.py" "$GITHUB_WORKSPACE"
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+      - name: Test generated Go
+        run: |
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision draft --language go \
+            --output "$RUNNER_TEMP/ahp_generated.go"
+          tools/sdk-codegen/tests/go-smoke.sh \
+            "$RUNNER_TEMP/ahp_generated.go" "$GITHUB_WORKSPACE"
+      - name: Test generated Rust
+        env:
+          AHP_RUST_TOOLCHAIN: "1.88.0"
+        run: |
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision draft --language rust \
+            --output "$RUNNER_TEMP/ahp_generated.rs"
+          tools/sdk-codegen/tests/rust-smoke.sh \
+            "$RUNNER_TEMP/ahp_generated.rs" "$GITHUB_WORKSPACE"

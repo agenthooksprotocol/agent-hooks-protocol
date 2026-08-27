@@ -15,8 +15,7 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
     let repository = repository
         .canonicalize()
         .with_context(|| format!("cannot open repository {}", repository.display()))?;
-    let schema_manifest_path =
-        safe_path(&repository, &format!("schema/{revision}/manifest.json"))?;
+    let schema_manifest_path = safe_path(&repository, &format!("schema/{revision}/manifest.json"))?;
     let schema_manifest: SchemaManifest = read_json(&schema_manifest_path)?;
     ensure!(
         schema_manifest.snapshot_version == revision,

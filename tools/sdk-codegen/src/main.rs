@@ -60,8 +60,13 @@ fn run() -> Result<()> {
         format!("{}\n", serde_json::to_string_pretty(&ir)?)
     } else {
         match language.as_deref() {
+            Some("go") => langs::go::emit(&ir)?,
+            Some("python") => langs::python::emit(&ir)?,
+            Some("rust") => langs::rust::emit(&ir)?,
             Some("typescript") => langs::typescript::emit(&ir)?,
-            Some(other) => bail!("unsupported language {other:?}; available: typescript"),
+            Some(other) => {
+                bail!("unsupported language {other:?}; available: go, python, rust, typescript")
+            }
             None => bail!("--language or --emit-ir is required"),
         }
     };
@@ -97,7 +102,7 @@ fn print_help() {
     println!(
         "ahp-codegen\n\n\
          Usage:\n  ahp-codegen check --revision <revision> [--repository <path>]\n  \
-         ahp-codegen generate --revision <revision> (--language typescript | --emit-ir) \
+         ahp-codegen generate --revision <revision> (--language <go|python|rust|typescript> | --emit-ir) \
          [--output <path>] [--repository <path>]"
     );
 }

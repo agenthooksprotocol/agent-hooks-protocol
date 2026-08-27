@@ -195,7 +195,7 @@ const RUNTIME: &str = r#"function parseRoot(name: string, input: string | unknow
     return { ok: false, diagnostics: [{ path: "", code: "invalid_json", severity: "error", message: error instanceof Error ? error.message : "Invalid JSON" }] };
   }
   const diagnostics: ParseDiagnostic[] = [];
-  checkNode(SCHEMAS[name], raw, "", diagnostics);
+  checkNode(SCHEMAS[name]!, raw, "", diagnostics);
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) return { ok: false, raw, diagnostics };
   return { ok: true, value: raw, raw, diagnostics };
 }
@@ -231,11 +231,11 @@ function checkNode(schema: SchemaNode, value: JsonValue, path: string, diagnosti
       for (const property of schema.properties) {
         if (!Object.prototype.hasOwnProperty.call(value, property.wire_name)) {
           if (property.required) error(diagnostics, joinPath(path, property.wire_name), "missing_required", "Required property is absent");
-        } else checkNode(property.shape, value[property.wire_name], joinPath(path, property.wire_name), diagnostics);
+        } else checkNode(property.shape, value[property.wire_name]!, joinPath(path, property.wire_name), diagnostics);
       }
       return;
     case "intersection": schema.variants.forEach((variant) => checkNode(variant, value, path, diagnostics)); return;
-    case "ref": checkNode(SCHEMAS[schema.name], value, path, diagnostics); return;
+    case "ref": checkNode(SCHEMAS[schema.name]!, value, path, diagnostics); return;
     case "union": checkUnion(schema, value, path, diagnostics); return;
   }
 }
@@ -260,11 +260,11 @@ function checkUnion(schema: Extract<SchemaNode, { kind: "union" }>, value: JsonV
   const matches = attempts.filter((attempt) => !attempt.some((item) => item.severity === "error"));
   if (matches.length === 0) error(diagnostics, path, "no_union_match", "Value matches no union branch");
   else if (schema.mode === "oneOf" && matches.length > 1) error(diagnostics, path, "ambiguous_union", "Value matches more than one union branch");
-  else diagnostics.push(...matches[0]);
+  else diagnostics.push(...matches[0]!);
 }
 
 function discriminatorValue(schema: SchemaNode, property: string): string | undefined {
-  if (schema.kind === "ref") return discriminatorValue(SCHEMAS[schema.name], property);
+  if (schema.kind === "ref") return discriminatorValue(SCHEMAS[schema.name]!, property);
   if (schema.kind === "intersection") {
     for (const variant of schema.variants) { const value = discriminatorValue(variant, property); if (value !== undefined) return value; }
   }
