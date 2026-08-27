@@ -80,7 +80,7 @@ func typedEffects(capabilities Capabilities) []CapabilitiesEffectsItem {
 }
 
 func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
-	var _ ProtocolVersion = ProtocolVersionValue01
+	var _ ProtocolVersion = ProtocolVersion(ProtocolVersionValue)
 	var _ InterceptSubscriptionMode = InterceptSubscriptionModeIntercept
 
 	registration := fixture(t, "fixtures/draft/registration/portable.valid.json")
