@@ -20,10 +20,6 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
     let generation: GenerationManifest = read_json(&safe_path(&repository, &generation_path)?)?;
 
     ensure!(
-        generation.status == "non-normative",
-        "generation manifest must be non-normative"
-    );
-    ensure!(
         generation.schema_revision == revision,
         "generation manifest revision mismatch"
     );

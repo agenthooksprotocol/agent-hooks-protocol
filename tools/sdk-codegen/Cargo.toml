@@ -5,7 +5,7 @@ edition = "2024"
 rust-version = "1.88"
 publish = false
 license = "Apache-2.0"
-description = "Non-normative SDK model generator for Agent Hooks Protocol"
+description = "Schema-driven SDK model generator for Agent Hooks Protocol"
 
 [dependencies]
 anyhow = "1.0.100"

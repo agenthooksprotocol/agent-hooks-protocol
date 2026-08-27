@@ -4,7 +4,6 @@ use serde_json::Value;
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenerationManifest {
-    pub status: String,
     pub schema_revision: String,
     pub protocol_version: String,
     pub schema_manifest: PinnedFile,

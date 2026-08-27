@@ -33,7 +33,7 @@ Published immutable draft artifacts must not be edited in place.
 
 ## SDK model generator
 
-The optional, non-normative Rust generator validates a versioned generation profile and emits a language-neutral IR or TypeScript wire models and loss-preserving structural codecs:
+The Rust generator validates a versioned generation profile and emits a language-neutral IR or TypeScript wire models and loss-preserving structural codecs:
 
 ```sh
 cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \

@@ -1,8 +1,8 @@
 # SDK generation
 
-**Status: non-normative reference tooling.** The AHP specification and the released JSON Schemas remain authoritative. Implementations may use this generator, another generator, or handwritten models.
+This directory contains the official AHP SDK-generation contract and tooling. The released JSON Schemas define wire validity; if generated output conflicts with a released schema, the schema takes precedence. Implementations may use this generator, another generator, or handwritten models.
 
-Each versioned directory pins one immutable schema revision and supplies only SDK projection metadata: public roots, stable names, and discriminator locations. It does not restate wire fields or constraints. Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema-set digest, and generator version.
+Each versioned directory pins one immutable schema revision and supplies authoritative generation metadata: public roots, stable names, discriminator locations, and compatibility cases. It does not restate wire fields or constraints. Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema-set digest, and generator version.
 
 ## Compatibility model
 

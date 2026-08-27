@@ -490,8 +490,6 @@ def resolve_pointer(document: Any, pointer: str, label: str) -> Any:
 def check_sdk_generation() -> tuple[list[str], int]:
     errors: list[str] = []
     manifest = load_json(SDK_GENERATION_MANIFEST)
-    if manifest.get("status") != "non-normative":
-        errors.append("SDK generation manifest must be non-normative")
     if manifest.get("schemaRevision") != DRAFT_VERSION:
         errors.append("SDK generation revision mismatch")
 

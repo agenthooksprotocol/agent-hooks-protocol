@@ -95,7 +95,7 @@ fn write_output(path: Option<&str>, contents: &str) -> Result<()> {
 
 fn print_help() {
     println!(
-        "ahp-codegen (non-normative)\n\n\
+        "ahp-codegen\n\n\
          Usage:\n  ahp-codegen check --revision <revision> [--repository <path>]\n  \
          ahp-codegen generate --revision <revision> (--language typescript | --emit-ir) \
          [--output <path>] [--repository <path>]"
