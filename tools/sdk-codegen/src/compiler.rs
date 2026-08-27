@@ -37,6 +37,15 @@ pub fn compile(repository: &Path, revision: &str) -> Result<Ir> {
         validate_schema_node(&value, &document.path, "")?;
         documents.insert(document.path.clone(), value);
     }
+    let common_document = format!("schemas/{revision}/common.schema.json");
+    let common_schema = documents
+        .get(&common_document)
+        .ok_or_else(|| anyhow!("schema manifest lacks {common_document}"))?;
+    validate_protocol_version(
+        common_schema,
+        &schema_manifest.protocol_version,
+        &common_document,
+    )?;
 
     let compiler = Compiler {
         profile,
@@ -174,11 +183,13 @@ impl Compiler<'_> {
             return Ok(Shape::Ref { name: name.clone() });
         }
         if let Some(value) = object.get("const") {
+            ensure_no_structural_siblings(object, &["const"], "const", document, pointer)?;
             return Ok(Shape::Literal {
                 value: value.clone(),
             });
         }
         if let Some(values) = object.get("enum").and_then(Value::as_array) {
+            ensure_no_structural_siblings(object, &["enum"], "enum", document, pointer)?;
             ensure!(!values.is_empty(), "empty enum at {document}#{pointer}");
             return Ok(Shape::Enum {
                 values: values.clone(),
@@ -186,9 +197,11 @@ impl Compiler<'_> {
             });
         }
         if let Some(variants) = object.get("oneOf").and_then(Value::as_array) {
+            ensure_no_structural_siblings(object, &["oneOf"], "oneOf", document, pointer)?;
             return self.lower_union(document, pointer, variants, UnionMode::OneOf);
         }
         if let Some(variants) = object.get("anyOf").and_then(Value::as_array) {
+            ensure_no_structural_siblings(object, &["anyOf"], "anyOf", document, pointer)?;
             return self.lower_union(document, pointer, variants, UnionMode::AnyOf);
         }
         if object.get("type").is_none()
@@ -203,6 +216,20 @@ impl Compiler<'_> {
                 })
                 .collect::<Result<Vec<_>>>()?;
             return Ok(Shape::Intersection { variants });
+        }
+
+        match object.get("type").and_then(Value::as_str) {
+            Some("null" | "boolean" | "integer" | "number" | "string") => {
+                ensure_no_structural_siblings(object, &["type"], "type", document, pointer)?;
+            }
+            Some("array") => ensure_no_structural_siblings(
+                object,
+                &["type", "items"],
+                "array type",
+                document,
+                pointer,
+            )?,
+            _ => {}
         }
 
         match object.get("type").and_then(Value::as_str) {
@@ -595,6 +622,51 @@ fn supported_keyword(key: &str) -> bool {
         )
 }
 
+fn validate_protocol_version(schema: &Value, expected: &str, document: &str) -> Result<()> {
+    let actual = schema
+        .pointer("/$defs/protocolVersion/const")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("{document} lacks a string protocolVersion const"))?;
+    ensure!(
+        actual == expected,
+        "schema protocol version {actual} does not match manifest protocol version {expected}"
+    );
+    Ok(())
+}
+
+fn structural_keyword(key: &str) -> bool {
+    matches!(
+        key,
+        "$ref"
+            | "type"
+            | "const"
+            | "enum"
+            | "oneOf"
+            | "anyOf"
+            | "allOf"
+            | "properties"
+            | "required"
+            | "additionalProperties"
+            | "items"
+    )
+}
+
+fn ensure_no_structural_siblings(
+    object: &serde_json::Map<String, Value>,
+    handled: &[&str],
+    selected: &str,
+    document: &str,
+    pointer: &str,
+) -> Result<()> {
+    ensure!(
+        object
+            .keys()
+            .all(|key| !structural_keyword(key) || handled.contains(&key.as_str())),
+        "{selected} with structural siblings is not supported at {document}#{pointer}"
+    );
+    Ok(())
+}
+
 fn annotation_keyword(key: &str) -> bool {
     key.starts_with("x-")
         || matches!(
@@ -649,5 +721,30 @@ mod tests {
     #[test]
     fn rejects_parent_references() {
         assert!(resolve_reference("schemas/v/a.json", "../a.json").is_err());
+    }
+
+    #[test]
+    fn rejects_unhandled_structural_siblings() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let schema = serde_json::json!({
+            "oneOf": [{"type": "string"}, {"type": "number"}],
+            "properties": {"value": {"type": "string"}}
+        });
+        assert!(compiler.lower("schema.json", "", &schema).is_err());
+    }
+
+    #[test]
+    fn rejects_protocol_version_mismatch() {
+        let schema = serde_json::json!({
+            "$defs": {"protocolVersion": {"const": "0.2"}}
+        });
+        assert!(validate_protocol_version(&schema, "0.1", "common.schema.json").is_err());
     }
 }
