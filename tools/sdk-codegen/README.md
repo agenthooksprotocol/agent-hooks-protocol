@@ -6,7 +6,7 @@ Generated source belongs in each SDK repository together with a lock recording t
 
 ## Compatibility model
 
-Parsing and canonical validation are separate operations. A parser can preserve data that is unknown to, or invalid under, its selected schema; accepting that data as valid AHP still requires validation against the selected Draft 2020-12 schema and applicable semantic requirements. Shipping a full JSON Schema evaluator may be an optional SDK feature, but every official SDK must run canonical validation and compatibility tests in CI.
+Parsing and protocol validation are separate operations. Generated parsers preserve forward-compatible data, but a successful parse does not establish that a message is valid AHP.
 
 Generated codecs preserve unknown object properties recursively, retain unknown enum and discriminator values, select known variants exactly, and do not coerce values, apply defaults, fabricate required data, or structurally score union candidates. Their round-trip promise is semantic JSON preservation, not preservation of whitespace, key order, escape spelling, number spelling, or duplicate keys.
 
