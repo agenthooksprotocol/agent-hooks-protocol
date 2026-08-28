@@ -6,7 +6,8 @@ This file is the authoritative public list of Agent Hooks Protocol maintainers f
 
 | GitHub handle | Role | Since |
 | --- | --- | --- |
-| [@danielkov](https://github.com/danielkov) | Initial maintainer | Project inception |
+| [@danielkov](https://github.com/danielkov) | Lead maintainer | 2026-08-25 |
+| [@subomi](https://github.com/subomi) | Maintainer | 2026-08-27 |
 
 ## Contact
 
