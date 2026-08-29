@@ -4,10 +4,10 @@ This file is the authoritative public list of Agent Hooks Protocol maintainers f
 
 ## Active maintainers
 
-| GitHub handle | Role | Since |
-| --- | --- | --- |
-| [@danielkov](https://github.com/danielkov) | Lead maintainer | 2026-08-25 |
-| [@subomi](https://github.com/subomi) | Maintainer | 2026-08-27 |
+| GitHub handle | Company | Role | Since |
+| --- | --- | --- | --- |
+| [@danielkov](https://github.com/danielkov) | Speakeasy | Lead maintainer | 2026-08-25 |
+| [@subomi](https://github.com/subomi) | Speakeasy | Maintainer | 2026-08-27 |
 
 ## Contact
 
