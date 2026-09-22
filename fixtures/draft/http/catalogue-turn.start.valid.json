@@ -13,7 +13,6 @@
       },
       "trigger": "user",
       "items": []
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

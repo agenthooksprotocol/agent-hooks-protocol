@@ -1,6 +1,8 @@
 """Offline guard tests execute all four SDK helpers, not a Python reimplementation."""
-import base64, copy, json, os, subprocess, unittest
-from elicitation_matrix import ROOT, SCHEMA, LANGUAGES, commands, cases, envelopes, encode, plan_cases, atomic_cases
+import base64, copy, json, os, subprocess, sys, unittest
+from unittest.mock import patch
+import elicitation_matrix
+from elicitation_matrix import ROOT, SCHEMA, LANGUAGES, commands, cases, envelopes, encode, plan_cases, atomic_cases, json_equal, run_pair, reference
 
 
 def guard_cases():
@@ -43,6 +45,68 @@ def capability_cases():
 
 
 class ElicitationTests(unittest.TestCase):
+    def assertJSONEqual(self, actual, expected):
+        self.assertTrue(json_equal(actual, expected), (actual, expected))
+
+    def test_json_boolean_number_distinction(self):
+        for actual,expected in ((True,1),(False,0),({'content':[True]},{'content':[1]})):
+            self.assertFalse(json_equal(actual,expected))
+            self.assertFalse(json_equal(expected,actual))
+        self.assertTrue(json_equal({'a':[1,True]}, {'a':[1.0,True]}))
+
+    def test_upload_status_contract(self):
+        steps,statuses,_=plan_cases([])
+        self.assertEqual([step['path'] for step in steps],['/upload']*3)
+        self.assertEqual(statuses,[201,201,401])
+        for step in steps:
+            self.assertNotIn("AHP-Subscription",step["headers"])
+            self.assertNotIn("AHP-Content-Ref",step["headers"])
+
+    def test_upload_verification_precedes_event(self):
+        descriptor=reference('receiver-assigned',b'body')
+        for broken in ({**descriptor,'size':True},{**descriptor,'size':5},
+                       {**descriptor,'sha256':'0'*64},{**descriptor,'ref':''},
+                       {**descriptor,'extra':1}):
+            with self.subTest(broken=broken):
+                reply=subprocess.CompletedProcess([],0,json.dumps([{'status':201,'body':json.dumps(broken)}]),'')
+                steps=[elicitation_matrix.upload(reference('local',b'body'),b'body'),
+                       elicitation_matrix.intercept({'body':reference('local',b'body')})]
+                with patch.object(elicitation_matrix.subprocess,'run',return_value=reply) as send:
+                    with self.assertRaises(AssertionError):
+                        elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,200],{})
+                    self.assertEqual(send.call_count,1)
+
+    def test_canonical_ref_rebinding_and_immutable_reuploads(self):
+        sent=[]
+        descriptors=[reference('receiver-one',b'body'),reference('receiver-two',b'body')]
+        def send(command,**kwargs):
+            plan=json.loads(kwargs['input']);step=plan['steps'][0];sent.append(step)
+            self.assertNotIn('localRef',step)
+            response={'status':201,'body':json.dumps(descriptors[len(sent)-1])} if len(sent)<3 else {'status':200,'body':'{}'}
+            return subprocess.CompletedProcess(command,0,json.dumps([response]),'')
+        local=reference('local',b'body')
+        steps=[elicitation_matrix.upload(local,b'body'),elicitation_matrix.upload(local,b'body'),elicitation_matrix.intercept({'body':local})]
+        with patch.object(elicitation_matrix.subprocess,'run',side_effect=send):
+            _,refs,_=elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201,200],{})
+        self.assertEqual(json.loads(base64.b64decode(sent[-1]['bytes']))['body'],descriptors[-1])
+        bad={**local,'sha256':'0'*64}
+        self.assertEqual(elicitation_matrix.replace_refs(bad,refs),{**bad,'ref':'receiver-two'})
+
+    def test_receiver_cannot_reassign_ref_to_changed_bytes(self):
+        steps=[elicitation_matrix.upload(reference('local',raw),raw) for raw in (b'one',b'two')]
+        replies=[subprocess.CompletedProcess([],0,json.dumps([{'status':201,'body':json.dumps(reference('same-ref',raw))}]),'') for raw in (b'one',b'two')]
+        with patch.object(elicitation_matrix.subprocess,'run',side_effect=replies):
+            with self.assertRaisesRegex(AssertionError,'receiver ref mutated'):
+                elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201],{})
+
+    def test_noisy_receiver_startup_is_bounded(self):
+        command=[sys.executable,'-c',"import os,time; os.write(2,b'x'*200000+b'TAIL'); os.close(1); time.sleep(20)"]
+        with patch.object(elicitation_matrix,'commands',return_value={'python':command}):
+            result=run_pair(('python','python'))
+        self.assertEqual(result['status'],'failed')
+        self.assertTrue(result['error'].endswith('TAIL'))
+        self.assertLess(len(result['error']),1600)
+
     def run_helpers(self, rows):
         env=os.environ.copy();env['AHP_ELICITATION_TOKEN']='offline-guard-only';env['PYTHONPATH']=str(ROOT/'python-sdk/src')
         for language in LANGUAGES:
@@ -54,33 +118,33 @@ class ElicitationTests(unittest.TestCase):
         rows,wanted=guard_cases()
         for language,values in self.run_helpers(rows):
             with self.subTest(language=language):
-                self.assertEqual([v['accepted'] for v in values],wanted)
+                self.assertJSONEqual([v['accepted'] for v in values],wanted)
                 for row,value in zip(rows,values):
                     if value['accepted']:
-                        self.assertEqual(value['summary']['provenance'],{'kind':'hook','authenticatedSource':'authenticated:hook','effect':row['effect']['type']})
-                        self.assertFalse(value['summary']['externalCompletion'])
-                        self.assertEqual(value['summary']['result'],cases()[0]['result'])
+                        self.assertJSONEqual(value['summary']['provenance'],{'kind':'hook','authenticatedSource':'authenticated:hook','effect':row['effect']['type']})
+                        self.assertIs(value['summary']['externalCompletion'],False)
+                        self.assertJSONEqual(value['summary']['result'],cases()[0]['result'])
 
     def test_four_sdk_atomic_application(self):
         rows,wanted=atomic_cases()
         for language,values in self.run_helpers(rows):
             with self.subTest(language=language):
-                self.assertEqual([v['accepted'] for v in values],[v is not None for v in wanted])
+                self.assertJSONEqual([v['accepted'] for v in values],[v is not None for v in wanted])
                 for row,value,result in zip(rows,values,wanted):
-                    self.assertTrue(value['inputUnchanged'], row)
+                    self.assertIs(value['inputUnchanged'], True, row)
                     if result is None:self.assertNotIn('summary',value)
                     else:
-                        self.assertEqual(value['summary']['result'],result)
-                        self.assertEqual(value['summary']['provenance'],{'kind':'hook','authenticatedSource':'authenticated:hook','effects':[effect['type'] for effect in row['effects']]})
-                        self.assertFalse(value['summary']['externalCompletion'])
+                        self.assertJSONEqual(value['summary']['result'],result)
+                        self.assertJSONEqual(value['summary']['provenance'],{'kind':'hook','authenticatedSource':'authenticated:hook','effects':[effect['type'] for effect in row['effects']]})
+                        self.assertIs(value['summary']['externalCompletion'],False)
 
     def test_four_sdk_independent_mode_registration(self):
         rows,wanted=capability_cases()
         for language,values in self.run_helpers(rows):
             with self.subTest(language=language):
-                self.assertEqual([v['accepted'] for v in values],[v is not None for v in wanted])
+                self.assertJSONEqual([v['accepted'] for v in values],[v is not None for v in wanted])
                 for actual,expected in zip(values,wanted):
-                    if expected is not None:self.assertEqual(actual['summary'],expected)
+                    if expected is not None:self.assertJSONEqual(actual['summary'],expected)
 
     def test_four_sdk_parent_source_session_correlation(self):
         rows=[]
@@ -100,7 +164,7 @@ class ElicitationTests(unittest.TestCase):
                 rows.append(applied)
         for language,values in self.run_helpers(rows):
             with self.subTest(language=language):
-                self.assertTrue(all(not result['accepted'] for result in values))
+                self.assertTrue(all(result['accepted'] is False for result in values))
                 self.assertTrue(all('summary' not in result for result in values))
 
     def test_selected_views_never_upload_or_leak(self):
@@ -123,7 +187,7 @@ class ElicitationTests(unittest.TestCase):
     def test_wire_instructions_have_no_expected_semantics(self):
         steps,_,_=plan_cases(cases())
         for step in steps:
-            self.assertLessEqual(set(step),{'path','bytes','headers'})
+            self.assertLessEqual(set(step),{'path','bytes','headers','localRef'})
             self.assertNotIn('expected',step)
 
     def test_cases_cover_required_bindings(self):

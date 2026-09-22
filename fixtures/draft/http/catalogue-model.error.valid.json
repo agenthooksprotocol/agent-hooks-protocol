@@ -23,7 +23,6 @@
         "message": "example",
         "class": "example"
       }
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

@@ -3,6 +3,7 @@
 import argparse
 import base64
 from contextlib import contextmanager
+from email.message import Message
 import hashlib
 import hmac
 import http.client
@@ -279,6 +280,52 @@ class PositiveControlTests(unittest.TestCase):
         self.after = {'tlsClientErrors': 1, 'tlsRejections': 1,
                       'tlsClientErrorCodes': {'ERR_SSL_INVALID_PADDING': 1},
                       'tlsRejectionCodes': {'CERT_SIGNATURE_FAILURE': 1}}
+
+    def test_synthetic_tokens_identify_client_principal(self):
+        for mode in ('oauth', 'workload'):
+            with self.subTest(mode=mode):
+                headers = Message()
+                headers['Authorization'] = 'Bearer ' + positive_token(mode)
+                policy = auth.configuration(mode, FIXTURES, 'server')
+                self.check(auth.authorize(headers, policy) == auth.CLIENT_ID)
+
+    def test_invalid_synthetic_subject_rejected(self):
+        for mode in ('oauth', 'workload'):
+            for subject in (None, '', True, 1):
+                with self.subTest(mode=mode, subject=subject):
+                    headers = Message()
+                    headers['Authorization'] = 'Bearer ' + auth.token(mode, sub=subject)
+                    with self.assertRaises(auth.AuthenticationError):
+                        auth.authorize(headers, auth.configuration(mode, FIXTURES, 'server'))
+
+    def test_missing_synthetic_subject_rejected(self):
+        for mode in ('oauth', 'workload'):
+            head, body, _ = auth.token(mode).split('.')
+            claims = json.loads(base64.urlsafe_b64decode(body + '=' * (-len(body) % 4)))
+            del claims['sub']
+            body = base64.urlsafe_b64encode(json.dumps(claims).encode()).rstrip(b'=').decode()
+            message = head + '.' + body
+            signature = hmac.new(auth.signing_key(mode).encode(), message.encode(), hashlib.sha256).digest()
+            headers = Message()
+            headers['Authorization'] = 'Bearer ' + message + '.' + base64.urlsafe_b64encode(signature).rstrip(b'=').decode()
+            with self.subTest(mode=mode), self.assertRaises(auth.AuthenticationError):
+                auth.authorize(headers, auth.configuration(mode, FIXTURES, 'server'))
+
+    def test_boolean_numeric_receipt_mutation_rejected(self):
+        for before_value, after_value in ((True, 1), (False, 0), (1, True), (0, False)):
+            request = dict(self.request, params={'value': before_value})
+            changed = dict(request, params={'value': after_value})
+            self.check(not valid_receipts([], [changed], request, True))
+            self.check(not valid_receipts([request], [changed], request, False))
+            self.check(not valid_receipts([request], [changed, request], request, True))
+
+    def test_boolean_tls_counters_rejected(self):
+        for field in ('tlsClientErrors', 'tlsRejections'):
+            self.check(not certificate_evidence(self.before, dict(self.after, **{field: True})))
+            self.check(not certificate_evidence(dict(self.before, **{field: False}), self.after))
+        for field in ('tlsClientErrorCodes', 'tlsRejectionCodes'):
+            counters = {key: True for key in self.after[field]}
+            self.check(not certificate_evidence(self.before, dict(self.after, **{field: counters})))
 
     def test_canonical_capabilities_positive(self):
         self.check(valid_capabilities({'effects': []}))

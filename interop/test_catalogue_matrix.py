@@ -22,7 +22,7 @@ def evidence(scenarios):
         results.append({'id':scenario['id'],'status':'passed','actual':{k:deepcopy(v) for k,v in scenario['expected'].items() if k!='deliveries'}})
         for message,delivery in zip(scenario['expected']['sent'],scenario['expected']['deliveries']):
             message=deepcopy(message);params=message['params'];event=params['event']
-            if delivery['accepted']:entries.append({'kind':'observed','eventId':event['id'],'subscription':params['subscriptionId'],'event':event,'message':message})
+            if delivery['accepted']:entries.append({'kind':'observed','eventId':event['id'],'event':event,'message':message})
             else:entries.append({'kind':'rejected','eventId':event['id'],'message':message,'errorKind':delivery['errorKind']})
     return {'language':'python','discovery':deepcopy(response),'results':results},{'entries':entries}
 

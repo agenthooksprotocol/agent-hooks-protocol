@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import hashlib
 import ipaddress
 import math
@@ -14,7 +15,7 @@ import stat
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
@@ -235,9 +236,9 @@ def valid_uri(value: str) -> bool:
 
 
 def valid_datetime(value: str) -> bool:
-    """RFC 3339 syntax plus calendar validation, not Python's broader ISO parser."""
+    """Validate RFC 3339 dates and potential leap seconds without an IERS table."""
     if re.fullmatch(
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:[0-5][0-9]"
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:(?:[0-5][0-9]|60)"
         r"(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})", value
     ) is None:
         return False
@@ -245,8 +246,21 @@ def valid_datetime(value: str) -> bool:
         # fromisoformat tolerates offsets with overflowing minute components.
         if value[-1] not in "Zz" and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
             return False
-        datetime.fromisoformat(value.upper().replace("Z", "+00:00"))
-    except ValueError:
+        leap_second = value[17:19] == "60"
+        # Python cannot represent :60. Parse :59 to validate the surrounding
+        # calendar fields and find the corresponding UTC minute.
+        parseable = value[:17] + "59" + value[19:] if leap_second else value
+        # Fractions do not affect calendar/minute validation. Older Python
+        # parsers accept only certain precisions; RFC 3339 permits any length.
+        parseable = re.sub(r"\.[0-9]+", "", parseable)
+        parsed = datetime.fromisoformat(parseable.upper().replace("Z", "+00:00"))
+        if leap_second:
+            utc = parsed.astimezone(timezone.utc)
+            return (
+                utc.hour == 23 and utc.minute == 59
+                and utc.day == calendar.monthrange(utc.year, utc.month)[1]
+            )
+    except (ValueError, OverflowError):
         return False
     return True
 

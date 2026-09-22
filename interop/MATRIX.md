@@ -45,8 +45,9 @@ request; compact receipts retain the adapter's own receipt-level visibility.
 The runner does not invent full request evidence for compact receipts. If an
 `accepted` field is present it must be boolean `true`; explicit rejection is
 never receipt evidence. Omitting that field is permitted by the contract.
-Expected rejection evidence supports the existing adapters' `actual: null` or
-`actual: {"rejected": true}` forms, together with a passed report and receipt.
+Expected rejection evidence requires `actual: {"rejected": true}`, together
+with a passed report and receipt. Missing or null actual output is not an
+explicit rejection attestation and fails verification.
 These attestations do not independently prove rollback or the rejection stage;
 SDK-local invariant tests remain required. The verifier relies on adapter-provided reports and receipts.
 

@@ -163,11 +163,11 @@
     },
     {
       "path": "schema/draft/capabilities-response.schema.json",
-      "sha256": "0933bd15d333b5ba31bb72053d72e6fe427d8dbfcbe7f61e284cfe1cbab4c676"
+      "sha256": "90c09d1eef78a8d95c4c82fa1c978fb55fd60938cffa3ad60c3def6ab7ace8e1"
     },
     {
       "path": "schema/draft/capabilities.schema.json",
-      "sha256": "9dab2377b57df6c74f2078a8d2b8195ad4f9fa555466550bcf8ee60931447939"
+      "sha256": "c29b8effdb09a492bc791885ece3d59a824c4082771c782f41cacbb2304fc103"
     },
     {
       "path": "schema/draft/catalogue-event.schema.json",
@@ -183,7 +183,7 @@
     },
     {
       "path": "schema/draft/content-reference.schema.json",
-      "sha256": "86d02054ec45ebacd2f61b9bb09d4e93b8ea1d2b6ea3936961614ab0629daa3d"
+      "sha256": "24221c52d428c6104ce6f526f278d000169777f866adbc2c2de90a635469d692"
     },
     {
       "path": "schema/draft/content-selection.schema.json",
@@ -191,7 +191,7 @@
     },
     {
       "path": "schema/draft/content-upload.schema.json",
-      "sha256": "a8427951043d22aff9f6efa49d7cc3251d693e3aedec8c2271cb94ba73acf147"
+      "sha256": "1a516c5bae9e09e1b0cb32536cdd0d0eb1e80540ad29e9b65e392eceef6e4701"
     },
     {
       "path": "schema/draft/deny-effect.schema.json",
@@ -199,11 +199,11 @@
     },
     {
       "path": "schema/draft/effect.schema.json",
-      "sha256": "9ff7507c16b944634bab7b90358c1d6341ff1156389c58f5833d478a4f985be1"
+      "sha256": "ec5dd77d9c902375a75c2d1b5bd7a45da534c3b7d7e0e711b0bfd10a9163a02a"
     },
     {
       "path": "schema/draft/execution-event.schema.json",
-      "sha256": "cb7552487832aec876ca4d18df2dbd8ae13a648984d1353cd69be4d85015c3ca"
+      "sha256": "d9b13cf28e20eced629cfe8eb822eb6dfb2ac453fe14e6d2334c2f4b2793512a"
     },
     {
       "path": "schema/draft/extensions.schema.json",
@@ -211,7 +211,7 @@
     },
     {
       "path": "schema/draft/interaction-event.schema.json",
-      "sha256": "0ed26b5fc80a2ba2b8958581a7e33c06961e1f1cb7bade1a1a9c8a4b904a2d55"
+      "sha256": "34550586dde5748f14df80e8879b5eec5e3b2ae5353ef84b0208e9248d6a0fb2"
     },
     {
       "path": "schema/draft/intercept-deny-response.schema.json",
@@ -223,7 +223,7 @@
     },
     {
       "path": "schema/draft/intercept-request.schema.json",
-      "sha256": "c9d643fe3b9491c888fa052b280b75016f3e6789e1beb9f3948e5fee98ef5874"
+      "sha256": "fbd5ed20681d918c8647382de6a2bc07de14a7ac57f756e68d2f3293043d534e"
     },
     {
       "path": "schema/draft/intercept-response.schema.json",
@@ -239,11 +239,11 @@
     },
     {
       "path": "schema/draft/observe-notification.schema.json",
-      "sha256": "41dfac07ca6c718bca29897dc9ed139a13d975057d9d435b43f6e260fc62ac66"
+      "sha256": "27255ccd1a6d0fa788161825f4df74f7e0b3c074a8dc7c8cdeb7e07df11d55cf"
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "50780d0ad82ef6c7c1eaae20334ae9b1fcac1a1b599f7d8673f7e3f65016f1a7"
+      "sha256": "76f429521eec5c85dfb6ce8e9a56108a4fa582912fc6ddf25d324af86ea557c0"
     },
     {
       "path": "schema/draft/schema.json",

@@ -11,12 +11,30 @@ import os
 import secrets
 import selectors
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 LANGUAGES = ('typescript', 'python', 'go', 'rust')
+
+
+def json_equal(actual, expected):
+    """Compare JSON values without treating booleans as numbers."""
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return type(actual) is type(expected) and actual == expected
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(json_equal(actual[k], expected[k]) for k in actual)
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(json_equal(a, e) for a, e in zip(actual, expected))
+    return actual == expected
+
+
+def stderr_tail(stream):
+    stream.seek(0, os.SEEK_END)
+    stream.seek(max(0, stream.tell() - 1500))
+    return stream.read(1500).decode('utf-8', errors='replace')
 
 
 def commands():
@@ -79,63 +97,64 @@ def cases():
 
 def check(row, response):
     request, expected = row['request'], row['expected']
-    assert response.get('jsonrpc') == '2.0' and response.get('id') == request['id'], 'correlation'
-    assert 'error' not in response, response.get('error')
+    if not (response.get('jsonrpc') == '2.0' and response.get('id') == request['id']): raise AssertionError('correlation')
+    if not ('error' not in response): raise AssertionError(response.get('error'))
     r = response['result']
     for key in ('instructions','generated','applied','messages'):
-        assert r[key] == expected[key], (key,r[key],expected[key])
-    assert len(r['failures']) == expected['failures'], 'failure count'
+        if not (json_equal(r[key], expected[key])): raise AssertionError((key,r[key],expected[key]))
+    if not (len(r['failures']) == expected['failures']): raise AssertionError('failure count')
     def body(snapshot):
         item = snapshot['summary']
         if item is None: return None
-        assert item['id'] == 'logical-summary', 'logical identity changed'
+        if not (item['id'] == 'logical-summary'): raise AssertionError('logical identity changed')
         value = snapshot['bodies'][item['ref']]
-        assert item['ref'] == 'urn:ahp:compaction:utf8:' + value.encode().hex(), 'mutable or wrong ref'
+        if not isinstance(item['ref'], str) or not item['ref']: raise AssertionError('invalid opaque ref')
         return value
-    assert body(r) == expected['final'], ('final',body(r),expected['final'])
+    if not (body(r) == expected['final']): raise AssertionError(('final',body(r),expected['final']))
     if expected['supplier'] is not None:
-        assert r['provenance'] == {'kind':'supplied','supplier':expected['supplier']}, 'supplier erased'
+        if not (r['provenance'] == {'kind':'supplied','supplier':expected['supplier']}): raise AssertionError('supplier erased')
     elif expected['generated']:
-        assert r['provenance'] == {'kind':'generated'}, 'generation provenance'
+        if not (r['provenance'] == {'kind':'generated'}): raise AssertionError('generation provenance')
     else:
-        assert r['provenance'] is None, 'fabricated execution'
+        if not (r['provenance'] is None): raise AssertionError('fabricated execution')
     for forbidden in expected['absent']:
-        assert forbidden not in r['bodies'].values(), 'staged bytes leaked'
+        if not (forbidden not in r['bodies'].values()): raise AssertionError('staged bytes leaked')
     observed=[]
     for snapshot in r['seen']:
         observed.append((snapshot['instructions'],body(snapshot)))
         caps=snapshot['capabilities']
         if request['params']['observeOnly'] and snapshot['boundary']=='after':
-            assert caps == {'effects':[],'modify':{}}, 'observation advertises control'
+            if not (caps == {'effects':[],'modify':{}}): raise AssertionError('observation advertises control')
         else:
             target='instructions' if snapshot['boundary']=='before' else 'summary'
-            assert caps['modify']=={target:{'replace':True,'merge':False}}, 'wrong boundary target advertisement'
+            if not (json_equal(caps['modify'], {target:{'replace':True,'merge':False}})): raise AssertionError('wrong boundary target advertisement')
         # Earlier immutable references retain their exact bytes after settlement.
         for ref,value in snapshot['bodies'].items():
-            assert r['bodies'][ref]==value, 'prior content reference mutated'
+            if not (r['bodies'][ref]==value): raise AssertionError('prior content reference mutated')
     if expected['seen'] is not None:
-        assert observed==expected['seen'], ('serial hook snapshots',observed,expected['seen'])
+        if not (observed==expected['seen']): raise AssertionError(('serial hook snapshots',observed,expected['seen']))
 
 
 def run_pair(pair):
     sender,receiver,transport=pair
     cmd=commands(); rows=cases(); proc=None
     env=os.environ.copy();env['PYTHONPATH']=str(ROOT/'python-sdk/src');token=secrets.token_urlsafe(24);env['AHP_COMPACTION_TOKEN']=token
+    stderr = tempfile.TemporaryFile()
     try:
         plan={'transport':transport,'requests':[row['request'] for row in rows]}
         if transport=='stdio':plan['command']=cmd[receiver]
         else:
-            proc=subprocess.Popen(cmd[receiver]+['server'],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
+            proc=subprocess.Popen(cmd[receiver]+['server'],stdout=subprocess.PIPE,stderr=stderr,text=True,env=env)
             selector=selectors.DefaultSelector();selector.register(proc.stdout,selectors.EVENT_READ)
             ready=selector.select(30);selector.close()
             if not ready:raise RuntimeError('receiver startup timeout')
             line=proc.stdout.readline()
-            if not line:raise RuntimeError('receiver startup failed: '+proc.stderr.read()[-1000:])
+            if not line:raise RuntimeError('receiver startup failed: '+stderr_tail(stderr))
             plan.update(endpoint=json.loads(line)['endpoint'],token=token)
         out=subprocess.run(cmd[sender]+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=90)
         if out.returncode:raise RuntimeError(out.stderr[-1500:])
         replies=json.loads(out.stdout)
-        assert len(replies)==len(rows), 'response count'
+        if not (len(replies)==len(rows)): raise AssertionError('response count')
         for row,reply in zip(rows,replies):
             try:check(row,reply)
             except Exception as error:raise AssertionError(row['request']['id']+': '+str(error)) from error
@@ -147,6 +166,7 @@ def run_pair(pair):
             proc.terminate()
             try:proc.communicate(timeout=5)
             except subprocess.TimeoutExpired:proc.kill();proc.communicate()
+        stderr.close()
 
 
 def main():

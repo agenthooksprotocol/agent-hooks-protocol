@@ -5,7 +5,7 @@ Each SDK client transmits bytes over loopback HTTP to each SDK receiver. Receive
 validate canonical envelopes and MCP uploaded bodies themselves. Only this oracle
 knows expected results. No proxy or central semantic evaluator is on the wire.
 """
-import argparse, base64, copy, hashlib, json, os, secrets, selectors, subprocess
+import argparse, base64, copy, hashlib, json, os, secrets, selectors, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -13,6 +13,23 @@ HERE=Path(__file__).resolve().parent
 ROOT=HERE.parent.parent
 SCHEMA=ROOT/'agent-hooks-protocol/schema/draft'
 LANGUAGES=('typescript','python','go','rust')
+
+def json_equal(actual, expected):
+    """Compare JSON values without treating booleans as numbers."""
+    if isinstance(actual, bool) or isinstance(expected, bool):
+        return type(actual) is type(expected) and actual == expected
+    if isinstance(actual, dict) and isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(json_equal(actual[k], expected[k]) for k in actual)
+    if isinstance(actual, list) and isinstance(expected, list):
+        return len(actual) == len(expected) and all(json_equal(a, e) for a, e in zip(actual, expected))
+    return actual == expected
+
+
+def stderr_tail(stream):
+    stream.seek(0, os.SEEK_END)
+    stream.seek(max(0, stream.tell() - 1500))
+    return stream.read(1500).decode('utf-8', errors='replace')
+
 
 def commands():
     return {
@@ -27,9 +44,8 @@ def bytes_json(v):return (json.dumps(v,ensure_ascii=False,indent=1)+'\n').encode
 def identity(s):return base64.urlsafe_b64encode(s.encode()).rstrip(b'=').decode()
 def reference(name,raw):return {'ref':name,'size':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}
 def upload(ref,raw):
-    return {'path':'/upload','bytes':encode(raw),'headers':{'Content-Type':'application/octet-stream',
-        'AHP-Subscription':identity('elicitation'),'AHP-Content-Ref':identity(ref['ref']),
-        'AHP-Content-SHA256':ref['sha256']}}
+    return {'path':'/upload','bytes':encode(raw),'localRef':ref['ref'],
+        'headers':{'Content-Type':'application/octet-stream','AHP-Content-SHA256':ref['sha256']}}
 def intercept(envelope):return {'path':'/hooks/intercept','headers':{'Content-Type':'application/json'},'bytes':encode(bytes_json(envelope))}
 
 def envelopes(name,request,result,selection="body"):
@@ -160,8 +176,8 @@ def plan_cases(rows):
         if mutation=='wrong-session':result_event['session']['id']='unrelated-session'
         if mutation=='missing-session':result_event.pop('session')
         selected=row['selection']
-        if selected=='body' and mutation not in ('missing-upload','request-gap'):steps.append(upload(rref,rraw));statuses.append(204)
-        if selected=='body' and mutation!='result-gap':steps.append(upload(sref,sraw));statuses.append(204)
+        if selected=='body' and mutation not in ('missing-upload','request-gap'):steps.append(upload(rref,rraw));statuses.append(201)
+        if selected=='body' and mutation!='result-gap':steps.append(upload(sref,sraw));statuses.append(201)
         for stage,envelope in [('request',request),('result',result)]:
             if mutation==stage+'-gap':
                 item=envelope['params']['event']['elicitation'][stage];item.pop('body');item['gap']={'reason':'Unavailable selected body'}
@@ -174,12 +190,52 @@ def plan_cases(rows):
                 summary={'request':row['request'],'result':row['result']} if selected=='body' else {'selection':{'request':selected,'result':selected},'bodyValidation':'not-selected'}
                 summary.update(provenance={'kind':'mcp','authenticatedSource':'AUTHENTICATED'},externalCompletion=False)
                 wanted.append({'message':result,'bytes':encode(sraw) if selected=='body' else '', 'summary':summary})
-    # Upload immutability and subscription authorization are enforced on receiver.
-    r=reference('immutable',b'one');steps.append(upload(r,b'one'));statuses.append(204)
-    changed=reference('immutable',b'two');steps.append(upload(changed,b'two'));statuses.append(400)
-    wrong=upload(reference('unauthorized',b'x'),b'x');wrong['headers']['AHP-Subscription']=identity('other')
-    steps.append(wrong);statuses.append(400)
+    # Independent uploads allocate immutable receiver refs; credentials authorize scope.
+    r=reference('immutable',b'one');steps.append(upload(r,b'one'));statuses.append(201)
+    changed=reference('immutable',b'two');steps.append(upload(changed,b'two'));statuses.append(201)
+    wrong=upload(reference('unauthorized',b'x'),b'x');wrong['headers']['Authorization']='Bearer unauthorized-upload'
+    steps.append(wrong);statuses.append(401)
     return steps,statuses,wanted
+
+def replace_refs(value, refs):
+    """Rebind local placeholders without repairing intentional bad metadata."""
+    if isinstance(value, list):return [replace_refs(item, refs) for item in value]
+    if not isinstance(value, dict):return value
+    result={key:replace_refs(item, refs) for key,item in value.items()}
+    if set(value)=={'ref','size','sha256'} and value['ref'] in refs:
+        result['ref']=refs[value['ref']]['ref']
+    return result
+
+
+def transmit_steps(command, endpoint, token, steps, statuses, env):
+    """Use the native sender, verifying each upload before any dependent event."""
+    if len(steps)!=len(statuses):raise AssertionError("step status count")
+    results=[];refs={};immutable={};sent=[]
+    for original,expected_status in zip(steps,statuses):
+        step={key:value for key,value in original.items() if key!='localRef'}
+        if step['path']=='/hooks/intercept':
+            message=replace_refs(json.loads(base64.b64decode(step['bytes'])),refs)
+            step['bytes']=encode(bytes_json(message))
+        plan={'endpoint':endpoint,'token':token,'steps':[step]}
+        out=subprocess.run(command+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=30)
+        if out.returncode:raise RuntimeError(out.stderr[-1500:])
+        replies=json.loads(out.stdout)
+        if len(replies)!=1:raise AssertionError('sender response count')
+        result=replies[0]
+        if result['status']!=expected_status:
+            raise AssertionError(f"{step['path']} expected {expected_status}, got {result['status']}")
+        if step['path']=='/upload' and expected_status==201:
+            descriptor=json.loads(result['body']);raw=base64.b64decode(step['bytes'])
+            if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'}:
+                raise AssertionError('invalid upload descriptor')
+            if not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or descriptor['size']!=len(raw) or descriptor['sha256']!=hashlib.sha256(raw).hexdigest():
+                raise AssertionError('upload descriptor integrity')
+            if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
+                raise AssertionError('receiver ref mutated')
+            immutable[descriptor['ref']]=raw;refs[original['localRef']]=descriptor
+        sent.append(step);results.append(result)
+    return results,refs,sent
+
 
 def concurrent_plan():
     """Two outstanding requests share a session; reverse-order replies stay bound.
@@ -193,7 +249,7 @@ def concurrent_plan():
     pairs=[envelopes('concurrent-a',first['request'],first['result']),envelopes('concurrent-b',second_request,second_result)]
     steps=[];statuses=[];wanted=[]
     for pair in pairs:
-        for _,ref,raw in pair:steps.append(upload(ref,raw));statuses.append(204)
+        for _,ref,raw in pair:steps.append(upload(ref,raw));statuses.append(201)
     for request, _ in pairs:
         message,_,raw=request;message['params']['event']['session']['id']='shared-concurrent-session'
         steps.append(intercept(message));statuses.append(200)
@@ -211,13 +267,14 @@ def concurrent_plan():
 def run_pair(pair):
     sender,receiver=pair;cmd=commands();token=secrets.token_urlsafe(32)
     env=os.environ.copy();env['AHP_ELICITATION_TOKEN']=token;env['PYTHONPATH']=str(ROOT/'python-sdk/src')
-    proc=subprocess.Popen(cmd[receiver]+['server',str(SCHEMA),'authenticated:'+sender],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=env)
+    proc=None;stderr=tempfile.TemporaryFile()
     try:
+        proc=subprocess.Popen(cmd[receiver]+['server',str(SCHEMA),'authenticated:'+sender],stdout=subprocess.PIPE,stderr=stderr,text=True,env=env)
         selector=selectors.DefaultSelector();selector.register(proc.stdout,selectors.EVENT_READ)
         ready=selector.select(30);selector.close()
         if not ready:raise RuntimeError('receiver startup timed out')
         line=proc.stdout.readline()
-        if not line:raise RuntimeError('receiver startup failed: '+proc.stderr.read()[-1500:])
+        if not line:raise RuntimeError('receiver startup failed: '+stderr_tail(stderr))
         endpoint=json.loads(line)['endpoint']
         atomic,atomic_expected=atomic_cases()
         applied=subprocess.run(cmd[sender]+['check',str(SCHEMA),'authenticated:'+sender],input=json.dumps(atomic),capture_output=True,text=True,env=env,timeout=45)
@@ -227,12 +284,12 @@ def run_pair(pair):
         wire_rows=cases();atomic_publications=0
         for fixture,actual,expected in zip(atomic,applied_results,atomic_expected):
             if actual.get('inputUnchanged') is not True:raise AssertionError('atomic staging mutated input')
-            if actual.get('accepted')!=(expected is not None):raise AssertionError('atomic staging acceptance mismatch')
+            if actual.get('accepted') is not (expected is not None):raise AssertionError('atomic staging acceptance mismatch')
             if expected is None:
                 if 'summary' in actual:raise AssertionError('partial failed result published')
                 continue
             summary=actual['summary']
-            if summary['result']!=expected or summary['externalCompletion'] is not False:raise AssertionError('atomic effect application mismatch')
+            if not json_equal(summary['result'], expected) or summary['externalCompletion'] is not False:raise AssertionError('atomic effect application mismatch')
             if summary['provenance']!={'kind':'hook','authenticatedSource':'authenticated:'+sender,'effects':[e['type'] for e in fixture['effects']]}:raise AssertionError('atomic provenance mismatch')
             # Upload and deliver the SDK's actual staged output, not an expected
             # fixture substituted into a receiver. Expected values were checked
@@ -245,28 +302,25 @@ def run_pair(pair):
         # Wrong bearer credential is sent over the same SDK client stack.
         bad=subprocess.run(cmd[sender]+['client'],input=json.dumps({'endpoint':endpoint,'token':'wrong','steps':[{'path':'/receipts','bytes':''}]}),capture_output=True,text=True,env=env,timeout=30)
         if bad.returncode or json.loads(bad.stdout)[0]['status']!=401:raise AssertionError('unauthenticated access accepted')
-        plan={'endpoint':endpoint,'token':token,'steps':steps+[{'path':'/receipts','bytes':''}]}
-        out=subprocess.run(cmd[sender]+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=90)
-        if out.returncode:raise RuntimeError(out.stderr[-1500:])
-        results=json.loads(out.stdout);actual=[r['status'] for r in results[:-1]]
-        if actual!=statuses:
-            mismatches=[{'step':i,'expected':e,'actual':a,'path':steps[i]['path']} for i,(e,a) in enumerate(zip(statuses,actual)) if e!=a]
-            raise AssertionError('status mismatches '+json.dumps(mismatches[:8]))
+        results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env)
+        wanted=replace_refs(wanted,refs)
         receipts=json.loads(results[-1]['body'])
         for receipt in wanted:
             if 'provenance' in receipt['summary']:receipt['summary']['provenance']['authenticatedSource']='authenticated:'+sender
-        if receipts!=wanted:raise AssertionError('exact receiver receipts differ (body bytes, payload, metadata, identity or completion)')
+        if not json_equal(receipts, wanted):raise AssertionError('exact receiver receipts differ (body bytes, payload, metadata, identity or completion)')
         # Verify actual response correlation and canonical no-effect envelopes.
         for step,result in zip(steps,results):
             if step['path']=='/hooks/intercept' and result['status']==200:
                 request=json.loads(base64.b64decode(step['bytes']));response=json.loads(result['body'])
                 if response!={'jsonrpc':'2.0','id':request['id'],'result':{'protocolVersion':'draft','effects':[]}}:raise AssertionError('bad wire response')
-        return {'sender':sender,'receiver':receiver,'status':'passed','scenarios':len(wire_rows)+1,'concurrentRequests':2,'atomicPublications':atomic_publications,'wireOperations':len(steps)+2,'acceptedReceipts':len(receipts)}
+        return {'sender':sender,'receiver':receiver,'status':'passed','scenarios':len(wire_rows)+1,'concurrentRequests':2,'atomicPublications':atomic_publications,'wireOperations':len(steps)+1,'acceptedReceipts':len(receipts)}
     except Exception as error:return {'sender':sender,'receiver':receiver,'status':'failed','error':str(error)}
     finally:
-        proc.terminate()
-        try:proc.communicate(timeout=5)
-        except subprocess.TimeoutExpired:proc.kill();proc.communicate()
+        if proc is not None:
+            proc.terminate()
+            try:proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:proc.kill();proc.communicate()
+        stderr.close()
 
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=HERE/'elicitation-matrix-results.json');parser.add_argument('--sender',choices=LANGUAGES);parser.add_argument('--receiver',choices=LANGUAGES);args=parser.parse_args()

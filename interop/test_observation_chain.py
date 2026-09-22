@@ -15,7 +15,7 @@ def evidence(scenarios):
         entries.append({'kind':'chain-settled','id':ident,'scenario':row['id']})
         for note in row['chainProof']['observations']:
             if row['chain'].get('holdObservers'):entries.append({'kind':'observer-blocked','id':ident})
-            entries.append({'kind':'observed','eventId':ident,'subscription':note['params']['subscriptionId'],'event':deepcopy(note['params']['event']),'message':deepcopy(note)})
+            entries.append({'kind':'observed','eventId':note['params']['event']['id'],'event':deepcopy(note['params']['event']),'message':deepcopy(note)})
         if interrupted:entries.append({'kind':'replied','id':ident})
     return {'language':'python','results':[{'id':s['id'],'actual':deepcopy(s['expected'])} for s in scenarios]}, {'entries':entries}
 
@@ -26,11 +26,18 @@ class ChainVerifierTests(unittest.TestCase):
         self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')
     def observation(self):return next(e for e in self.receipts['entries'] if e['kind']=='observed')
+    def test_request_and_event_ids_are_independent(self):
+        for row in self.scenarios:
+            row['requests']['a']['id']='rpc:'+row['id']
+            for request in row['chainProof']['requests']:
+                request['id']=row['requests']['a']['id']
+        self.report,self.receipts=evidence(self.scenarios)
+        self.assertEqual([],self.check())
     def test_authored_wire_proof(self):self.assertEqual([],self.check())
     def test_success_shaped_report_without_wire_fails(self):self.receipts['entries']=[];self.assertTrue(self.check())
     def test_missing_automatic_downgrade(self):self.receipts['entries'].remove(self.observation());self.assertTrue(self.check())
     def test_called_interceptor_second_copy(self):
-        note=deepcopy(self.observation());note['message']['params']['subscriptionId']=self.scenarios[0]['expected']['called'][0];self.receipts['entries'].append(note);self.assertTrue(self.check())
+        note=deepcopy(self.observation());self.receipts['entries'].append(note);self.assertTrue(self.check())
     def test_downgrade_cannot_decide(self):self.observation()['message']['method']='hooks/intercept';self.assertTrue(self.check())
     def test_no_disposition(self):self.observation()['message']['params']['disposition']={'status':'denied'};self.assertTrue(self.check())
     def test_permission_filter_required(self):self.observation()['message']['params']['event']['items']=deepcopy(self.scenarios[0]['requests']['a']['params']['event']['items']);self.assertTrue(self.check())
@@ -47,4 +54,4 @@ class ChainVerifierTests(unittest.TestCase):
     def test_serial_interceptors(self):
         entries=self.receipts['entries'];ident='observation-chain-continue';reply=next(e for e in entries if e['kind']=='replied' and e['id']==ident);entries.remove(reply);received=[i for i,e in enumerate(entries) if e['kind']=='received' and e['id']==ident];entries.insert(received[1]+1,reply);self.assertTrue(self.check())
     def test_no_explicit_observer_has_no_called_second_copy(self):
-        row=next(s for s in self.scenarios if s['id']=='observation-chain-deny-no-explicit');self.assertEqual(2,len(row['chainProof']['observations']));self.assertTrue(all(n['params']['subscriptionId'] not in row['expected']['called'] for n in row['chainProof']['observations']))
+        row=next(s for s in self.scenarios if s['id']=='observation-chain-deny-no-explicit');self.assertEqual(2,len(row['chainProof']['observations']));self.assertTrue(set(row['expected']['observations']).isdisjoint(row['expected']['called']))

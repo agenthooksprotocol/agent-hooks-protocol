@@ -6,7 +6,7 @@
     "effects": [
       {
         "type": "message",
-        "text": "must not display"
+        "text": "Continuation requested without an instruction."
       },
       {
         "type": "flow",

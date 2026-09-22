@@ -145,8 +145,7 @@
           "type": "object",
           "required": [
             "status",
-            "reason",
-            "subscriptionId"
+            "reason"
           ],
           "properties": {
             "status": {
@@ -154,10 +153,6 @@
             },
             "reason": {
               "const": "supplied_result"
-            },
-            "subscriptionId": {
-              "type": "string",
-              "minLength": 1
             }
           },
           "additionalProperties": false
@@ -2468,45 +2463,11 @@
             "classifier"
           ]
         },
-        "subscriptionId": {
-          "type": "string",
-          "minLength": 1
-        },
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
         }
-      },
-      "allOf": [
-        {
-          "if": {
-            "required": [
-              "decidedBy"
-            ],
-            "properties": {
-              "decidedBy": {
-                "const": "hook"
-              }
-            }
-          },
-          "then": {
-            "required": [
-              "subscriptionId"
-            ]
-          },
-          "else": {
-            "not": {
-              "anyOf": [
-                {
-                  "required": [
-                    "subscriptionId"
-                  ]
-                }
-              ]
-            }
-          }
-        }
-      ]
+      }
     },
     "tool.progress": {
       "type": "object",

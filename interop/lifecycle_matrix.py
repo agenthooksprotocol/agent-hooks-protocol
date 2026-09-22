@@ -8,7 +8,7 @@ import json
 import hashlib
 import ssl
 from urllib.parse import urlencode
-from content_upload import encoded, NoRedirect
+from content_upload import NoRedirect
 import os
 import signal
 import urllib.request
@@ -29,11 +29,11 @@ UPLOAD_TOKEN = 'TEST-ONLY-independent-upload-token'
 UPLOAD_ENV = 'AHP_INTEROP_UPLOAD_TOKEN'
 
 def verify(scenarios, report, receipts, language, exit_code=0):
-    """Fail closed on reports AND independent receiver rendezvous evidence."""
+    """Fail closed on reports AND receiver-origin rendezvous evidence."""
     chains=[s for s in scenarios if 'chain' in s]
     if chains and isinstance(report,dict) and isinstance(receipts,dict) and isinstance(receipts.get('entries'),list) and isinstance(report.get('results'),list) and all(isinstance(r,dict) for r in report['results']) and all(isinstance(e,dict) for e in receipts['entries']):
         from observation_chain import verify_chains
-        ids={s['requests']['a']['id'] for s in chains}
+        ids={value for s in chains for value in (s['requests']['a']['id'],s['requests']['a']['params']['event']['id'])}
         names={s['id'] for s in chains}
         is_chain=lambda e:e.get('id',e.get('eventId')) in ids
         chain_report={**report,'results':[r for r in report['results'] if r.get('id') in names]}
@@ -102,9 +102,31 @@ def verify(scenarios, report, receipts, language, exit_code=0):
     uploads = [e for e in entries if e.get('kind') == 'upload']
     upload_steps = [(st,status) for s in scenarios for st,status in zip([x for x in s['steps'] if x['op']=='upload'],s['expected']['uploadStatuses'])]
     if len(uploads) != len(upload_steps): errors.append('upload multiplicity mismatch')
+    refs = {}
     for receipt,(st,status) in zip(uploads,upload_steps):
-        wanted = {k:st[k] for k in ('subscription','ref','size','sha256')} | {'kind':'upload','status':status}
-        if not equal(receipt,wanted): errors.append('upload integrity/authorization evidence mismatch')
+        if receipt.get('status') != status or any(not equal(receipt.get(k), st[k]) for k in ('size','sha256')):
+            errors.append('upload integrity/authorization evidence mismatch')
+        if status == 201:
+            ref = receipt.get('ref')
+            if not isinstance(ref,str) or not ref:
+                errors.append('missing receiver-assigned upload reference')
+                continue
+            if ref in refs.values():
+                # Identical bytes may be deduplicated; changed bytes may not alias.
+                prior = next(old for old, _ in upload_steps if refs.get(old['ref']) == ref)
+                if any(prior[k] != st[k] for k in ('size','sha256')):
+                    errors.append('receiver reused immutable reference for changed bytes')
+            refs[st['ref']] = ref
+    # Fixture refs are local aliases, never caller-selected wire references.
+    def resolve(value):
+        if isinstance(value,list): return [resolve(v) for v in value]
+        if not isinstance(value,dict): return value
+        result = {k:resolve(v) for k,v in value.items()}
+        if 'body' in result and isinstance(result['body'],dict):
+            body = result['body']
+            if body.get('ref') in refs: body['ref'] = refs[body['ref']]
+        return result
+    scenarios = resolve(scenarios)
     expected_observations=[]
     cancelled_observations=set()
     validator=ObservationValidator()
@@ -114,12 +136,12 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             if st['op']=='cancel': cancelled.add(s['requests'][st['key']]['id'])
             if st['op']!='observe': continue
             request=s['requests'][st['key']]; id=request['id']
-            if id in cancelled: cancelled_observations.add((id,st['subscription']))
+            if id in cancelled: cancelled_observations.add(id)
             event=deepcopy(request['params']['event'])
             event['tool']['input']=deepcopy(s['expected']['states'].get(id,{}).get('input',event['tool']['input']))
             if 'items' in st: event['items']=deepcopy(st['items'])
-            message={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event,'subscriptionId':st['subscription']}}
-            expected_observations.append({'kind':'observed','eventId':event['id'],'subscription':st['subscription'],'event':event,'message':message})
+            message={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
+            expected_observations.append({'kind':'observed','eventId':event['id'],'event':event,'message':message})
     boundary_requests={(request['params']['event']['source'],request['params']['event']['id']):request['id'] for s in scenarios for request in s['requests'].values()}
     observed=[e for e in entries if e.get('kind')=='observed']
     if not equal(observed,expected_observations): errors.append('settled observation payload/identity/subscription mismatch')
@@ -134,7 +156,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             params=message.get('params',{})
             for item in params.get('event',{}).get('items',[]):
                 body=item.get('body')
-                if body is not None and not any(u.get('kind')=='upload' and u.get('status')==204 and u.get('subscription')==params.get('subscriptionId') and all(u.get(k)==body.get(k) for k in ('ref','size','sha256')) for u in entries[:i]):
+                if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and all(equal(u.get(k),body.get(k)) for k in ('ref','size','sha256')) for u in entries[:i]):
                     errors.append('intercept dispatched before authorized exact upload readiness')
     for receipt in observed:
         errors.extend(validator.errors(receipt.get('message')))
@@ -148,11 +170,11 @@ def verify(scenarios, report, receipts, language, exit_code=0):
         # JSON-RPC request identity is not the logical boundary identity.
         if not any(j<i for kind in ('accepted','cancelled') for j in positions(kind,id)):
             errors.append('observation before settlement')
-        if (id,e.get('subscription')) in cancelled_observations and not any(j<i for j in positions('cancelled',id)):
+        if id in cancelled_observations and not any(j<i for j in positions('cancelled',id)):
             errors.append('observation dispatched before planned cancellation')
         for item in e.get('event',{}).get('items',[]):
             body=item.get('body')
-            if body is not None and not any(u.get('kind')=='upload' and u.get('status')==204 and u.get('subscription')==e.get('subscription') and all(u.get(k)==body.get(k) for k in ('ref','size','sha256')) for u in entries[:i]):
+            if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and all(equal(u.get(k),body.get(k)) for k in ('ref','size','sha256')) for u in entries[:i]):
                 errors.append('body dispatched before authorized exact upload readiness')
     for s in scenarios:
         # Check the race partial order from actual receipt/reply/mark records,
@@ -206,34 +228,40 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
         if tls is not None: handlers.append(urllib.request.HTTPSHandler(context=tls))
         try:
             with urllib.request.build_opener(*handlers).open(req,timeout=5) as response:
-                response.read(1048577); return response.status
+                body = response.read(1048577)
+                return response.status, body
         except urllib.error.HTTPError as error:
-            error.read(1048577); return error.code
-    raw=bytes(range(256))+b'\x00\xff\xfe'; ref='receiver-probe-ref'
-    def metadata(data):return {'ref':ref,'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
-    body=metadata(raw)
-    def upload(data, subscription='body', token=UPLOAD_TOKEN):
-        headers={'Content-Type':'application/octet-stream','AHP-Subscription':encoded(subscription),'AHP-Content-Ref':encoded(ref),'AHP-Content-SHA256':metadata(data)['sha256']}
+            return error.code, error.read(1048577)
+    raw=bytes(range(256))+b'\x00\xff\xfe'
+    def metadata(data):return {'size':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+    def upload(data, token=UPLOAD_TOKEN):
+        headers={'Content-Type':'application/octet-stream','Content-Length':str(len(data)),
+                 'AHP-Content-SHA256':metadata(data)['sha256']}
         if token is not None:headers['Authorization']='Bearer '+token
         return post(upload_endpoint,data,headers)
+    status,payload=upload(raw)
+    try: body=json.loads(payload)
+    except (ValueError,UnicodeError): body=None
+    if status!=201 or not isinstance(body,dict) or set(body)!={'ref','size','sha256'} or not isinstance(body.get('ref'),str) or not body['ref'] or any(not equal(body.get(k),v) for k,v in metadata(raw).items()):
+        return ['upload must return 201 with receiver-assigned content-reference'],1
     original=deepcopy(base_request['params']['event']); original['id']='receiver-probe-event'
-    def notification(subscription='body', descriptor=None):
+    def observe(descriptor=None):
         event=deepcopy(original)
         event['items']=[{'id':'receiver-probe-item','kind':'text','mediaType':'application/octet-stream','selection':'body','body':descriptor or body}]
-        return {'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event,'subscriptionId':subscription}}
-    def observe(subscription='body',descriptor=None):
-        return post(endpoint+'/observe',json.dumps(notification(subscription,descriptor)).encode(),event_headers,context)
-    results=[(upload(raw),204,'raw upload readiness'),
-             (upload(raw),204,'identical immutable retry'),
-             (upload(b'changed bytes'),409,'same ref changed bytes'),
-             (upload(raw,token=None),401,'missing independent upload credential'),
-             (upload(raw,token='wrong'),401,'wrong independent upload credential'),
-             (upload(raw,subscription='metadata'),403,'upload subscription authorization'),
+        note={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
+        return post(endpoint+'/observe',json.dumps(note).encode(),event_headers,context)[0]
+    changed_status,changed_payload=upload(b'changed bytes')
+    try: changed=json.loads(changed_payload)
+    except (ValueError,UnicodeError): changed=None
+    changed_ok=changed_status==201 and isinstance(changed,dict) and set(changed)=={'ref','size','sha256'} and isinstance(changed.get('ref'),str) and bool(changed['ref']) and changed['ref']!=body['ref'] and all(equal(changed.get(k),v) for k,v in metadata(b'changed bytes').items())
+    results=[(201,201,'raw upload readiness'),
+             (201 if changed_ok else changed_status if changed_status!=201 else 0,201,'changed bytes receive new immutable ref'),
+             (upload(raw,token=None)[0],401,'missing independent upload credential'),
+             (upload(raw,token='wrong')[0],401,'wrong independent upload credential'),
              (observe(),200,'original binary ref readable'),
-             (observe('metadata'),409,'cross subscription ref rejected'),
-             (observe(descriptor=dict(body,ref='never-uploaded')),409,'missing readiness rejected'),
-             (observe(descriptor=dict(body,size=body['size']+1)),409,'wrong descriptor size rejected'),
-             (observe(descriptor=dict(body,sha256='0'*64)),409,'wrong descriptor hash rejected'),
+             (observe(dict(body,ref='never-uploaded')),409,'missing readiness rejected'),
+             (observe(dict(body,size=body['size']+1)),409,'wrong descriptor size rejected'),
+             (observe(dict(body,sha256='0'*64)),409,'wrong descriptor hash rejected'),
              (observe(),200,'negative reads did not mutate bytes')]
     return [label+f': expected {expected}, got {got}' for got,expected,label in results if got!=expected],len(results)
 
@@ -304,7 +332,7 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
         d=Path(directory); readiness=d/'ready.json'; server_config=d/'server.json'; report_path=d/'report.json'
         selected=[s for s in load(scenario_file)['scenarios'] if transport in s.get('transports',['http','stdio'])]
         scenario_file=d/'scenarios.json'; write(scenario_file,{'version':1,'scenarios':selected})
-        write(server_config,{'suite':suite,'transport':transport,'readinessFile':str(readiness),'scenarioFile':str(scenario_file),'auth':configuration(mode,HERE/'fixtures','server',issuer),'uploadAuth':{'token':UPLOAD_TOKEN,'subscriptions':['body']}})
+        write(server_config,{'suite':suite,'transport':transport,'readinessFile':str(readiness),'scenarioFile':str(scenario_file),'auth':configuration(mode,HERE/'fixtures','server',issuer),'uploadAuth':{'token':UPLOAD_TOKEN}})
         cfg={'suite':suite,'transport':transport,'scenarioFile':str(scenario_file),'reportFile':str(report_path),'childPidFile':str(d/'child.json'),'auth':configuration(mode,HERE/'fixtures','client',issuer),'upload':{'auth':{'type':'bearer','tokenEnv':UPLOAD_ENV},'timeoutMs':5000,'maxBytes':1048576}}
         environment=os.environ.copy(); environment[UPLOAD_ENV]=UPLOAD_TOKEN
         try:

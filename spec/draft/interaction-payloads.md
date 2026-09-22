@@ -13,7 +13,7 @@ closed; MCP elicitation uses the pinned published subset described below.
 | `user.elicitation.result` | `elicitation`: `server`, `mode`, `action`; optional `result` (content descriptor) |
 | `user.message.inbound` | `message`: `channel`, `sender`, `text` |
 | `user.message.outbound` | `message`: `channel`, `payload` |
-| `hook.failure` | `failure`: `backendId`, `subscriptionId`, `reason`, `policy` (plus `parentEventId`) |
+| `hook.failure` | `failure`: `backendId`, `reason`, `policy` (plus `parentEventId`) |
 
 Configuration `change` describes proposed or actual effective configuration, never
 a general mutation API. Denied proposals MUST NOT generate fictitious after events.

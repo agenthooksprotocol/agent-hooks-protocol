@@ -150,26 +150,16 @@
                     {
                       "type": "object",
                       "required": [
-                        "value",
-                        "provenance"
+                        "value"
                       ],
                       "properties": {
                         "value": true,
                         "provenance": {
                           "type": "object",
-                          "required": [
-                            "subscriptionId"
-                          ],
-                          "properties": {
-                            "subscriptionId": {
-                              "type": "string",
-                              "minLength": 1
-                            }
-                          },
-                          "additionalProperties": false
+                          "properties": {},
+                          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
                         }
-                      },
-                      "additionalProperties": false
+                      }
                     }
                   ]
                 },
@@ -191,8 +181,7 @@
                   "type": "array",
                   "items": {}
                 }
-              },
-              "additionalProperties": false
+              }
             }
           },
           "allOf": [

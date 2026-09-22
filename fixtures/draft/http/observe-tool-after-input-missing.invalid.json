@@ -12,17 +12,19 @@
         "id": "sess_observe_123"
       },
       "tool": {
-        "callId": "call_observe_456",
         "name": "read_file",
         "kind": "file_read",
-        "output": {
-          "content": "example"
-        }
+        "origin": "native"
       },
       "outcome": "ok",
       "execution": {
         "status": "executed"
-      }
+      },
+      "call": {
+        "id": "call_observe_456"
+      },
+      "path": "example",
+      "items": []
     }
   }
 }

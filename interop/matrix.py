@@ -87,8 +87,8 @@ def receipt_matches(receipt, request):
     """Accept exact actual canonical wire only, optionally with routing metadata."""
     if not isinstance(receipt,dict) or not isinstance(request,dict):return False
     if 'accepted' in receipt and receipt['accepted'] is not True:return False
-    if receipt.get('id')!=request.get('id') or receipt.get('method')!=request.get('method'):return False
-    if 'eventId' in receipt and receipt['eventId']!=request.get('params',{}).get('event',{}).get('id'):return False
+    if not equal(receipt.get('id'),request.get('id')) or receipt.get('method')!=request.get('method'):return False
+    if 'eventId' in receipt and not equal(receipt['eventId'],request.get('params',{}).get('event',{}).get('id')):return False
     message=receipt if 'jsonrpc' in receipt else receipt.get('message')
     return (isinstance(message,dict) and message.get('jsonrpc')=='2.0'
             and equal(message,request))
@@ -126,7 +126,8 @@ def verify(scenarios, report, receipts, language, exit_code):
         passed = result.get('status') == 'passed' and 'actual' in result
         expected = scenario.get('expected', {'expectError': True})
         if scenario.get('expectError'):
-            passed = passed and (actual is None or equal(actual, {'rejected': True}))
+            # A missing/null output is not evidence of fail-closed rejection.
+            passed = passed and equal(actual, {'rejected': True})
         else:
             passed = passed and isinstance(actual, dict) and all(k in actual and equal(v, actual[k]) for k, v in expected.items())
             if isinstance(actual,dict) and any(k in actual and k not in expected for k in OPTIONAL_SEMANTIC_FIELDS):

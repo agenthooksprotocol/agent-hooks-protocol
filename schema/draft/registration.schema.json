@@ -100,7 +100,6 @@
               "minLength": 1
             }
           },
-          "additionalProperties": false,
           "oneOf": [
             {
               "required": [
@@ -168,8 +167,7 @@
                 "minLength": 1
               }
             }
-          },
-          "additionalProperties": false
+          }
         },
         {
           "type": "object",
@@ -195,8 +193,7 @@
               "type": "string",
               "minLength": 1
             }
-          },
-          "additionalProperties": false
+          }
         },
         {
           "type": "object",
@@ -222,8 +219,7 @@
               "type": "string",
               "minLength": 1
             }
-          },
-          "additionalProperties": false
+          }
         }
       ]
     },
@@ -291,30 +287,7 @@
           "default": false
         },
         "content": {
-          "type": "object",
-          "required": [
-            "default"
-          ],
-          "properties": {
-            "default": {
-              "enum": [
-                "body",
-                "metadata",
-                "omit"
-              ]
-            },
-            "categories": {
-              "type": "object",
-              "additionalProperties": {
-                "enum": [
-                  "body",
-                  "metadata",
-                  "omit"
-                ]
-              }
-            }
-          },
-          "additionalProperties": false
+          "$ref": "content-selection.schema.json"
         },
         "upload": {
           "$ref": "content-upload.schema.json"
@@ -339,8 +312,7 @@
                 "minLength": 1
               }
             }
-          },
-          "additionalProperties": false
+          }
         },
         "scope": {
           "enum": [
@@ -443,30 +415,7 @@
           "default": false
         },
         "content": {
-          "type": "object",
-          "required": [
-            "default"
-          ],
-          "properties": {
-            "default": {
-              "enum": [
-                "body",
-                "metadata",
-                "omit"
-              ]
-            },
-            "categories": {
-              "type": "object",
-              "additionalProperties": {
-                "enum": [
-                  "body",
-                  "metadata",
-                  "omit"
-                ]
-              }
-            }
-          },
-          "additionalProperties": false
+          "$ref": "content-selection.schema.json"
         },
         "upload": {
           "$ref": "content-upload.schema.json"
@@ -491,8 +440,7 @@
                 "minLength": 1
               }
             }
-          },
-          "additionalProperties": false
+          }
         },
         "scope": {
           "enum": [
@@ -653,8 +601,7 @@
           "type": "integer",
           "minimum": 1
         }
-      },
-      "additionalProperties": false
+      }
     }
   }
 }

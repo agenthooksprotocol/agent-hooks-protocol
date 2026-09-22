@@ -9,13 +9,21 @@
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
       "type": "tool.before",
       "time": "2026-08-24T08:51:14Z",
-      "session": {"id": "sess_123"},
+      "session": {
+        "id": "sess_123"
+      },
       "tool": {
-        "callId": "call_456",
         "name": "Bash",
         "kind": "shell",
-        "input": {"command": "git status"}
-      }
+        "input": {
+          "command": "git status"
+        },
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_456"
+      },
+      "path": "example"
     },
     "capabilities": {}
   }

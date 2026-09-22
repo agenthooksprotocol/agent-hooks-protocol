@@ -13,7 +13,7 @@ ROOT = HERE.parent
 INPUT = {"task": 1, "options": {"recursive": True, "limit": 20}, "keep": "yes"}
 CAPS = {"effects": ["deny", "allow", "ask", "modify", "message", "return"],
         "modify": {"input": {"replace": True, "merge": True}}}
-CANDIDATE = {"value": {"cached": 1}, "provenance": {"subscriptionId": "earlier"}}
+CANDIDATE = {"value": {"cached": 1}, "provenance": {"requestId": "earlier"}}
 
 
 def effect(kind, **fields):
@@ -213,11 +213,13 @@ def build():
         event.update(type="turn.finish.before", turn={"id": "turn-1"}, continuationCount=0, outcome="completed", items=[])
         if "expected" in row:
             del row["expected"]["input"]
-            instructions = [e["instruction"] for e in effects
-                            if e["type"] == "flow" and e["operation"] == "continue"]
+            continues = [e for e in effects
+                         if e["type"] == "flow" and e["operation"] == "continue"]
+            instructions = [e["instruction"] for e in continues if "instruction" in e]
+            row["expected"]["messages"] = [e["text"] for e in effects if e["type"] == "message"]
             row["expected"]["continuationInstructions"] = instructions
             # Stop suppresses continuation, but preserves accepted instructions.
-            row["expected"]["continuationRemaining"] = remaining - (1 if flow == "continue" and instructions else 0)
+            row["expected"]["continuationRemaining"] = remaining - (1 if flow == "continue" and continues else 0)
         return row
 
     finish("flow-continue-at-finish", [cont])
@@ -228,7 +230,7 @@ def build():
     finish("flow-stop-before-continue-still-wins", [stop, cont], flow="stop")
     finish("flow-exhausted-allowance-rejects-message", [msg, cont], remaining=0, error="application-invalid")
     finish("flow-unadvertised-stop-rejected", [cont, stop], operations=["continue"], error="capability-invalid")
-    finish("flow-continue-missing-instruction", [msg, effect("flow", operation="continue")], error="schema-invalid")
+    finish("flow-continue-missing-instruction", [msg, effect("flow", operation="continue")])
 
     now = effect("inject", target="context", operation="append", deliverAt="now", value={"text": "Context now"})
     later = effect("inject", target="context", operation="append", deliverAt="next_turn", value={"text": "Context later"})

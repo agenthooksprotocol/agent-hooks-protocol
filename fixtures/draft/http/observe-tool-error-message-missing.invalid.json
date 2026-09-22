@@ -12,19 +12,25 @@
         "id": "sess_observe_123"
       },
       "tool": {
-        "callId": "call_observe_789",
         "name": "read_file",
         "kind": "file_read",
         "input": {
           "path": "missing.txt"
         },
-        "error": {
-          "code": "ENOENT"
-        }
+        "origin": "native"
       },
       "outcome": "error",
       "execution": {
         "status": "executed"
+      },
+      "call": {
+        "id": "call_observe_789"
+      },
+      "path": "example",
+      "items": [],
+      "error": {
+        "code": "ENOENT",
+        "class": "tool"
       }
     }
   }

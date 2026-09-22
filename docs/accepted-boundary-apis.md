@@ -24,7 +24,11 @@ state uses source-scoped request identity, not one slot per session.
 
 Body-selected request/result descriptors refer to complete unchanged MCP
 2025-11-25 params/ElicitResult JSON. Metadata/omit views do not resolve or upload
-a body. Requested body gaps fail closed in these helpers. Form data is checked
+a body. These helpers reject missing requested bodies; the interception caller
+applies the subscription’s configured failure policy (`fail-open` or
+`fail-closed`), rather than treating helper rejection as a protocol-wide
+fail-closed decision. Intentional metadata/omit selection is not a missing-body
+failure and does not establish executable validated input. Form data is checked
 against requestedSchema; defaults remain annotations and are not injected.
 `validate_mode` / `validateElicitationMode` / `ValidateElicitationMode` enforce
 independent optional form/URL support. Only an explicit MCP-origin translation
@@ -50,7 +54,7 @@ to the effective input skips generation but still runs all after controls.
 
 The returned summary handles are internal runtime handles, not canonical wire
 descriptors. Preserve their logical item ID; upload exact bytes and produce
-subscription-scoped ContentItems before wire dispatch. Changed bytes require a
+credential-scope-authorized ContentItems before wire dispatch. Changed bytes require a
 new reference. The canonical compaction wire fixture demonstrates that binding.
 
 Observation-only callbacks have no effect or failure-policy authority and do not
@@ -121,3 +125,21 @@ content completeness, human approval, effective-destination reauthorization,
 model admission, task commits, managed-policy enforcement, production identity or
 delegation, replay, durability, or rollback. Independent HTTP upload-origin tests
 do not establish HTTPS client-certificate noninheritance.
+
+## Wire identity and upload confirmation
+
+Subscriptions remain harness-local configuration; no subscription identifier is
+sent in event parameters or upload headers. JSON-RPC IDs correlate pending
+requests, while upload authorization derives from independently configured
+credentials and receiver policy, never an event ID or descriptor reference.
+Unknown registration/configuration fields are ignored (and may produce warnings);
+recognized fields remain validated. Unknown effects and operation values still
+reject the entire response atomically.
+
+POST exact bytes with their length and SHA-256, without a caller-selected ref.
+The receiver returns HTTP **201 Created** with the canonical JSON content-reference
+`{ref, size, sha256}`. Validate the descriptor and verify size/hash before putting
+the returned ref into an event. A retry may allocate another immutable ref;
+reference-conflict probing and caller-reference idempotence are not part of the
+binding. Upload credentials never implicitly inherit event credentials, and
+upload confirmation is not event acknowledgement or proof of durable storage.

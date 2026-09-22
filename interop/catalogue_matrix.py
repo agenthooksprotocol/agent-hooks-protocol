@@ -48,7 +48,7 @@ def verify(scenarios,report,receipts,language,exit_code=0):
         for message,delivery in zip(scenario['expected']['sent'],scenario['expected']['deliveries']):
             params=message['params'];event=params['event']
             if delivery['accepted']:
-                expected.append({'kind':'observed','eventId':event['id'],'subscription':params['subscriptionId'],'event':event,'message':message})
+                expected.append({'kind':'observed','eventId':event['id'],'event':event,'message':message})
                 errors.extend(validator.errors(message))
             else:
                 expected.append({'kind':'rejected','eventId':event['id'],'message':message,'errorKind':delivery['errorKind']})

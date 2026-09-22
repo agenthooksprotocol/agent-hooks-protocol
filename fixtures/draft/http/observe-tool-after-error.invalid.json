@@ -12,19 +12,25 @@
         "id": "sess_observe_123"
       },
       "tool": {
-        "callId": "call_observe_456",
         "name": "read_file",
         "kind": "file_read",
         "input": {
           "path": "README.md"
         },
-        "error": {
-          "message": "Unexpected failure"
-        }
+        "origin": "native"
       },
       "outcome": "ok",
       "execution": {
         "status": "executed"
+      },
+      "call": {
+        "id": "call_observe_456"
+      },
+      "path": "example",
+      "items": [],
+      "error": {
+        "message": "Unexpected failure",
+        "class": "tool"
       }
     }
   }

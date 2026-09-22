@@ -25,7 +25,6 @@
         "action": "accept"
       },
       "parentEventId": "evt-user-elicitation-request"
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

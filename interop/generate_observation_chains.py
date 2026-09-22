@@ -32,7 +32,7 @@ def scenarios(base):
         remaining=subs[calls:]
         messages=[]
         for i,sub in enumerate(called):
-            request=deepcopy(original);request['params']['subscriptionId']=sub['id']
+            request=deepcopy(original)
             request['params']['event']['tool']['input']={'value':'settled' if i>0 and case!='fail-open' else 'original'}
             if sub['content']=='omit':request['params']['event']['items']=[]
             messages.append(request)
@@ -40,7 +40,7 @@ def scenarios(base):
         for sub in remaining:
             event=deepcopy(original['params']['event']);event['tool']['input']={'value':final}
             if sub['content']=='omit':event['items']=[]
-            observations.append({'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','subscriptionId':sub['id'],'event':event}})
+            observations.append({'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}})
         rows.append({'id':ident,'chain':{'subscriptions':subs,'interrupt':case=='interrupt','holdObservers':case=='interrupt'},'requests':{'a':original},'responses':{'a':responses[-1]},'responseSequences':{'a':responses},'steps':[],
           'expected':{'called':[s['id'] for s in called],'failures':failures,'observations':[s['id'] for s in remaining],'input':{'value':final}},'chainProof':{'requests':messages,'observations':observations}})
     return rows

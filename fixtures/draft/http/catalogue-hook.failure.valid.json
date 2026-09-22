@@ -9,13 +9,11 @@
       "time": "2026-09-15T12:00:00Z",
       "type": "hook.failure",
       "failure": {
-        "subscriptionId": "hook1",
         "reason": "timeout",
         "backendId": "example",
         "policy": "fail-open"
       },
       "parentEventId": "example"
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

@@ -96,6 +96,12 @@ without writing SDK artifacts. See [boundary APIs and runtime scope](../docs/acc
 `python3 tools/generate_sdk.py --all` regenerates TypeScript plus the sibling
 Python, Go and Rust codecs, canonical schema bundles and source locks. Use
 `--all --check` to compare every output without modifying SDK artifacts.
+Go output is normalized with `gofmt`; Rust output uses `rustfmt +1.88.0`
+(the same toolchain as CI). Install these tools before generating or checking.
+CI uses `--output-dir generated` to stage the same codecs, canonical bundles,
+and content-derived locks per language, then installs them at the local-script
+paths. Source commit provenance remains in the synchronization PR, not in the
+reproducible content lock.
 See the [draft specification](../spec/draft/index.md) for effect, discovery,
 content and event shapes, and the boundary API documentation for runtime limits.
 

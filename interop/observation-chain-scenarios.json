@@ -221,8 +221,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-deny:a"
+              }
             }
           }
         ],
@@ -232,7 +231,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny:b",
               "event": {
                 "id": "observation-chain-deny",
                 "source": "urn:ahp:interop",
@@ -262,7 +260,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny:c",
               "event": {
                 "id": "observation-chain-deny",
                 "source": "urn:ahp:interop",
@@ -299,7 +296,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny:audit",
               "event": {
                 "id": "observation-chain-deny",
                 "source": "urn:ahp:interop",
@@ -556,8 +552,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-stop:a"
+              }
             }
           }
         ],
@@ -567,7 +562,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-stop:b",
               "event": {
                 "id": "observation-chain-stop",
                 "source": "urn:ahp:interop",
@@ -597,7 +591,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-stop:c",
               "event": {
                 "id": "observation-chain-stop",
                 "source": "urn:ahp:interop",
@@ -634,7 +627,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-stop:audit",
               "event": {
                 "id": "observation-chain-stop",
                 "source": "urn:ahp:interop",
@@ -899,8 +891,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-deny-stop:a"
+              }
             }
           }
         ],
@@ -910,7 +901,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny-stop:b",
               "event": {
                 "id": "observation-chain-deny-stop",
                 "source": "urn:ahp:interop",
@@ -940,7 +930,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny-stop:c",
               "event": {
                 "id": "observation-chain-deny-stop",
                 "source": "urn:ahp:interop",
@@ -977,7 +966,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny-stop:audit",
               "event": {
                 "id": "observation-chain-deny-stop",
                 "source": "urn:ahp:interop",
@@ -1224,8 +1212,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-deny-no-explicit:a"
+              }
             }
           }
         ],
@@ -1235,7 +1222,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny-no-explicit:b",
               "event": {
                 "id": "observation-chain-deny-no-explicit",
                 "source": "urn:ahp:interop",
@@ -1265,7 +1251,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-deny-no-explicit:c",
               "event": {
                 "id": "observation-chain-deny-no-explicit",
                 "source": "urn:ahp:interop",
@@ -1537,8 +1522,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-fail-open:a"
+              }
             }
           },
           {
@@ -1591,8 +1575,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-fail-open:b"
+              }
             }
           }
         ],
@@ -1602,7 +1585,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-fail-open:c",
               "event": {
                 "id": "observation-chain-fail-open",
                 "source": "urn:ahp:interop",
@@ -1639,7 +1621,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-fail-open:audit",
               "event": {
                 "id": "observation-chain-fail-open",
                 "source": "urn:ahp:interop",
@@ -1911,8 +1892,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-fail-closed:a"
+              }
             }
           }
         ],
@@ -1922,7 +1902,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-fail-closed:b",
               "event": {
                 "id": "observation-chain-fail-closed",
                 "source": "urn:ahp:interop",
@@ -1952,7 +1931,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-fail-closed:c",
               "event": {
                 "id": "observation-chain-fail-closed",
                 "source": "urn:ahp:interop",
@@ -1989,7 +1967,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-fail-closed:audit",
               "event": {
                 "id": "observation-chain-fail-closed",
                 "source": "urn:ahp:interop",
@@ -2244,8 +2221,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-interrupt:a"
+              }
             }
           }
         ],
@@ -2255,7 +2231,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-interrupt:b",
               "event": {
                 "id": "observation-chain-interrupt",
                 "source": "urn:ahp:interop",
@@ -2285,7 +2260,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-interrupt:c",
               "event": {
                 "id": "observation-chain-interrupt",
                 "source": "urn:ahp:interop",
@@ -2322,7 +2296,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-interrupt:audit",
               "event": {
                 "id": "observation-chain-interrupt",
                 "source": "urn:ahp:interop",
@@ -2589,8 +2562,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-continue:a"
+              }
             }
           },
           {
@@ -2643,8 +2615,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-continue:b"
+              }
             }
           },
           {
@@ -2704,8 +2675,7 @@
               "state": {
                 "permission": "none",
                 "candidate": null
-              },
-              "subscriptionId": "observation-chain-continue:c"
+              }
             }
           }
         ],
@@ -2715,7 +2685,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-continue:audit",
               "event": {
                 "id": "observation-chain-continue",
                 "source": "urn:ahp:interop",
@@ -2894,7 +2863,6 @@
             "method": "hooks/observe",
             "params": {
               "protocolVersion": "draft",
-              "subscriptionId": "observation-chain-native:audit",
               "event": {
                 "id": "observation-chain-native",
                 "source": "urn:ahp:interop",

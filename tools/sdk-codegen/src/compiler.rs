@@ -200,15 +200,18 @@ impl Compiler<'_> {
                             )?);
                         }
                     } else {
-                        variants.push(self.lower_union(
+                        // Reuse normal lowering to retain and validate selector metadata.
+                        let mut composition = serde_json::Map::new();
+                        composition.insert(keyword.to_owned(), Value::Array(branches.clone()));
+                        if keyword == "oneOf"
+                            && let Some(tag) = object.get("x-sdk-discriminator")
+                        {
+                            composition.insert("x-sdk-discriminator".to_owned(), tag.clone());
+                        }
+                        variants.push(self.lower(
                             document,
                             pointer,
-                            branches,
-                            if keyword == "oneOf" {
-                                UnionMode::OneOf
-                            } else {
-                                UnionMode::AnyOf
-                            },
+                            &Value::Object(composition),
                         )?);
                     }
                     return Ok(Shape::Intersection { variants });
@@ -904,6 +907,30 @@ mod tests {
             panic!("expected union");
         };
         assert_eq!(discriminator.as_deref(), Some("transport"));
+        // Sibling constraints must not bypass the explicit-selector path.
+        for sibling in [
+            serde_json::json!({"type": "object"}),
+            serde_json::json!({"properties": {}}),
+        ] {
+            let mut with_sibling = schema.clone();
+            with_sibling
+                .as_object_mut()
+                .unwrap()
+                .extend(sibling.as_object().unwrap().clone());
+            let Shape::Intersection { variants } =
+                compiler.lower("schema.json", "", &with_sibling).unwrap()
+            else {
+                panic!("expected intersection");
+            };
+            assert!(
+                matches!(&variants[1], Shape::Union { discriminator, .. } if discriminator.as_deref() == Some("transport"))
+            );
+            with_sibling["x-sdk-discriminator"] = serde_json::json!(42);
+            assert!(compiler.lower("schema.json", "", &with_sibling).is_err());
+            with_sibling["x-sdk-discriminator"] = serde_json::json!("transport");
+            with_sibling["oneOf"][1]["required"] = serde_json::json!([]);
+            assert!(compiler.lower("schema.json", "", &with_sibling).is_err());
+        }
         let mut missing_tag = schema.clone();
         missing_tag["oneOf"][1]["required"] = serde_json::json!([]);
         assert!(compiler.lower("schema.json", "", &missing_tag).is_err());

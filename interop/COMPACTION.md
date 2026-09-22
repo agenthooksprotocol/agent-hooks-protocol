@@ -131,8 +131,8 @@ Each sender runs its public SDK compaction pipeline. Each hook callback:
 
 1. Constructs complete canonical content items from the *current* runtime state.
 2. Uploads UTF-8 instructions, source-context items, or summary bytes over the
-   specified HTTP raw-octet upload binding, scoped to the receiving subscription.
-   Upload and event credentials are independent. A confirmed 204 precedes the
+   specified HTTP raw-octet upload binding, scoped to the receiving credential scope.
+   Upload and event credentials are independent. A confirmed 201 with a receiver-assigned JSON content-reference precedes the
    event, including when the event transport is stdio.
 3. Sends a canonical `hooks/intercept` request through the sender's native
    HTTP/subprocess stack to the selected receiver SDK.
@@ -141,7 +141,7 @@ Each sender runs its public SDK compaction pipeline. Each hook callback:
    content descriptors and referenced bytes, not merely expected test values.
 
 Receivers apply their SDK's full canonical request/response validators, resolve
-only preuploaded subscription-scoped bodies, and verify their size and SHA-256.
+only preuploaded credential-scoped bodies, and verify their size and SHA-256.
 Append callbacks derive replies from the received body bytes. Fixed compound
 callbacks exercise atomic failures. Receivers do not know expected outcomes.
 They record exact canonical requests/responses and resolved body bytes; the oracle
@@ -150,11 +150,11 @@ compares those receipts with the sender trace and settled downstream content.
 The stdio fixture starts a native receiver subprocess for each subscription call.
 Its stdin/stdout contain only canonical JSON-RPC. A native receiver HTTP process
 accepts the independently authenticated uploads; the stdio process reads that
-subscription-scoped immutable store. Filesystem sharing is local receiver state,
+credential-scoped immutable store. Filesystem sharing is local receiver state,
 not a shared semantic evaluator or an upload bypass.
 
 Each pair executes 8 lifecycle cases, 27 accepted canonical hook exchanges,
-41 confirmed subscription-scoped content uploads, and 4 rejected requests.
+41 confirmed credential-scoped content uploads, and 4 rejected requests.
 Across 32 pairs this is 256 lifecycle executions, 864 accepted hook exchanges,
 1,312 uploaded bodies, and 128 receiver rejections.
 

@@ -21,7 +21,7 @@ coverage and limits and MUST NOT interpret omitted coverage as universal support
 The manifest requires `events`, `gaps`, `transports`, `authentication`,
 `toolPaths`, `contentCategories`, `limits`, `managedPolicy`, and
 `correlationIdentityFields`. Unknown limits remain absent and MUST be explained
-in `gaps`; absence never means unlimited. The closed `limits` object names
+in `gaps`; absence never means unlimited. The `limits` object recognizes
 `maxUploadBytes`, `maxContinuations`, `minTimeoutMs`, and `maxTimeoutMs`.
 `managedPolicy` has `scopes` (`user`, `project`, `managed`) and `disableable`;
 managed scope requires false. Correlation fields are string field paths, not
@@ -35,11 +35,25 @@ operations MUST fail explicitly; they MUST NOT be replaced by another operation.
 The existing draft encoding uses `modify.<target>.replace` and `.merge` booleans;
 at least one MUST be true for an advertised target. `modify`, `flow`, and `inject`
 option blocks require their matching effect and vice versa. Empty target sets,
-empty injection delivery choices, and unknown operation fields are invalid.
+empty injection delivery choices, and unsupported operation values are invalid.
+Unknown object fields are ignored; they do not advertise or authorize new effects
+or operations. Unsupported effect types and operation values in responses MUST
+reject the entire response atomically, without applying any member.
 The receiver MUST enforce shallow object merge only on object values. The
 manifest is not proof that an effect was actually applied.
 
 ## Registration
+
+Subscriptions and their identifiers remain harness-local configuration. JSON-RPC
+IDs correlate pending requests; neither those IDs nor caller-supplied metadata
+authorize uploads. Upload authorization derives from independently configured
+credentials and receiver policy.
+
+Receivers MUST ignore unknown registration and configuration fields, including
+fields in capability advertisements and control-state objects. They MUST validate
+recognized fields and MAY warn about ignored fields. Ignoring an unfamiliar field
+does not activate its semantics or relax validation of recognized fields, effect
+types, or operation values.
 
 `hooks[].transport` configures event delivery; `hooks[].authentication` configures
 that endpoint only. Subscriptions select `intercept` or `observe`. Interception
@@ -101,9 +115,13 @@ Credential rotation and acquisition MUST NOT create hook lifecycle events.
 
 ## Extension policy
 
-Existing protocol envelopes retain their extension behavior. Authentication
-objects and operation-control objects are closed to catch misspellings and secret
-injection; this does not close native payloads, tool arguments, or task state.
+Existing protocol envelopes retain their extension behavior. Authentication,
+capability, and control configuration objects MUST ignore unknown fields and
+validate recognized fields; implementations MAY warn about ignored fields.
+Unknown fields never authorize operations or credentials. Unknown effect types
+and operation values are unsupported semantics, not ignorable fields: a response
+containing them MUST be rejected atomically. Native payloads, tool arguments, and
+task state retain their own extension behavior.
 
 ## Event-semantic capability bounds
 

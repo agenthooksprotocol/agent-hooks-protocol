@@ -16,17 +16,17 @@ stdio. `maxBytes` is a transfer limit, not permission to truncate content.
 `auth`, when configured, is `{type: "bearer", tokenEnv: "ENV_NAME"}`. The sender
 MUST resolve this token independently from event authentication and send it as
 `Authorization: Bearer <token>`. Absence of `upload.auth` MUST NOT inherit event
-credentials. The receiver MUST authorize access to the named subscription; merely
-accepting a valid token is insufficient. Anonymous uploads require explicit
-receiver authorization. Secrets MUST NOT appear in descriptor metadata.
+credentials. The receiver MUST derive the authorization scope from the authenticated
+credentials and authorize uploads within that scope; merely accepting a valid
+token is insufficient. Subscriptions are harness-local configuration, not wire
+identity or authorization claims. Anonymous uploads require explicit receiver
+authorization and a receiver-defined scope. Secrets MUST NOT appear in descriptor metadata.
 
 ## Request framing
 
 * Method: `POST`.
 * `Content-Type: application/octet-stream`.
 * `Content-Length`: exact body length in octets, including zero.
-* `AHP-Subscription`: unpadded base64url of the UTF-8 subscription ID.
-* `AHP-Content-Ref`: unpadded base64url of the UTF-8 producer-assigned reference.
 * `AHP-Content-SHA256`: lowercase 64-character SHA-256 hex of the exact body.
 
 The body MUST be raw arbitrary octets. It MUST NOT be JSON-wrapped, base64-encoded,
@@ -36,26 +36,36 @@ clients decode it once before counting, hashing, and sending bytes.
 
 ## Confirmation and errors
 
-Only `204 No Content`, with no receipt body, confirms synchronous availability of
-those bytes to that subscription. `202` is not confirmation. The receiver uses:
+The sender supplies neither a content reference nor subscription identity. The
+receiver allocates an opaque immutable reference after validating and authorizing
+the bytes. Only `201 Created` with `Content-Type: application/json` and a canonical
+[content-reference](../../schema/draft/content-reference.schema.json) JSON body
+`{"ref": "receiver-allocated-reference", "size": 3, "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}`
+confirms synchronous availability within the authorized scope. Before publishing
+an event, the sender MUST validate this descriptor and verify that `size` and
+`sha256` match the exact bytes sent. It MUST use the returned `ref`, not construct
+one. A missing, malformed, or mismatched descriptor fails the upload. `202` and
+`204` are not confirmation. The receiver uses:
 
 | Status | Meaning |
 | --- | --- |
 | 400 | Missing/malformed framing or a length/hash mismatch |
 | 401 | Missing or invalid credentials |
-| 403 | Principal is not authorized for the subscription |
+| 403 | Principal is not authorized for the upload scope |
 | 404 | Unknown upload route |
-| 409 | Existing subscription-scoped reference has different bytes |
 | 413 | Receiver size limit exceeded |
 
 Other statuses fail the upload. An event receiver MAY return 404 when referenced
-content is unavailable. No response receipt, renewal, expiry negotiation, or
-protocol-level retrieval route is introduced.
+content is unavailable. The 201 descriptor is an upload confirmation, not an event
+acknowledgement. No renewal, expiry negotiation, or protocol-level retrieval route
+is introduced.
 
 The receiver MUST retain confirmed bytes for event processing. References are
-immutable and scoped to a subscription. A retry MAY reuse the reference only for
-identical bytes and metadata. Changed bytes require a new reference while keeping
-the same logical item ID. A receiver MUST reject conflicting reuse.
+immutable and access is controlled by credential-derived scope. A retry MAY
+allocate another reference, including after a lost response. Senders MUST NOT
+probe caller-selected references or rely on reference-based idempotence. A
+receiver MUST NOT change the bytes bound to an allocated reference. Changed bytes
+require a new upload and reference while keeping the same logical item ID.
 
 ## Upload before publication
 
@@ -69,7 +79,7 @@ effort and a failed upload MUST NOT reopen settlement.
 
 A normalized item's `body` is `{ref, size, sha256}`. `size` and hash describe exact
 uploaded bytes. A receiver MUST resolve and verify this descriptor against confirmed
-`(subscription, ref, size, sha256)` storage. Metadata and omitted views have no body.
+`(authorized scope, ref, size, sha256)` storage. Metadata and omitted views have no body.
 Body-selection gaps have a `gap` instead of `body`. Optional descriptor `size` and
 `sha256` metadata must agree with body metadata when both are present; JSON Schema
 cannot enforce cross-field equality.

@@ -47,7 +47,6 @@
         "id": "call_observe_456"
       },
       "path": "example"
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

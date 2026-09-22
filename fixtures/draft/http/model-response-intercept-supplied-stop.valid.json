@@ -19,8 +19,7 @@
       },
       "execution": {
         "status": "skipped",
-        "reason": "supplied_result",
-        "subscriptionId": "cache"
+        "reason": "supplied_result"
       },
       "items": [
         {

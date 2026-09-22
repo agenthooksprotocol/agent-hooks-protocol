@@ -52,7 +52,8 @@ call IDs. Correlation, batch membership, and one-completion guarantees are runti
 duties, not conclusions derived from validating individual messages.
 
 Execution is either `{status: "executed"}`, or skipped with a reason.
-`reason: "supplied_result"` requires `subscriptionId`; other reasons are `policy`,
+`reason: "supplied_result"` identifies a supplied result without exposing the
+harness-local subscription; other reasons are `policy`,
 `cancelled`, `timeout`, and `other` (optional `detail`). This is the only supplied
 result spelling. Tool outcomes are `ok`, `error`, `denied`, `cancelled`, `timeout`.
 Denial requires skipped/policy. Successful and failed supplied results retain

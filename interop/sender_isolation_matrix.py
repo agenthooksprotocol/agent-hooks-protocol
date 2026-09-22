@@ -10,6 +10,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
+import json
+import re
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
@@ -27,7 +30,14 @@ def capture_upload():
         def do_POST(self):
             self.connection.settimeout(5)
             try:
-                length=int(self.headers.get('Content-Length','-1'))
+                required=('Content-Length','Content-Type','AHP-Content-SHA256')
+                if any(len(self.headers.get_all(name,[]))!=1 for name in required):
+                    raise ValueError('missing/duplicate framing')
+                if self.headers.get_all('Content-Encoding') or self.headers.get_all('Transfer-Encoding'):
+                    raise ValueError('unsupported encoding')
+                if not re.fullmatch(r'0|[1-9][0-9]*',self.headers['Content-Length']):
+                    raise ValueError('noncanonical length')
+                length=int(self.headers['Content-Length'])
                 if not 0<=length<=1048576:raise ValueError('size')
                 body=self.rfile.read(length)
                 if len(body)!=length:raise ValueError('framing')
@@ -40,9 +50,21 @@ def capture_upload():
                           if name.lower() in ('authorization','proxy-authorization','cookie')),
                        'transferEncoding':self.headers.get('Transfer-Encoding')}
                 with lock:captures.append(entry)
-                status=204
-            except (ValueError,OSError):status=400
-            self.send_response(status);self.send_header('Content-Length','0');self.end_headers()
+                if (entry['subscription'] is not None or entry['ref'] is not None
+                        or entry['sensitiveHeaders'] or entry['transferEncoding'] is not None
+                        or entry['contentType'] != 'application/octet-stream'
+                        or entry['declaredHash'] != entry['sha256']):
+                    raise ValueError('invalid anonymous raw upload')
+                descriptor={'ref':'urn:uuid:'+str(uuid.uuid4()),
+                            'size':entry['size'],'sha256':entry['sha256']}
+                entry['descriptor']=descriptor
+                payload=json.dumps(descriptor,separators=(',',':')).encode()
+                status=201
+            except (ValueError,OSError):status=400;payload=b''
+            self.send_response(status)
+            if status==201:self.send_header('Content-Type','application/json')
+            self.send_header('Content-Length',str(len(payload)));self.end_headers()
+            self.wfile.write(payload)
     server=ThreadingHTTPServer(('127.0.0.1',0),Capture)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:yield 'http://127.0.0.1:'+str(server.server_port)+'/capture',captures
@@ -51,13 +73,21 @@ def capture_upload():
         if thread.is_alive():raise RuntimeError('capture cleanup timeout')
 
 
-def capture_errors(captures,body,subscription='body',ref='sender-isolation'):
-    def encoded(s):return base64.urlsafe_b64encode(s.encode()).decode().rstrip('=')
+def capture_errors(captures,body):
     if len(captures)!=1:return ['exactly one independent upload capture required']
-    expected={'path':'/capture','size':len(body),'sha256':hashlib.sha256(body).hexdigest(),
-              'subscription':encoded(subscription),'ref':encoded(ref),'declaredHash':hashlib.sha256(body).hexdigest(),
-              'contentType':'application/octet-stream','sensitiveHeaders':[],'transferEncoding':None}
-    return [] if captures[0]==expected else ['independent capture contains credentials or incorrect raw upload']
+    entry=captures[0];descriptor=entry.get('descriptor',{})
+    digest=hashlib.sha256(body).hexdigest()
+    expected={'path':'/capture','size':len(body),'sha256':digest,
+              'subscription':None,'ref':None,'declaredHash':digest,
+              'contentType':'application/octet-stream','sensitiveHeaders':[],'transferEncoding':None,
+              'descriptor':descriptor}
+    errors=[]
+    if entry!=expected:errors.append('independent capture contains credentials or incorrect raw upload')
+    ref=descriptor.get('ref') if isinstance(descriptor,dict) else None
+    if (not isinstance(ref,str) or not ref.startswith('urn:uuid:')
+            or descriptor!={'ref':ref,'size':len(body),'sha256':digest}):
+        errors.append('missing or incorrect receiver-assigned canonical descriptor')
+    return errors
 
 
 def run(language,transport,mode,adapters,issuer,timeout):
@@ -66,6 +96,8 @@ def run(language,transport,mode,adapters,issuer,timeout):
     # The separate upload origin cannot supply the event receiver's content store.
     # This probe tests credential isolation, not cross-origin reference resolution.
     request=scenario['requests']['a'];request['params']['event'].pop('items',None)
+    request['params'].pop('subscriptionId',None)
+    scenario['expected']['uploadStatuses']=[201]
     step=scenario['steps'][0]
     step.update(ref='sender-isolation',bodyBase64=base64.b64encode(body).decode(),size=len(body),sha256=hashlib.sha256(body).hexdigest())
     with tempfile.TemporaryDirectory(prefix='ahp-sender-isolation-') as directory, capture_upload() as (endpoint,captures):
@@ -74,7 +106,7 @@ def run(language,transport,mode,adapters,issuer,timeout):
             errors=capture_errors(captures,body)
             if not isinstance(report,dict) or not isinstance(report.get('results'),list):return errors+['missing client result']
             for result in report['results']:
-                if result.get('actual',{}).get('uploadStatuses')!=[204]:errors.append('anonymous upload not actually confirmed')
+                if result.get('actual',{}).get('uploadStatuses')!=[201]:errors.append('anonymous upload not actually confirmed')
             # Validate actual event execution/capture with the original lifecycle
             # checker. Upload evidence is independently checked above, not injected
             # or synthesized into the SDK receiver's receipt log.

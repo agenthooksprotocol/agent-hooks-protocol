@@ -29,8 +29,7 @@ and transmits real `hooks/intercept` envelopes. The receiver itself validates th
 canonical envelopes, complete MCP JSON bodies, metadata equality, ownership,
 size, SHA-256, immutable references, and request/result pairing. Exact receiver
 receipts include the received envelope, selected body bytes and decoded result.
-The oracle holds expected outcomes; `/receipts` reads receiver evidence. Uploads are scoped to the isolated authenticated
-subscription. Wrong tokens and wrong subscriptions are rejected.
+The oracle holds expected outcomes; `/receipts` reads receiver evidence. Uploads are scoped to the isolated authenticated credential scope. Wrong or unauthorized credentials are rejected; subscription labels remain local test configuration. Receivers return 201 JSON content-reference objects with assigned refs; callers send neither ref nor subscription headers.
 
 The matrix covers explicit/default form mode, form accept/decline/cancel, URL
 accept/decline/cancel, URL ID/address preservation, missing mode-specific fields,

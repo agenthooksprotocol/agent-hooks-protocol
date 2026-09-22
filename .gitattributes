@@ -1,2 +1,2 @@
 # Preserve the exact bytes of hash-pinned upstream source files.
-upstream/mcp/** whitespace=-blank-at-eof
+upstream/mcp/** -text whitespace=-blank-at-eof

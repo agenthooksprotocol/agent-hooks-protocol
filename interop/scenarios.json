@@ -2857,7 +2857,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -2949,7 +2949,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3048,7 +3048,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3142,7 +3142,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3241,7 +3241,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3342,7 +3342,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3448,7 +3448,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -3641,7 +3641,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4087,7 +4087,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4178,7 +4178,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4265,7 +4265,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4354,7 +4354,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4441,7 +4441,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -4527,7 +4527,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -5100,7 +5100,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -5193,7 +5193,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -5286,7 +5286,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -5379,7 +5379,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -5470,7 +5470,7 @@
                 "cached": 1
               },
               "provenance": {
-                "subscriptionId": "earlier"
+                "requestId": "earlier"
               }
             }
           }
@@ -8401,12 +8401,18 @@
       },
       "tags": [
         "flow",
-        "finish-boundary",
-        "negative",
-        "schema-invalid",
-        "atomic-rejection"
+        "finish-boundary"
       ],
-      "expectError": true
+      "expected": {
+        "decision": "allow",
+        "executed": false,
+        "messages": [
+          "Visible only after acceptance"
+        ],
+        "flow": "continue",
+        "continuationInstructions": [],
+        "continuationRemaining": 1
+      }
     },
     {
       "id": "inject-now",

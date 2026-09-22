@@ -1,5 +1,6 @@
 """Verify captured serial-chain wire messages, not helper-returned summaries."""
 from collections import Counter
+import json
 from observation_wire import ObservationValidator
 
 
@@ -13,19 +14,20 @@ def verify_chains(scenarios, report, receipts, language, exit_code):
     validator=ObservationValidator()
     for scenario in scenarios:
         ident=scenario['requests']['a']['id']
-        entries=[e for e in receipts['entries'] if e.get('id',e.get('eventId'))==ident]
+        event_id=scenario['requests']['a']['params']['event']['id']
+        entries=[e for e in receipts['entries'] if e.get('id',e.get('eventId')) in (ident,event_id)]
         if by_id.get(scenario['id'])!=scenario['expected']:errors.append(scenario['id']+': chain local result mismatch')
         if any(e.get('kind') not in ('received','replied','cancelled','chain-settled','observed','observer-blocked') for e in entries):errors.append('unknown chain receipt')
         requests=[e.get('message') for e in entries if e['kind']=='received']
         if requests!=scenario['chainProof']['requests']:errors.append('chain intercept selection/effective request mismatch')
         notes=[e.get('message') for e in entries if e['kind']=='observed']
         expected=scenario['chainProof']['observations']
-        def key(note):return note.get('params',{}).get('subscriptionId','') if isinstance(note,dict) else ''
+        def key(note):return json.dumps(note, sort_keys=True)
         if sorted(notes,key=key)!=sorted(expected,key=key):errors.append('chain automatic downgrade/permission/effective view mismatch')
         for receipt in entries:
             if receipt['kind']=='observed':
                 params=receipt.get('message',{}).get('params',{})
-                if receipt.get('event')!=params.get('event') or receipt.get('subscription')!=params.get('subscriptionId') or receipt.get('eventId')!=params.get('event',{}).get('id'):errors.append('chain receipt differs from exact wire notification')
+                if receipt.get('event')!=params.get('event') or receipt.get('eventId')!=params.get('event',{}).get('id'):errors.append('chain receipt differs from exact wire notification')
             if receipt['kind'] in ('cancelled','chain-settled') and receipt.get('scenario')!=scenario['id']:errors.append('chain milestone scenario mismatch')
         for note in notes:errors.extend(validator.errors(note))
         for request in requests:errors.extend(validator.schema_errors(request,'intercept-request'))

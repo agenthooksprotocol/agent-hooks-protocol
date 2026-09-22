@@ -35,8 +35,8 @@ Each row is independent. No prior row changes another row's state.
    optional state object is omitted, initialize permission to `none` and candidate
    to null; do not reject the request. When state is present, both permission and
    candidate are required by the canonical schema. A non-null candidate is bound
-   to this incoming input. `candidate.provenance.subscriptionId`
-   identifies its earlier supplier. JSON `null` as a *candidate value* is distinct
+   to this incoming input. The fixture's optional `candidate.provenance.requestId`
+   identifies the earlier JSON-RPC request that supplied it. JSON `null` as a *candidate value* is distinct
    from a null *candidate*.
 2. This synthetic host's managed policy allows the operation and its ordinary
    native policy does not require a prompt. Consequently `permission: "none"`
@@ -177,6 +177,13 @@ Core and authentication receiver receipts must include the exact actual canonica
   [task/workspace lineage](../spec/draft/task-workspace-lineage.md).
 
 From the workspace root, with SDK dependencies and executables built:
+
+Use the Python SDK virtual environment below, not a bare system Python. Its
+installed SDK dependencies include `jsonschema[format]>=4.23,<5`, required by the
+authentication matrix's canonical capabilities validation. If needed, install
+these dependencies with `python-sdk/.venv/bin/python -m pip install -e ./python-sdk`.
+The authentication verifier regressions alone can be run with
+`python-sdk/.venv/bin/python agent-hooks-protocol/interop/test_auth_matrix.py --unit-tests`.
 
 ```sh
 PY=python-sdk/.venv/bin/python

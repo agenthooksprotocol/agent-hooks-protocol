@@ -54,7 +54,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -92,7 +91,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -130,7 +128,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -168,7 +165,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -206,7 +202,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -244,7 +239,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -282,7 +276,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -320,7 +313,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -358,7 +350,6 @@
               "type": "boolean"
             }
           },
-          "additionalProperties": false,
           "anyOf": [
             {
               "properties": {
@@ -383,7 +374,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "minProperties": 1
     },
     "flow": {
@@ -416,7 +406,28 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "operations": {
+                "contains": {
+                  "const": "continue"
+                }
+              }
+            },
+            "required": [
+              "operations"
+            ]
+          },
+          "then": {
+            "required": [
+              "remainingContinuations",
+              "continuationCount"
+            ]
+          }
+        }
+      ]
     },
     "inject": {
       "type": "object",
@@ -445,11 +456,9 @@
               },
               "minItems": 1
             }
-          },
-          "additionalProperties": false
+          }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "elicitation": {
       "type": "object",
@@ -461,7 +470,6 @@
           "type": "object"
         }
       },
-      "additionalProperties": false,
       "description": "Independent opt-in mode support. Absent/empty means no AHP elicitation mode. Only an MCP-origin empty capability is translated to form support."
     }
   },

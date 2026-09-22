@@ -16,6 +16,45 @@ import check_conformance as checker
 import freeze_snapshot
 
 
+class DatetimeValidationTests(unittest.TestCase):
+    def test_accepts_rfc3339_leap_seconds_and_offset_equivalents(self):
+        for value in (
+            "1990-12-31T23:59:60Z",
+            "1990-12-31T15:59:60-08:00",
+            "2017-01-01T00:59:60+01:00",
+            "2016-12-31t23:59:60.123456789z",
+            "2016-12-31T23:59:60-00:00",
+            # Validate potential placement rather than an historical event list.
+            "2030-04-30T23:59:60Z",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(checker.valid_datetime(value))
+
+    def test_rejects_invalid_dates_offsets_and_leap_second_positions(self):
+        for value in (
+            "2016-12-31T23:59:61Z",
+            "2016-12-31T22:59:60Z",
+            "2016-12-30T23:59:60Z",
+            "2016-12-31T23:58:60Z",
+            "2017-01-01T00:59:60Z",
+            "2016-02-30T23:59:60Z",
+            "2016-12-31T24:00:00Z",
+            "2016-12-31T23:59:60+00:60",
+            "2016-12-31T23:59:60+24:00",
+            "2016-12-31 23:59:60Z",
+            "2016-12-31T23:59:60",
+            "0001-01-01T00:59:60+01:00",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(checker.valid_datetime(value))
+
+    def test_preserves_ordinary_timestamp_validation(self):
+        for value in ("2024-02-29T12:34:56Z", "2024-01-01t00:00:00.5+05:30"):
+            with self.subTest(value=value):
+                self.assertTrue(checker.valid_datetime(value))
+        self.assertFalse(checker.valid_datetime("2023-02-29T12:34:56Z"))
+
+
 class SnapshotCheckerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()

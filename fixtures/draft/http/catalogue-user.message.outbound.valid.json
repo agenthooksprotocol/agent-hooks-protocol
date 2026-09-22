@@ -12,7 +12,6 @@
         "channel": "example",
         "payload": []
       }
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

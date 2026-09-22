@@ -22,8 +22,7 @@
           "type": "object",
           "required": [
             "protocolVersion",
-            "event",
-            "subscriptionId"
+            "event"
           ],
           "properties": {
             "protocolVersion": {
@@ -128,10 +127,6 @@
                   "$ref": "catalogue-event.schema.json#/$defs/hook.failure"
                 }
               ]
-            },
-            "subscriptionId": {
-              "type": "string",
-              "minLength": 1
             }
           }
         }

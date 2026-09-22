@@ -25,7 +25,6 @@
         "role": "tool"
       },
       "backgrounded": false
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

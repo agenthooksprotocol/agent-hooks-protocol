@@ -362,16 +362,11 @@
           "type": "object",
           "required": [
             "backendId",
-            "subscriptionId",
             "reason",
             "policy"
           ],
           "properties": {
             "backendId": {
-              "type": "string",
-              "minLength": 1
-            },
-            "subscriptionId": {
               "type": "string",
               "minLength": 1
             },

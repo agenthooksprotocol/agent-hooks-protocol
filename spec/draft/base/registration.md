@@ -26,7 +26,8 @@ A portable registration document is a JSON object with an ordered `hooks` array.
           "events": ["tool.before"],
           "mode": "intercept",
           "timeoutMs": 750,
-          "failurePolicy": "fail-closed"
+          "failurePolicy": "fail-closed",
+          "content": {"default": "metadata"}
         }
       ]
     },
@@ -43,7 +44,8 @@ A portable registration document is a JSON object with an ordered `hooks` array.
           "events": ["tool.before"],
           "mode": "intercept",
           "timeoutMs": 500,
-          "failurePolicy": "fail-open"
+          "failurePolicy": "fail-open",
+          "content": {"default": "metadata"}
         }
       ]
     }
@@ -106,6 +108,11 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 <td>Required `fail-open` or `fail-closed`.</td>
 </tr>
 <tr>
+<td>`content`</td>
+<td>REQUIRED</td>
+<td>Flat selection object with a required `default` and optional category-name keys, each set to `body`, `metadata`, or `omit`. See [content upload](../content-upload.md).</td>
+</tr>
+<tr>
 <td>`includeNative`</td>
 <td>OPTIONAL</td>
 <td>Boolean; defaults to `false`.</td>
@@ -135,3 +142,10 @@ A bearer authentication object contains:
 Implementations MAY support additional local secret-reference forms, but portable documents cannot assume them.
 ### Native harness configuration
 A harness MAY translate this registration model into its native configuration format. It may still claim protocol conformance if the resulting order, subscriptions, timeout, failure, transport, and credential semantics are equivalent.
+
+### Forward compatibility and local identity
+
+Subscriptions and subscription identifiers are harness-local configuration, not
+wire identity. Receivers MUST ignore unknown registration/configuration fields,
+MUST validate recognized fields, and MAY warn about ignored fields. Unknown fields
+do not change dispatch, authorization, or supported effect/operation semantics.

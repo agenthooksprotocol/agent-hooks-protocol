@@ -22,8 +22,7 @@
       "outcome": "error",
       "execution": {
         "status": "skipped",
-        "reason": "supplied_result",
-        "subscriptionId": "supplier"
+        "reason": "supplied_result"
       },
       "call": {
         "id": "call_observe_789"
@@ -34,7 +33,6 @@
       },
       "path": "example",
       "items": []
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

@@ -6,11 +6,11 @@ against every server, over HTTP with configured authentication modes and
 persistent stdio with process trust only.
 The runner does not apply effects. Each client owns pending request state,
 staged responses, cancellation, acceptance, and settled observation construction.
-Each receiver owns uploaded bytes and subscription-scoped reference validation.
+Each receiver owns uploaded bytes and credential-scoped reference validation.
 
 ## Observation contract
 
-Observation notifications carry only the subscription identity and effective
+Observation notifications carry only the event identity and effective
 permission-filtered boundary payload, not a disposition or decision summary.
 Short-circuiting downgrades remaining uncalled intercept subscriptions to
 `hooks/observe`; called interceptors receive no automatic second copy. Explicit
@@ -56,14 +56,15 @@ The shared scenarios, including stdio-only unsolicited-frame cases, exercise:
   standardized decision field on the canonical observation wire message);
 * malicious effects returned to best-effort observers being ignored;
 * actual upload readiness before canonical `event.items` body references;
-* immutable size/SHA-256/reference bindings, exact retries, changed bytes/new ref;
+* immutable size/SHA-256/reference bindings, repeated uploads, changed bytes/new ref;
 * fixed content authorization distinct from endpoint authentication, authorized
   body views and explicit canonical content-gap views;
 * reasoning/skill/native-labelled content items taking the normal content path.
 
-HTTP groups additionally run raw receiver probes including valid upload, rejected
-same-ref mutation, retained original body, forbidden cross-subscription read,
-missing upload, wrong size, wrong hash, and retained bytes after failed reads.
+HTTP groups additionally run raw receiver probes including valid upload, new
+receiver-assigned references for changed bytes, retained original body, rejected
+missing/wrong upload credentials, missing upload, wrong size, wrong hash, and
+retained bytes after failed reads.
 These receiver probes are supplementary HTTP checks, not claimed separate
 cross-language client scenarios. Stdio exercises the same receiver implementation
 through canonical messages in the main matrix.
@@ -78,11 +79,24 @@ content permission/integrity mistakes, and race-order false passes.
 
 ## Scope and limits
 
+HTTP receipt evidence is fetched directly from the receiver control endpoint.
+For stdio, each SDK client fetches the receiver's `/receipts` endpoint before
+shutdown and forwards those records in `report.receipts`. Receiver handlers
+create the received/replied/observed records; the client does not synthesize
+successful deliveries. The verifier checks those receiver-origin records for
+exact payloads, multiplicity and ordering. Missing delivery records fail even
+when the client's application report says passed. Client-issued `/mark` records
+are test-control milestones, not proof that a wire delivery occurred.
+
+This trusts the SDK test adapters, not an adversarial sender; forwarding a
+receiver's records does not require a second evidence transport.
+
+
 See [LIFECYCLE.md](LIFECYCLE.md) for the **test-control** contract. Upload HTTP
-framing, fixed `body` subscription permission, scenario instructions, marks,
+framing, fixed credential permission, scenario instructions, marks,
 receipts, and barriers are adapter machinery. Raw uploads follow the
 [canonical upload binding](../spec/draft/content-upload.md).
-Canonical `params.subscriptionId` identifies the subscription; it does not grant access.
+Subscription identifiers are local harness configuration only; request correlation uses JSON-RPC IDs and events retain their own identity.
 
 Logical cancellation closes the local acceptance path immediately. Test adapters
 retain drain futures to deliver late responses. Coverage excludes physical

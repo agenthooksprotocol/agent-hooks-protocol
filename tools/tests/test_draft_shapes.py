@@ -58,7 +58,7 @@ class DraftShapeTests(unittest.TestCase):
         value = json.loads((ROOT / 'fixtures/draft/http/observe-tool-error.valid.json').read_text())
         self.assertFalse(self.errors(value))
         event = value['params']['event']
-        event['execution'] = {'status': 'skipped', 'reason': 'supplied_result', 'subscriptionId': 'cache'}
+        event['execution'] = {'status': 'skipped', 'reason': 'supplied_result'}
         self.assertFalse(self.errors(value))
         event['type'] = 'tool.error'
         self.assertTrue(self.errors(value))
@@ -109,8 +109,9 @@ class DraftShapeTests(unittest.TestCase):
                     invalid['params']['event'].pop(field, None)
                     self.assertTrue(self.errors(invalid), (event['type'], field))
 
-    def test_observation_has_subscription_identity_without_disposition(self):
+    def test_observation_has_no_subscription_identity_or_disposition(self):
         value = json.loads((ROOT / 'fixtures/draft/http/observe-tool-before.valid.json').read_text())
+        self.assertNotIn('subscriptionId', value['params'])
         self.assertNotIn('disposition', value['params'])
         self.assertFalse(self.errors(value))
         schema = self.store.load(ROOT / 'schema/draft/observe-notification.schema.json')
@@ -118,9 +119,9 @@ class DraftShapeTests(unittest.TestCase):
             params = branch.get('properties', {}).get('params', {})
             self.assertNotIn('disposition', params.get('properties', {}))
             self.assertNotIn('disposition', params.get('required', []))
+            self.assertNotIn('subscriptionId', params.get('properties', {}))
+            self.assertNotIn('subscriptionId', params.get('required', []))
         self.assertFalse((ROOT / 'schema/draft/observation-disposition.schema.json').exists())
-        del value['params']['subscriptionId']
-        self.assertTrue(self.errors(value))
 
     def test_binary_binding_configuration_and_descriptor(self):
         upload = {'endpoint': 'https://example.com/receive?scope=one', 'timeoutMs': 1, 'maxBytes': 0}
@@ -157,7 +158,7 @@ class DraftShapeTests(unittest.TestCase):
             altered = copy.deepcopy(value)
             altered['params']['event']['usage'][key] = invalid
             self.assertTrue(self.errors(altered), key)
-        event['execution'] = {'status': 'skipped', 'reason': 'supplied_result', 'subscriptionId': 'cache'}
+        event['execution'] = {'status': 'skipped', 'reason': 'supplied_result'}
         self.assertTrue(self.errors(value))  # supplied results cannot fabricate provider usage
         event.pop('usage')
         self.assertFalse(self.errors(value))
@@ -254,12 +255,9 @@ class DraftShapeTests(unittest.TestCase):
         old['oneOf'] = old['oneOf'][:2] + [ordinary]
         for status in ['executed', 'skipped']:
             for reason in [None, 'supplied_result', 'policy', 'cancelled', 'timeout', 'other', 'future']:
-                for supplier in ['absent', None, 'supplier']:
-                    value = {'status': status}
-                    if reason is not None:
-                        value['reason'] = reason
-                    if supplier != 'absent':
-                        value['subscriptionId'] = supplier
-                    with self.subTest(value=value):
-                        self.assertEqual(bool(self.validator.validate(value, old, path)),
-                                         bool(self.validator.validate(value, current, path)))
+                value = {'status': status}
+                if reason is not None:
+                    value['reason'] = reason
+                with self.subTest(value=value):
+                    self.assertEqual(bool(self.validator.validate(value, old, path)),
+                                     bool(self.validator.validate(value, current, path)))

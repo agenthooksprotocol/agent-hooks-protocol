@@ -3,7 +3,7 @@
 This document defines observation delivery in the current draft. Observations do not carry a generic disposition field.
 
 Resolve the serial interception pipeline before dispatching observations. The
-`hooks/observe` notification contains `protocolVersion`, `subscriptionId`, and the
+`hooks/observe` notification contains `protocolVersion` and the
 resulting effective `event`, with the same logical `event.id` and `source`.
 There is no generic disposition, decision summary, response receipt, downgrade
 flag, or `/view` fallback.

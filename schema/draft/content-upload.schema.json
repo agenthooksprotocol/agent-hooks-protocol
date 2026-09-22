@@ -12,10 +12,24 @@
     "endpoint": {
       "type": "string",
       "format": "uri",
-      "pattern": "^https?://"
+      "pattern": "^(?:https://|http://(?:localhost|127\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}|\\[::1\\])(?::[0-9]+)?(?:[/?#]|$))",
+      "description": "HTTPS is required except for explicitly configured loopback tests. The sender must validate the receiver and the loopback-test authorization at runtime."
     },
     "auth": {
-      "$ref": "registration.schema.json#/$defs/authentication"
+      "type": "object",
+      "required": [
+        "type",
+        "tokenEnv"
+      ],
+      "properties": {
+        "type": {
+          "const": "bearer"
+        },
+        "tokenEnv": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      }
     },
     "timeoutMs": {
       "type": "integer",
@@ -26,7 +40,6 @@
       "minimum": 0
     }
   },
-  "additionalProperties": false,
   "description": "Independent upload endpoint and credentials. maxBytes is a local transfer bound, never permission to truncate. POST framing and confirmed availability are specified in spec/draft/content-upload.md.",
   "$comment": "Mutable AHP draft. "
 }

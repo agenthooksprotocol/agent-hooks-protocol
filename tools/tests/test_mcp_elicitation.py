@@ -28,6 +28,12 @@ class McpElicitationTests(unittest.TestCase):
         for declaration in ['mode?: "form";', 'elicitationId: string;', 'action: "accept" | "decline" | "cancel";', 'content?: { [key: string]: string | number | boolean | string[] };']:
             self.assertIn(declaration, ts)
 
+    def test_vendored_examples_against_extracted_contract(self):
+        for kind in ('request', 'result'):
+            with self.subTest(kind=kind):
+                value = json.loads((mcp_elicitation.PIN / 'fixtures' / (kind + '.json')).read_text())
+                self.assertEqual([], self.errors(value, kind))
+
     def test_all_published_form_variants(self):
         fields = [
             {'type':'string','format':'email','minLength':1,'default':'x@y.test'},

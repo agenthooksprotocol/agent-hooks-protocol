@@ -2,7 +2,6 @@
 
 No SDK adapter dependency, control API, fixture-ID dispatch, or semantic oracle.
 """
-import base64
 from contextlib import contextmanager
 from copy import deepcopy
 import hashlib
@@ -13,6 +12,7 @@ from pathlib import Path
 import re
 import sys
 import threading
+import uuid
 import urllib.error
 import urllib.request
 from urllib.parse import urlsplit
@@ -30,19 +30,6 @@ def validate(name, value):
         raise ValueError('; '.join(errors))
 
 
-def encoded(value):
-    return base64.urlsafe_b64encode(value.encode('utf-8')).decode('ascii').rstrip('=')
-
-
-def decoded(value):
-    if not value or not re.fullmatch(r'[A-Za-z0-9_-]+', value):
-        raise ValueError('Invalid identifier header')
-    result = base64.b64decode(value + '=' * (-len(value) % 4), altchars=b'-_', validate=True).decode('utf-8')
-    if encoded(result) != value:
-        raise ValueError('Noncanonical identifier header')
-    return result
-
-
 def reference(ref, body):
     result = dict(ref=ref, size=len(body), sha256=hashlib.sha256(body).hexdigest())
     validate('content-reference', result)
@@ -54,7 +41,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def post(endpoint, body, headers, timeout=5):
+def post(endpoint, body, headers, timeout=5, expected_status=204):
     parsed = urlsplit(endpoint)
     if parsed.scheme != 'https' and not (parsed.scheme == 'http' and parsed.hostname in ('127.0.0.1', '::1', 'localhost')):
         raise ValueError('HTTPS required outside loopback')
@@ -62,11 +49,19 @@ def post(endpoint, body, headers, timeout=5):
         raise ValueError('Endpoint credentials/fragments forbidden')
     request = urllib.request.Request(endpoint, data=body, headers=headers, method='POST')
     with urllib.request.build_opener(NoRedirect).open(request, timeout=timeout) as response:
-        if response.status != 204:
+        if response.status != expected_status:
             raise ValueError('Upload/event not confirmed: ' + str(response.status))
+        if expected_status == 201:
+            if response.headers.get_content_type() != 'application/json':
+                raise ValueError('Upload confirmation must be JSON')
+            payload = response.read(65537)
+            if len(payload) > 65536:
+                raise ValueError('Upload confirmation too large')
+            return json.loads(payload)
 
 
-def upload(config, subscription, metadata, body):
+def upload(config, scope, metadata, body):
+    """Upload bytes; scope is local context, never caller wire authority."""
     validate('content-upload', config)
     validate('content-reference', metadata)
     if reference(metadata['ref'], body) != metadata:
@@ -74,14 +69,17 @@ def upload(config, subscription, metadata, body):
     if len(body) > config['maxBytes']:
         raise ValueError('Upload exceeds local bound; do not truncate')
     headers = {'Content-Type': 'application/octet-stream', 'Content-Length': str(len(body)),
-               'AHP-Subscription': encoded(subscription), 'AHP-Content-Ref': encoded(metadata['ref']),
                'AHP-Content-SHA256': metadata['sha256']}
     if 'auth' in config:
         token = os.environ[config['auth']['tokenEnv']]
         if not token or '\r' in token or '\n' in token:
             raise ValueError('Invalid upload credential')
         headers['Authorization'] = 'Bearer ' + token
-    post(config['endpoint'], body, headers, config['timeoutMs'] / 1000)
+    canonical = post(config['endpoint'], body, headers, config['timeoutMs'] / 1000, expected_status=201)
+    validate('content-reference', canonical)
+    if canonical != reference(canonical['ref'], body):
+        raise ValueError('Receiver confirmation hash/size mismatch')
+    return canonical
 
 
 def category(item):
@@ -117,12 +115,16 @@ def body_refs(message):
     return [item['body'] for item in message['params']['event'].get('items', []) if 'body' in item]
 
 
-def deliver(message, subscription, config, bodies, endpoint, event_token):
+def deliver(message, scope, config, bodies, endpoint, event_token):
     name = {'hooks/observe': 'observe-notification', 'hooks/intercept': 'intercept-request'}[message['method']]
     validate(name, message)
-    for metadata in body_refs(message):
-        upload(config, subscription, metadata, bodies[metadata['ref']])
-    headers = {'Content-Type': 'application/json', 'AHP-Subscription': encoded(subscription)}
+    message = deepcopy(message)
+    for item in message['params']['event'].get('items', []):
+        if 'body' in item:
+            metadata = item['body']
+            item['body'] = upload(config, scope, metadata, bodies[metadata['ref']])
+    validate(name, message)
+    headers = {'Content-Type': 'application/json'}
     if event_token is not None:
         headers['Authorization'] = 'Bearer ' + event_token
     post(endpoint, json.dumps(message).encode(), headers)
@@ -146,10 +148,14 @@ class Receiver:
             def log_message(self, *_):
                 pass
 
-            def reply(self, status):
+            def reply(self, status, descriptor=None):
+                payload = b'' if descriptor is None else json.dumps(descriptor).encode()
                 self.send_response(status)
-                self.send_header('Content-Length', '0')
+                if descriptor is not None:
+                    self.send_header('Content-Type', 'application/json')
+                self.send_header('Content-Length', str(len(payload)))
                 self.end_headers()
+                self.wfile.write(payload)
 
             def do_POST(self):
                 is_upload = upload_path is not None and self.path == upload_path
@@ -160,16 +166,19 @@ class Receiver:
                 if auth not in tokens:
                     return self.reply(401)
                 try:
-                    subscription = decoded(self.headers.get('AHP-Subscription'))
-                    if subscription not in tokens[auth]:
+                    scopes = tokens[auth]
+                    if len(scopes) != 1:
                         return self.reply(403)
-                    names = ['Content-Length', 'AHP-Subscription', 'Content-Type']
+                    scope = next(iter(scopes))
+                    if self.headers.get_all('AHP-Subscription') or self.headers.get_all('AHP-Content-Ref'):
+                        raise ValueError('Caller wire identity forbidden')
+                    names = ['Content-Length', 'Content-Type']
                     if len(self.headers.get_all('Authorization', [])) > 1:
                         raise ValueError('Duplicate authorization')
                     if auth is not None:
                         names.append('Authorization')
                     if is_upload:
-                        names += ['AHP-Content-Ref', 'AHP-Content-SHA256']
+                        names += ['AHP-Content-SHA256']
                     if any(len(self.headers.get_all(n, [])) != 1 for n in names):
                         raise ValueError('Missing/duplicate header')
                     if self.headers.get('Transfer-Encoding') or self.headers.get('Content-Encoding'):
@@ -188,16 +197,15 @@ class Receiver:
                         if is_upload:
                             if self.headers['Content-Type'] != 'application/octet-stream':
                                 raise ValueError('Raw octets required')
-                            ref = decoded(self.headers.get('AHP-Content-Ref'))
+                            ref = 'urn:uuid:' + str(uuid.uuid4())
                             metadata = {'ref': ref, 'size': size, 'sha256': self.headers.get('AHP-Content-SHA256')}
                             validate('content-reference', metadata)
                             if metadata != reference(ref, body):
                                 raise ValueError('Integrity mismatch')
-                            key = (subscription, ref)
-                            if key in owner.contents and owner.contents[key] != body:
-                                return self.reply(409)
+                            key = (scope, ref)
                             owner.contents[key] = body
-                            owner.trace.append(('upload', subscription, ref))
+                            owner.trace.append(('upload', scope, ref))
+                            return self.reply(201, metadata)
                         else:
                             if self.headers['Content-Type'] != 'application/json':
                                 raise ValueError('JSON required')
@@ -205,16 +213,14 @@ class Receiver:
                             # This test sink handles real observe notifications; intercept
                             # responses/effect evaluation remain the SDK adapter's concern.
                             validate('observe-notification', message)
-                            if message['params']['subscriptionId'] != subscription:
-                                return self.reply(403)
                             for metadata in body_refs(message):
-                                stored = owner.contents.get((subscription, metadata['ref']))
+                                stored = owner.contents.get((scope, metadata['ref']))
                                 if stored is None:
                                     return self.reply(404)
                                 if reference(metadata['ref'], stored) != metadata:
                                     raise ValueError('Event integrity mismatch')
                             owner.events.append(message)
-                            owner.trace.append(('event', subscription, message['params']['event']['id']))
+                            owner.trace.append(('event', scope, message['params']['event']['id']))
                     return self.reply(204)
                 except (ValueError, TypeError, KeyError, OSError):
                     return self.reply(400)

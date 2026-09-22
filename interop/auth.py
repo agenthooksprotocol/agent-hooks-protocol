@@ -20,7 +20,7 @@ def signing_key(purpose):
 
 
 def token(purpose, **overrides):
-    claims = dict(iss=ISSUER, aud=AUDIENCE, purpose=purpose, iat=CLOCK, exp=CLOCK + 3600)
+    claims = dict(iss=ISSUER, sub=CLIENT_ID, aud=AUDIENCE, purpose=purpose, iat=CLOCK, exp=CLOCK + 3600)
     claims.update(overrides)
     def encode(value):
         return base64.urlsafe_b64encode(json.dumps(value, separators=(',', ':')).encode()).rstrip(b'=').decode()

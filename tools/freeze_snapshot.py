@@ -77,6 +77,11 @@ def retarget_spec(staging: Path, version: str) -> None:
         text = text.replace(
             "protocol version `draft`", f"protocol version `{version}`"
         )
+        # Cross-tree links must point at the same frozen snapshot.
+        for root_name in SNAPSHOT_ROOTS:
+            text = text.replace(
+                f"../../{root_name}/draft/", f"../../{root_name}/{version}/"
+            )
         if path == spec_dir / "index.md":
             text = replace_required(
                 text,

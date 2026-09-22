@@ -43,7 +43,6 @@
         "id": "turn-synthetic",
         "synthesized": true
       }
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

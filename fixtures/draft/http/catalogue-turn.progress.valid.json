@@ -22,7 +22,6 @@
         "role": "assistant"
       },
       "final": false
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

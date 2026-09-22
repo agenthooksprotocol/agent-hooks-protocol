@@ -548,8 +548,7 @@
                       "type": "integer",
                       "minimum": 0
                     }
-                  },
-                  "additionalProperties": false
+                  }
                 },
                 "toolPaths": {
                   "type": "array",
@@ -589,7 +588,6 @@
                       "type": "boolean"
                     }
                   },
-                  "additionalProperties": false,
                   "allOf": [
                     {
                       "if": {

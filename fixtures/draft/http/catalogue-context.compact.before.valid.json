@@ -10,7 +10,6 @@
       "type": "context.compact.before",
       "trigger": "auto",
       "items": []
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

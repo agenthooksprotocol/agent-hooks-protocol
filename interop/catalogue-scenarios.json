@@ -38,8 +38,7 @@
                     "keep": "yes"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -76,8 +75,7 @@
                     "keep": "yes"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -128,8 +126,7 @@
                 },
                 "path": "example",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -166,8 +163,7 @@
                 },
                 "path": "example",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -203,8 +199,7 @@
                 },
                 "trigger": "user",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -226,8 +221,7 @@
                 },
                 "trigger": "user",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -264,8 +258,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -288,8 +281,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -326,8 +318,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -350,8 +341,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -396,8 +386,7 @@
                   "role": "assistant"
                 },
                 "final": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -428,8 +417,7 @@
                   "role": "assistant"
                 },
                 "final": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -470,8 +458,7 @@
                 },
                 "params": {},
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -498,8 +485,7 @@
                 },
                 "params": {},
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -543,8 +529,7 @@
                 },
                 "items": [],
                 "finishReason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -574,8 +559,7 @@
                 },
                 "items": [],
                 "finishReason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -621,8 +605,7 @@
                   "message": "example",
                   "class": "example"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -654,8 +637,7 @@
                   "message": "example",
                   "class": "example"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -695,8 +677,7 @@
                   "provider": "example"
                 },
                 "reason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -722,8 +703,7 @@
                   "provider": "example"
                 },
                 "reason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -763,8 +743,7 @@
                   "provider": "example"
                 },
                 "reason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -790,8 +769,7 @@
                   "provider": "example"
                 },
                 "reason": "example"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -833,8 +811,7 @@
                 "path": "example",
                 "suggestions": [],
                 "sandboxBypass": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -862,8 +839,7 @@
                 "path": "example",
                 "suggestions": [],
                 "sandboxBypass": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -905,8 +881,7 @@
                 "path": "example",
                 "decision": "allow",
                 "decidedBy": "user"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -934,8 +909,7 @@
                 "path": "example",
                 "decision": "allow",
                 "decidedBy": "user"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -983,8 +957,7 @@
                   "role": "tool"
                 },
                 "backgrounded": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1018,8 +991,7 @@
                   "role": "tool"
                 },
                 "backgrounded": false
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1070,8 +1042,7 @@
                     }
                   }
                 ]
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1108,8 +1079,7 @@
                     }
                   }
                 ]
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1142,8 +1112,7 @@
                 "type": "context.compact.before",
                 "trigger": "auto",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1162,8 +1131,7 @@
                 "type": "context.compact.before",
                 "trigger": "auto",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1205,8 +1173,7 @@
                 "execution": {
                   "status": "executed"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1234,8 +1201,7 @@
                 "execution": {
                   "status": "executed"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1273,8 +1239,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1298,8 +1263,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1337,8 +1301,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1362,8 +1325,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1400,8 +1362,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1424,8 +1385,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1462,8 +1422,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1486,8 +1445,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1525,8 +1483,7 @@
                     "agentCaused": true
                   }
                 ]
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1550,8 +1507,7 @@
                     "agentCaused": true
                   }
                 ]
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1589,8 +1545,7 @@
                     "status": "done"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         },
@@ -1617,8 +1572,7 @@
                   }
                 },
                 "parentEventId": "task:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1642,8 +1596,7 @@
                     "status": "done"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           },
           {
@@ -1667,8 +1620,7 @@
                   }
                 },
                 "parentEventId": "task:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1709,8 +1661,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         },
@@ -1733,8 +1684,7 @@
                   }
                 },
                 "parentEventId": "workspace:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         },
@@ -1758,8 +1708,7 @@
                   }
                 ],
                 "parentEventId": "workspace:actual"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1782,8 +1731,7 @@
                     "cwd": "/new"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           },
           {
@@ -1803,8 +1751,7 @@
                   }
                 },
                 "parentEventId": "workspace:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           },
           {
@@ -1825,8 +1772,7 @@
                   }
                 ],
                 "parentEventId": "workspace:actual"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1873,8 +1819,7 @@
                   }
                 },
                 "parentEventId": "not-delivered"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1899,8 +1844,7 @@
                   }
                 },
                 "parentEventId": "not-delivered"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -1938,8 +1882,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         },
@@ -1963,8 +1906,7 @@
                   }
                 },
                 "parentEventId": "same"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -1988,8 +1930,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           },
           {
@@ -2010,8 +1951,7 @@
                   }
                 },
                 "parentEventId": "same"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2054,8 +1994,7 @@
                   }
                 },
                 "parentEventId": "late:parent"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         },
@@ -2078,8 +2017,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2104,8 +2042,7 @@
                   }
                 },
                 "parentEventId": "late:parent"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           },
           {
@@ -2125,8 +2062,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2169,8 +2105,7 @@
                   }
                 },
                 "parentEventId": "task:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2195,8 +2130,7 @@
                   }
                 },
                 "parentEventId": "task:proposal"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2235,8 +2169,7 @@
                   }
                 },
                 "parentEventId": "cycle:self"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2261,8 +2194,7 @@
                   }
                 },
                 "parentEventId": "cycle:self"
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2303,8 +2235,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2331,8 +2262,7 @@
                     "status": "open"
                   }
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2374,8 +2304,7 @@
                 "execution": {
                   "status": "executed"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2403,8 +2332,7 @@
                 "execution": {
                   "status": "executed"
                 }
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2455,8 +2383,7 @@
                 },
                 "path": "example",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2493,8 +2420,7 @@
                 },
                 "path": "example",
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],
@@ -2531,8 +2457,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         }
@@ -2555,8 +2480,7 @@
                 "outcome": "completed",
                 "continuationCount": 0,
                 "items": []
-              },
-              "subscriptionId": "metadata"
+              }
             }
           }
         ],

@@ -13,3 +13,10 @@ python3 tools/check_conformance.py
 ```
 
 The checker implements the JSON Schema subset documented in [`../tools/README.md`](../tools/README.md). A full Draft 2020-12 validator may also be used.
+
+Upload configuration is defined by `content-upload.schema.json`; the HTTP 201
+upload response uses `content-reference.schema.json` directly. References are
+receiver-allocated, immutable, and authorized by credential-derived scope.
+Subscriptions remain harness-local. Registration, capability, and control
+configuration ignore unknown fields while validating recognized fields. Unknown
+effect types and operation values still reject a response atomically.

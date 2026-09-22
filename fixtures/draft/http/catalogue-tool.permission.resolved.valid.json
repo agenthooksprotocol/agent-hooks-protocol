@@ -19,7 +19,6 @@
       "path": "example",
       "decision": "allow",
       "decidedBy": "user"
-    },
-    "subscriptionId": "observer"
+    }
   }
 }

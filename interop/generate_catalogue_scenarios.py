@@ -45,8 +45,7 @@ def notification(kind,identity,parent=None,source='urn:ahp:catalogue'):
     namespace_items(event,identity)
     event.update(id=identity,source=source)
     if parent is not None:event['parentEventId']=parent
-    return {'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event,
-        'subscriptionId':'metadata'}}
+    return {'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
 
 
 def build():

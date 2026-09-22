@@ -24,12 +24,12 @@ def evidence(scenarios):
                     entries.append({'kind':'accepted','id':id,'scenario':s['id']}); settled.add(id)
             elif op=='emit':
                 entries.extend([{'kind':'emitted','id':st['response']['id']},{'kind':'discarded','id':st['response']['id'],'scenario':s['id']}])
-            elif op=='upload':entries.append({'kind':'upload',**{k:st[k] for k in ('subscription','ref','size','sha256')},'status':next(uploaded)})
+            elif op=='upload':entries.append({'kind':'upload',**{k:st[k] for k in ('ref','size','sha256')},'status':next(uploaded)})
             elif op=='observe':
                 event=deepcopy(s['requests'][st['key']]['params']['event']); event['tool']['input']=deepcopy(s['expected']['states'].get(id,{}).get('input',event['tool']['input']))
                 if 'items' in st:event['items']=deepcopy(st['items'])
-                message={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event,'subscriptionId':st['subscription']}}
-                entries.append({'kind':'observed','eventId':event['id'],'subscription':st['subscription'],'event':event,'message':message})
+                message={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
+                entries.append({'kind':'observed','eventId':event['id'],'event':event,'message':message})
     report={'language':'python','results':[{'id':s['id'],'actual':deepcopy(s['expected'])} for s in scenarios]}
     return report,{'entries':entries}
 
@@ -38,6 +38,11 @@ class VerifierTests(unittest.TestCase):
         self.scenarios=[s for s in load(HERE/'lifecycle-scenarios.json')['scenarios'] if 'chain' not in s]; self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')
     def test_valid_control_proof(self):self.assertEqual(self.check(),[])
+    def test_failed_stdio_delivery_cannot_pass(self):
+        # A sender report cannot replace the absent receiver delivery record.
+        self.receipts['entries'] = [e for e in self.receipts['entries'] if e['kind'] != 'observed']
+        self.assertTrue(self.check())
+
     def test_missing_receipts(self):self.receipts={}; self.assertTrue(self.check())
     def test_missing_result(self):self.report['results'].pop(); self.assertTrue(self.check())
     def test_duplicate_result(self):self.report['results'].append(deepcopy(self.report['results'][0])); self.assertTrue(self.check())
@@ -53,8 +58,25 @@ class VerifierTests(unittest.TestCase):
     def test_upload_before_dispatch_required(self):
         es=self.receipts['entries']; uploads=[e for e in es if e['kind']=='upload']; self.receipts['entries']=[e for e in es if e['kind']!='upload']+uploads; self.assertTrue(self.check())
     def test_content_hash_mismatch(self):next(e for e in self.receipts['entries'] if e['kind']=='upload')['sha256']='0'*64; self.assertTrue(self.check())
-    def test_content_permission_bypass(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==403)['status']=204; self.assertTrue(self.check())
-    def test_immutability_bypass(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==409)['status']=204; self.assertTrue(self.check())
+    def test_content_permission_bypass(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==403)['status']=201; self.assertTrue(self.check())
+    def test_receiver_assigned_upload_refs_are_used_on_wire(self):
+        refs={e['ref']:'receiver:'+e['ref'] for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==201}
+        def rewrite(value):
+            if isinstance(value,list):
+                for v in value:rewrite(v)
+            if isinstance(value,dict):
+                if value.get('ref') in refs:value['ref']=refs[value['ref']]
+                for v in value.values():rewrite(v)
+        rewrite(self.receipts)
+        self.assertEqual([],self.check())
+    def test_missing_receiver_assigned_reference_fails(self):
+        next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==201).pop('ref')
+        self.assertTrue(self.check())
+    def test_changed_bytes_cannot_reuse_receiver_reference(self):
+        uploads=[e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==201]
+        uploads[2]['ref']=uploads[0]['ref']
+        self.assertTrue(self.check())
+    def test_success_without_created_receipt(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==201)['status']=204; self.assertTrue(self.check())
     def test_boolean_not_integer(self):self.report['results'][2]['actual']['states']['late-old-while-next-pending:b']['executed']=1; self.assertTrue(self.check())
     def test_unsupported_is_not_pass(self):self.report['results'][0]['status']='unsupported'; self.assertTrue(self.check())
     def test_acquisition_after_cancellation_is_not_after_reply_race(self):
@@ -225,6 +247,24 @@ threading.Event().wait()
                     errors=cleanup([p],d/'child.json',d/'ready.json')
                 self.assertTrue(errors);self.assertIsNotNone(p.poll())
             finally:stop(p)
+
+    def test_stdio_success_report_with_failed_delivery_is_rejected(self):
+        import sys,tempfile
+        from pathlib import Path
+        from lifecycle_matrix import run_group
+        with tempfile.TemporaryDirectory() as directory:
+            d=Path(directory); client=d/'client.py'
+            client.write_text("""import json,sys
+c=json.load(open(sys.argv[sys.argv.index('--config')+1]))
+scenarios=json.load(open(c['scenarioFile']))['scenarios']
+# Simulate a failed transport: no receiver has accepted a single frame.
+report={'language':'python','results':[{'id':s['id'],'actual':s['expected']} for s in scenarios], 'receipts':{'entries':[]}}
+open(c['reportFile'],'w').write(json.dumps(report))
+""")
+            adapters={'python':(d,{'lifecycleClient':[sys.executable,str(client)],'lifecycleServer':[sys.executable]})}
+            result=run_group('python','python','stdio',adapters,HERE/'lifecycle-scenarios.json',3)
+            self.assertFalse(result['passed'])
+            self.assertTrue(any('mismatch' in e or 'multiplicity' in e for e in result['errors']))
 
     def test_cleanup_errors_invalidate_structured_group_result(self):
         import sys,tempfile

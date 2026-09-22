@@ -5,6 +5,22 @@ import sys
 import unittest
 from unittest.mock import Mock, patch
 import matrix
+import generate_scenarios
+
+
+class ScenarioGeneration(unittest.TestCase):
+    def test_continue_without_instruction_is_accepted(self):
+        document = generate_scenarios.build()
+        row = next(row for row in document['scenarios']
+                   if row['id'] == 'flow-continue-missing-instruction')
+        self.assertNotIn('expectError', row)
+        self.assertNotIn('negative', row['tags'])
+        self.assertNotIn('schema-invalid', row['tags'])
+        self.assertEqual(row['expected'], {
+            'decision': 'allow', 'executed': False, 'flow': 'continue',
+            'messages': ['Visible only after acceptance'],
+            'continuationInstructions': [], 'continuationRemaining': 1,
+        })
 
 
 class Integrity(unittest.TestCase):
@@ -18,6 +34,29 @@ class Integrity(unittest.TestCase):
     def check(self, report=None, receipts=None, code=0):
         rows, errors = matrix.verify(self.scenarios, self.report if report is None else report, self.receipts if receipts is None else receipts, 'fake', code)
         return not errors and all(r['status'] == 'passed' for r in rows)
+
+    def test_receipt_wrapper_identity_distinguishes_boolean_from_number(self):
+        request = deepcopy(self.scenarios[0]['request'])
+        request['id'] = request['params']['event']['id'] = 1
+        receipt = {'id': 1, 'eventId': 1, 'method': request['method'],
+                   'message': request}
+        self.assertTrue(matrix.receipt_matches(receipt, request))
+        for key in ('id', 'eventId'):
+            with self.subTest(key=key):
+                forged = dict(receipt, **{key: True})
+                self.assertFalse(matrix.receipt_matches(forged, request))
+
+    def test_error_requires_explicit_rejection(self):
+        self.scenarios[0]['expectError'] = True
+        result = self.report['results'][0]
+        for actual in (None, {}, {'rejected': 1}, {'rejected': False}):
+            with self.subTest(actual=actual):
+                result['actual'] = actual
+                self.assertFalse(self.check())
+        result['actual'] = {'rejected': True}
+        self.assertTrue(self.check())
+        del result['actual']
+        self.assertFalse(self.check())
 
     def test_partial_expected(self):
         self.assertTrue(self.check())
@@ -131,7 +170,7 @@ class Integrity(unittest.TestCase):
     def test_negative_requires_receipt(self):
         self.scenarios[0].pop('expected')
         self.scenarios[0]['expectError'] = True
-        self.report['results'][0]['actual'] = None
+        self.report['results'][0]['actual'] = {'rejected': True}
         self.assertTrue(self.check())
         self.assertFalse(self.check(receipts={'requests': []}))
 

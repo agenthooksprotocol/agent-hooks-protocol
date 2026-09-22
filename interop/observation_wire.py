@@ -24,9 +24,6 @@ class ObservationValidator:
         params = message.get('params') if isinstance(message, dict) else None
         if not isinstance(params, dict):
             return errors + ['observation params missing']
-        sub = params.get('subscriptionId')
-        if not isinstance(sub, str) or not sub:
-            errors.append('observation subscriptionId missing')
         return errors
 
 
