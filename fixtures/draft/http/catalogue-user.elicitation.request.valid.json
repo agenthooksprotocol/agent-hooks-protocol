@@ -1,0 +1,29 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "user.elicitation.request",
+      "elicitation": {
+        "server": "example",
+        "mode": "form",
+        "request": {
+          "id": "mcp-request-item",
+          "kind": "elicitation.request",
+          "mediaType": "application/json",
+          "selection": "body",
+          "body": {
+            "ref": "mcp-request",
+            "size": 203,
+            "sha256": "221221d225ce26ac0688a463b759afe8fb8f924c000a0304071b90d78f1912ee"
+          }
+        }
+      }
+    },
+    "subscriptionId": "observer"
+  }
+}

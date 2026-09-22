@@ -1,0 +1,686 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/task-workspace-event.schema.json",
+  "title": "Task, workspace and file payload constraints (Draft)",
+  "$comment": "Mutable AHP draft. Standalone events with canonical envelope fields. Catalogue and envelope unions may reference these definitions directly; no back-reference to catalogue. See spec/draft/task-workspace-lineage.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/task.change.before"
+    },
+    {
+      "$ref": "#/$defs/task.change.after"
+    },
+    {
+      "$ref": "#/$defs/workspace.change.before"
+    },
+    {
+      "$ref": "#/$defs/workspace.change.after"
+    },
+    {
+      "$ref": "#/$defs/file.changed"
+    }
+  ],
+  "$defs": {
+    "task.change.before": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "time",
+        "type",
+        "task"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "format": "uri"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session": {
+          "$ref": "common.schema.json#/$defs/session"
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+        },
+        "turn": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "content-item.schema.json"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "native": {
+          "$ref": "common.schema.json#/$defs/native"
+        },
+        "extensions": {
+          "$ref": "extensions.schema.json"
+        },
+        "type": {
+          "const": "task.change.before"
+        },
+        "task": {
+          "type": "object",
+          "required": [
+            "id",
+            "operation",
+            "change"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation": {
+              "enum": [
+                "create",
+                "update",
+                "remove"
+              ]
+            },
+            "change": {
+              "type": "object"
+            },
+            "prior": {
+              "type": "object"
+            },
+            "description": {
+              "type": "string"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          },
+          "additionalProperties": false
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    },
+    "task.change.after": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "time",
+        "type",
+        "task"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "format": "uri"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session": {
+          "$ref": "common.schema.json#/$defs/session"
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+        },
+        "turn": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "content-item.schema.json"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "native": {
+          "$ref": "common.schema.json#/$defs/native"
+        },
+        "extensions": {
+          "$ref": "extensions.schema.json"
+        },
+        "type": {
+          "const": "task.change.after"
+        },
+        "task": {
+          "type": "object",
+          "required": [
+            "id",
+            "operation",
+            "change"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "operation": {
+              "enum": [
+                "create",
+                "update",
+                "remove"
+              ]
+            },
+            "change": {
+              "type": "object"
+            },
+            "prior": {
+              "type": "object"
+            },
+            "description": {
+              "type": "string"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          },
+          "additionalProperties": false
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    },
+    "workspace.change.before": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "time",
+        "type",
+        "workspace"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "format": "uri"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session": {
+          "$ref": "common.schema.json#/$defs/session"
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+        },
+        "turn": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "content-item.schema.json"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "native": {
+          "$ref": "common.schema.json#/$defs/native"
+        },
+        "extensions": {
+          "$ref": "extensions.schema.json"
+        },
+        "type": {
+          "const": "workspace.change.before"
+        },
+        "workspace": {
+          "type": "object",
+          "required": [
+            "kind",
+            "change"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "cwd",
+                "roots",
+                "switch"
+              ]
+            },
+            "change": {
+              "type": "object",
+              "minProperties": 1,
+              "properties": {
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workspaceRoots": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "prior": {
+              "type": "object",
+              "minProperties": 1,
+              "properties": {
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workspaceRoots": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    },
+    "workspace.change.after": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "time",
+        "type",
+        "workspace"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "format": "uri"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session": {
+          "$ref": "common.schema.json#/$defs/session"
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+        },
+        "turn": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "content-item.schema.json"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "native": {
+          "$ref": "common.schema.json#/$defs/native"
+        },
+        "extensions": {
+          "$ref": "extensions.schema.json"
+        },
+        "type": {
+          "const": "workspace.change.after"
+        },
+        "workspace": {
+          "type": "object",
+          "required": [
+            "kind",
+            "change"
+          ],
+          "properties": {
+            "kind": {
+              "enum": [
+                "cwd",
+                "roots",
+                "switch"
+              ]
+            },
+            "change": {
+              "type": "object",
+              "minProperties": 1,
+              "properties": {
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workspaceRoots": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "prior": {
+              "type": "object",
+              "minProperties": 1,
+              "properties": {
+                "cwd": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "workspaceRoots": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    },
+    "file.changed": {
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "time",
+        "type",
+        "changes"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "format": "uri"
+        },
+        "time": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "session": {
+          "$ref": "common.schema.json#/$defs/session"
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+        },
+        "turn": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "content-item.schema.json"
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "reason"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "native": {
+          "$ref": "common.schema.json#/$defs/native"
+        },
+        "extensions": {
+          "$ref": "extensions.schema.json"
+        },
+        "type": {
+          "const": "file.changed"
+        },
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "operation",
+              "agentCaused"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "operation": {
+                "enum": [
+                  "create",
+                  "update",
+                  "remove"
+                ]
+              },
+              "agentCaused": {
+                "type": "boolean"
+              },
+              "before": {
+                "$ref": "content-reference.schema.json"
+              },
+              "after": {
+                "$ref": "content-reference.schema.json"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    }
+  }
+}

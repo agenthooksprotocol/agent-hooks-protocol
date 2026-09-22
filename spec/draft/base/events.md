@@ -3,7 +3,7 @@
 ## Common message envelope
 ### Intercept request
 ```json
-               {
+{
   "jsonrpc": "2.0",
   "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
   "method": "hooks/intercept",

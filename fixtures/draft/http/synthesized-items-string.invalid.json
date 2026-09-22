@@ -1,0 +1,49 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt_observe_after_001",
+      "source": "https://harness.example/runtime/42",
+      "type": "tool.after",
+      "time": "2026-08-24T08:51:15Z",
+      "session": {
+        "id": "sess_observe_123"
+      },
+      "tool": {
+        "name": "read_file",
+        "kind": "file_read",
+        "input": {
+          "path": "README.md"
+        },
+        "origin": "native"
+      },
+      "outcome": "ok",
+      "execution": {
+        "status": "executed"
+      },
+      "call": {
+        "id": "call_observe_456",
+        "synthesized": true
+      },
+      "path": "example",
+      "items": [
+        {
+          "id": "item-synthetic",
+          "synthesized": "true",
+          "role": "tool",
+          "kind": "tool_result",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        }
+      ],
+      "synthesized": true,
+      "turn": {
+        "id": "turn-synthetic",
+        "synthesized": true
+      }
+    },
+    "subscriptionId": "observer"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/content-upload.schema.json",
+  "title": "AHP HTTP content upload configuration (Draft)",
+  "type": "object",
+  "required": [
+    "endpoint",
+    "timeoutMs",
+    "maxBytes"
+  ],
+  "properties": {
+    "endpoint": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "auth": {
+      "$ref": "registration.schema.json#/$defs/authentication"
+    },
+    "timeoutMs": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "maxBytes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "description": "Independent upload endpoint and credentials. maxBytes is a local transfer bound, never permission to truncate. POST framing and confirmed availability are specified in spec/draft/content-upload.md.",
+  "$comment": "Mutable AHP draft. "
+}

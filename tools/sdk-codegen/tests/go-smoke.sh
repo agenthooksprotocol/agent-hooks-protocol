@@ -169,18 +169,18 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	if !messageResult.Value.JsonRpcRequest.Present || messageResult.Value.JsonRpcRequest.Value.Method == "" {
 		t.Fatal("JSON-RPC request was not exposed as a typed union variant")
 	}
-	request["params"].(map[string]any)["event"].(map[string]any)["tool"].(map[string]any)["kind"] = "future_tool"
+	request["params"].(map[string]any)["event"].(map[string]any)["tool"].(map[string]any)["origin"] = "future_origin"
 	requestResult := ParseInterceptRequest(inputJSON(t, request))
 	if !requestResult.OK || !hasDiagnostic(requestResult.Diagnostics, DiagnosticUnknownEnum) {
 		t.Fatalf("unknown enum value was not preserved: %+v", requestResult.Diagnostics)
 	}
-	if requestResult.Value.Params.Event.Tool.Kind != ToolBeforeEventToolKind("future_tool") {
+	if requestResult.Value.Params.Event.ToolBeforeEvent.Value.Tool.Origin != ExecutionEventToolOrigin("future_origin") {
 		t.Fatal("unknown enum value was not exposed through its typed open-enum field")
 	}
 	requestData, requestEncodeErr := EncodeInterceptRequest(requestResult.Value)
 	requestEncoded := encodedObject(t, requestData, requestEncodeErr)
-	encodedKind := requestEncoded["params"].(map[string]any)["event"].(map[string]any)["tool"].(map[string]any)["kind"]
-	if encodedKind != "future_tool" {
+	encodedKind := requestEncoded["params"].(map[string]any)["event"].(map[string]any)["tool"].(map[string]any)["origin"]
+	if encodedKind != "future_origin" {
 		t.Fatal("unknown enum value was lost on round-trip")
 	}
 
@@ -212,6 +212,46 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 		t.Fatalf("malformed known variant fell back: %+v", result.Diagnostics)
 	}
 }
+
+func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
+    manifest := fixture(t, "fixtures/draft/manifest.json")
+    for _, raw := range manifest["cases"].([]any) {
+        entry := raw.(map[string]any)
+        binding := entry["binding"].(string)
+        if !entry["expectedValid"].(bool) || (binding != "http-json" && binding != "registration-json") { continue }
+        original := fixture(t, entry["path"].(string))
+        var encoded []byte
+        var err error
+        if binding == "registration-json" {
+            parsed := ParseRegistration(inputJSON(t, original))
+            if !parsed.OK { t.Fatalf("canonical fixture %s: %+v", entry["id"], parsed.Diagnostics) }
+            encoded, err = EncodeRegistration(parsed.Value)
+        } else {
+            parsed := ParseWireMessage(inputJSON(t, original))
+            if !parsed.OK { t.Fatalf("canonical fixture %s: %+v", entry["id"], parsed.Diagnostics) }
+            encoded, err = EncodeWireMessage(parsed.Value)
+        }
+        roundTrip := encodedObject(t, encoded, err)
+        if !bytes.Equal(inputJSON(t, roundTrip), inputJSON(t, original)) { t.Fatalf("fixture %s changed on round-trip", entry["id"]) }
+    }
+    wire := fixture(t, "fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")
+    supplied := wire["params"].(map[string]any)["event"].(map[string]any)
+    parsed := ParseExecutionEvent(inputJSON(t, supplied))
+    if !parsed.OK { t.Fatalf("supplied execution: %+v", parsed.Diagnostics) }
+    encoded, err := EncodeExecutionEvent(parsed.Value)
+    if !bytes.Equal(inputJSON(t, encodedObject(t, encoded, err)), inputJSON(t, supplied)) { t.Fatal("supplied execution changed on round-trip") }
+    execution := supplied["execution"].(map[string]any)
+    delete(execution, "subscriptionId")
+    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("missing supplier selected another branch") }
+    execution["subscriptionId"] = nil
+    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("null supplier passed parsing") }
+    for _, transport := range []string{"http", "stdio"} {
+        invalid := fixture(t, "fixtures/draft/http/mcp-"+transport+"-location-missing.invalid.json")
+        event := invalid["params"].(map[string]any)["event"].(map[string]any)
+        if ParseToolBeforeEvent(inputJSON(t, event)).OK { t.Fatalf("required-only %s location predicate was lost", transport) }
+    }
+}
+
 EOF
 
 gofmt -d "$tmp/ahp_generated.go" >"$tmp/gofmt.diff"

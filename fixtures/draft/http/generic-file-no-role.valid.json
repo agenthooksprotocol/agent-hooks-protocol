@@ -1,0 +1,29 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "file.changed",
+      "changes": [
+        {
+          "path": "/workspace/example.txt",
+          "operation": "update",
+          "agentCaused": true
+        }
+      ],
+      "items": [
+        {
+          "id": "file-snapshot",
+          "kind": "file",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        }
+      ]
+    },
+    "subscriptionId": "observer"
+  }
+}

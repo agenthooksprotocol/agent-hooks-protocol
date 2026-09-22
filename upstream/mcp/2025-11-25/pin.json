@@ -1,0 +1,13 @@
+{
+  "version": "2025-11-25",
+  "sources": {
+    "schema.ts": {
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/2025-11-25/schema/2025-11-25/schema.ts",
+      "sha256": "0845473b20273dae35df6651b831540be3d5866a42d0ad324e4a06caaa398a07"
+    },
+    "schema.json": {
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/modelcontextprotocol/2025-11-25/schema/2025-11-25/schema.json",
+      "sha256": "1ffe4c5577974012f5fa02af14ea88df4b7146679df1abaaad497c8d9230ca8a"
+    }
+  }
+}

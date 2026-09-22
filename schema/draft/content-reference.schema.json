@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/content-reference.schema.json",
+  "title": "AHP content-reference (Draft)",
+  "type": "object",
+  "required": [
+    "ref",
+    "size",
+    "sha256"
+  ],
+  "properties": {
+    "ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "Mutable AHP draft. ",
+  "description": "Subscription-scoped immutable bytes: ref is producer assigned and is not a URL or authorization grant. size counts exact octets and sha256 is their lowercase SHA-256 hex digest. Same ref retries MUST bind identical bytes. Changed bytes require a new ref, not a new item id."
+}

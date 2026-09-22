@@ -3,15 +3,27 @@
   "$id": "https://agenthooksprotocol.org/schemas/draft/registration.schema.json",
   "title": "AHP Portable Registration (Draft)",
   "$comment": "Mutable AHP draft. Backend id uniqueness is also checked by conformance tooling.",
-  "x-requirements": ["AHP-REG-001", "AHP-REG-002", "AHP-FAIL-001", "AHP-FAIL-002"],
+  "x-requirements": [
+    "AHP-REG-001",
+    "AHP-REG-002",
+    "AHP-FAIL-001",
+    "AHP-FAIL-002"
+  ],
   "type": "object",
-  "required": ["protocolVersion", "hooks"],
+  "required": [
+    "protocolVersion",
+    "hooks"
+  ],
   "properties": {
-    "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+    "protocolVersion": {
+      "$ref": "common.schema.json#/$defs/protocolVersion"
+    },
     "hooks": {
       "type": "array",
       "minItems": 1,
-      "items": {"$ref": "#/$defs/backend"}
+      "items": {
+        "$ref": "#/$defs/backend"
+      }
     }
   },
   "$defs": {
@@ -21,108 +33,628 @@
     },
     "stdioTransport": {
       "type": "object",
-      "required": ["type", "command", "lifecycle"],
+      "required": [
+        "type",
+        "command",
+        "lifecycle"
+      ],
       "properties": {
-        "type": {"const": "stdio"},
-        "command": {"type": "string", "minLength": 1},
-        "args": {"type": "array", "items": {"type": "string"}},
-        "lifecycle": {"enum": ["persistent", "per_event"]},
-        "cwd": {"type": "string"}
+        "type": {
+          "const": "stdio"
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "lifecycle": {
+          "enum": [
+            "persistent",
+            "per_event"
+          ]
+        },
+        "cwd": {
+          "type": "string"
+        }
       }
     },
     "httpTransport": {
       "type": "object",
-      "required": ["type", "url"],
+      "required": [
+        "type",
+        "url"
+      ],
       "properties": {
-        "type": {"const": "http"},
-        "url": {"type": "string", "format": "uri", "pattern": "^https?://"}
+        "type": {
+          "const": "http"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        }
       }
     },
     "authentication": {
-      "type": "object",
-      "required": ["type", "tokenEnv"],
-      "properties": {
-        "type": {"const": "bearer"},
-        "tokenEnv": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"}
-      },
-      "not": {
-        "anyOf": [
-          {"required": ["token"]},
-          {"required": ["bearerToken"]},
-          {"required": ["value"]}
-        ]
-      }
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "bearer"
+            },
+            "tokenEnv": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            },
+            "tokenRef": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "required": [
+                "tokenEnv"
+              ],
+              "not": {
+                "required": [
+                  "tokenRef"
+                ]
+              }
+            },
+            {
+              "required": [
+                "tokenRef"
+              ],
+              "not": {
+                "required": [
+                  "tokenEnv"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "resource",
+            "issuer",
+            "clientId",
+            "flow"
+          ],
+          "properties": {
+            "type": {
+              "const": "oauth"
+            },
+            "resource": {
+              "type": "string",
+              "minLength": 1
+            },
+            "issuer": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^https://"
+            },
+            "clientId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "clientSecretRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "flow": {
+              "enum": [
+                "authorization_code_pkce",
+                "client_credentials"
+              ]
+            },
+            "scopes": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "certificateRef",
+            "privateKeyRef",
+            "trustRootsRef"
+          ],
+          "properties": {
+            "type": {
+              "const": "mtls"
+            },
+            "certificateRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "privateKeyRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "trustRootsRef": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "credentialRef",
+            "issuer",
+            "audience"
+          ],
+          "properties": {
+            "type": {
+              "const": "workload"
+            },
+            "credentialRef": {
+              "type": "string",
+              "minLength": 1
+            },
+            "issuer": {
+              "type": "string",
+              "minLength": 1
+            },
+            "audience": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
     },
     "interceptSubscription": {
       "type": "object",
-      "required": ["events", "mode", "timeoutMs", "failurePolicy"],
+      "required": [
+        "events",
+        "mode",
+        "timeoutMs",
+        "failurePolicy",
+        "content"
+      ],
       "properties": {
         "events": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 1,
           "uniqueItems": true,
-          "items": {"const": "tool.before"}
+          "items": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tool.before",
+                  "tool.after",
+                  "session.start",
+                  "config.change.before",
+                  "turn.start",
+                  "turn.finish.before",
+                  "model.request.before",
+                  "model.switch.before",
+                  "tool.permission.request",
+                  "tool.batch.after",
+                  "context.compact.before",
+                  "context.compact.after",
+                  "task.change.before",
+                  "user.elicitation.request",
+                  "user.elicitation.result",
+                  "user.message.inbound",
+                  "user.message.outbound",
+                  "workspace.change.before",
+                  "model.response.after"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^(?:\\*|[a-z][a-z0-9]*\\.\\*)$"
+              }
+            ]
+          }
         },
-        "mode": {"const": "intercept"},
-        "timeoutMs": {"type": "integer", "minimum": 1},
-        "failurePolicy": {"enum": ["fail-open", "fail-closed"]},
-        "includeNative": {"type": "boolean"}
-      }
+        "mode": {
+          "const": "intercept"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failurePolicy": {
+          "enum": [
+            "fail-open",
+            "fail-closed"
+          ]
+        },
+        "includeNative": {
+          "type": "boolean",
+          "default": false
+        },
+        "content": {
+          "type": "object",
+          "required": [
+            "default"
+          ],
+          "properties": {
+            "default": {
+              "enum": [
+                "body",
+                "metadata",
+                "omit"
+              ]
+            },
+            "categories": {
+              "type": "object",
+              "additionalProperties": {
+                "enum": [
+                  "body",
+                  "metadata",
+                  "omit"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "upload": {
+          "$ref": "content-upload.schema.json"
+        },
+        "filters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "toolKinds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "paths": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "scope": {
+          "enum": [
+            "managed",
+            "project",
+            "user"
+          ]
+        },
+        "disableable": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "scope"
+            ],
+            "properties": {
+              "scope": {
+                "const": "managed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "disableable"
+            ],
+            "properties": {
+              "disableable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
     },
     "observeSubscription": {
       "type": "object",
-      "required": ["events", "mode"],
+      "required": [
+        "events",
+        "mode",
+        "content"
+      ],
       "properties": {
         "events": {
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": {"enum": ["tool.before", "tool.after", "tool.error", "session.start", "session.end"]}
+          "items": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tool.before",
+                  "tool.after",
+                  "session.start",
+                  "session.end",
+                  "config.change.before",
+                  "config.change.after",
+                  "turn.start",
+                  "turn.finish.before",
+                  "turn.end",
+                  "turn.progress",
+                  "model.request.before",
+                  "model.response.after",
+                  "model.error",
+                  "model.switch.before",
+                  "model.switch.after",
+                  "tool.permission.request",
+                  "tool.permission.resolved",
+                  "tool.progress",
+                  "tool.batch.after",
+                  "context.compact.before",
+                  "context.compact.after",
+                  "task.change.before",
+                  "task.change.after",
+                  "user.attention",
+                  "user.elicitation.request",
+                  "user.elicitation.result",
+                  "user.message.inbound",
+                  "user.message.outbound",
+                  "workspace.change.before",
+                  "workspace.change.after",
+                  "file.changed",
+                  "hook.failure"
+                ]
+              },
+              {
+                "type": "string",
+                "pattern": "^(?:\\*|[a-z][a-z0-9]*\\.\\*)$"
+              }
+            ]
+          }
         },
-        "mode": {"const": "observe"},
-        "includeNative": {"type": "boolean"}
+        "mode": {
+          "const": "observe"
+        },
+        "includeNative": {
+          "type": "boolean",
+          "default": false
+        },
+        "content": {
+          "type": "object",
+          "required": [
+            "default"
+          ],
+          "properties": {
+            "default": {
+              "enum": [
+                "body",
+                "metadata",
+                "omit"
+              ]
+            },
+            "categories": {
+              "type": "object",
+              "additionalProperties": {
+                "enum": [
+                  "body",
+                  "metadata",
+                  "omit"
+                ]
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "upload": {
+          "$ref": "content-upload.schema.json"
+        },
+        "filters": {
+          "type": "object",
+          "required": [],
+          "properties": {
+            "toolKinds": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "paths": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "scope": {
+          "enum": [
+            "managed",
+            "project",
+            "user"
+          ]
+        },
+        "disableable": {
+          "type": "boolean"
+        }
       },
       "not": {
         "anyOf": [
-          {"required": ["timeoutMs"]},
-          {"required": ["failurePolicy"]}
+          {
+            "required": [
+              "timeoutMs"
+            ]
+          },
+          {
+            "required": [
+              "failurePolicy"
+            ]
+          }
         ]
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "scope"
+            ],
+            "properties": {
+              "scope": {
+                "const": "managed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "disableable"
+            ],
+            "properties": {
+              "disableable": {
+                "const": false
+              }
+            }
+          }
+        }
+      ]
     },
     "backend": {
       "type": "object",
-      "required": ["id", "transport", "subscriptions"],
+      "required": [
+        "id",
+        "transport",
+        "subscriptions"
+      ],
       "properties": {
-        "id": {"$ref": "#/$defs/reverseDns"},
+        "id": {
+          "$ref": "#/$defs/reverseDns"
+        },
         "transport": {
           "oneOf": [
-            {"$ref": "#/$defs/stdioTransport"},
-            {"$ref": "#/$defs/httpTransport"}
+            {
+              "$ref": "#/$defs/stdioTransport"
+            },
+            {
+              "$ref": "#/$defs/httpTransport"
+            }
           ]
         },
-        "authentication": {"$ref": "#/$defs/authentication"},
+        "authentication": {
+          "$ref": "#/$defs/authentication"
+        },
         "subscriptions": {
           "type": "array",
           "minItems": 1,
           "items": {
             "oneOf": [
-              {"$ref": "#/$defs/interceptSubscription"},
-              {"$ref": "#/$defs/observeSubscription"}
+              {
+                "$ref": "#/$defs/interceptSubscription"
+              },
+              {
+                "$ref": "#/$defs/observeSubscription"
+              }
             ]
           }
         }
       },
       "allOf": [
         {
-          "if": {"properties": {"transport": {"properties": {"type": {"const": "stdio"}}}}},
-          "then": {"not": {"required": ["authentication"]}}
+          "if": {
+            "properties": {
+              "transport": {
+                "properties": {
+                  "type": {
+                    "const": "stdio"
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "authentication"
+              ]
+            }
+          }
         },
         {
-          "if": {"required": ["authentication"]},
-          "then": {"properties": {"transport": {"properties": {"type": {"const": "http"}}}}}
+          "if": {
+            "required": [
+              "authentication"
+            ]
+          },
+          "then": {
+            "properties": {
+              "transport": {
+                "properties": {
+                  "type": {
+                    "const": "http"
+                  }
+                }
+              }
+            }
+          }
         }
-      ]
+      ],
+      "not": {
+        "required": [
+          "contentReceiver"
+        ]
+      }
+    },
+    "contentReceiver": {
+      "type": "object",
+      "required": [
+        "url",
+        "timeoutMs",
+        "maxBytes"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https?://"
+        },
+        "authentication": {
+          "$ref": "#/$defs/authentication"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxBytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

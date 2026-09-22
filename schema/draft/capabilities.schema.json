@@ -2,21 +2,1209 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agenthooksprotocol.org/schemas/draft/capabilities.schema.json",
   "title": "AHP Interception Capabilities (Draft)",
-  "$comment": "Mutable AHP draft; the core draft defines only deny.",
-  "x-requirements": ["AHP-CAP-001", "AHP-CAP-002"],
+  "$comment": "Mutable AHP draft. Draft effect advertisements; modify input operations are advertised separately.",
+  "x-requirements": [
+    "AHP-CAP-001",
+    "AHP-CAP-002"
+  ],
   "type": "object",
-  "required": ["effects"],
+  "required": [
+    "effects"
+  ],
   "properties": {
     "effects": {
       "type": "array",
-      "minItems": 1,
       "uniqueItems": true,
       "items": {
         "anyOf": [
-          {"const": "deny"},
-          {"type": "string", "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"}
+          {
+            "enum": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return",
+              "flow",
+              "inject"
+            ]
+          },
+          {
+            "type": "string",
+            "pattern": "^(?:[A-Za-z][A-Za-z0-9_-]*\\.)+[A-Za-z][A-Za-z0-9_-]*$"
+          }
         ]
       }
+    },
+    "modify": {
+      "type": "object",
+      "required": [],
+      "properties": {
+        "input": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "output": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "prompt": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "request": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "response": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "content": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "instructions": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        },
+        "workspace": {
+          "type": "object",
+          "required": [
+            "replace",
+            "merge"
+          ],
+          "properties": {
+            "replace": {
+              "type": "boolean"
+            },
+            "merge": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false,
+          "anyOf": [
+            {
+              "properties": {
+                "replace": {
+                  "const": true
+                }
+              },
+              "required": [
+                "replace"
+              ]
+            },
+            {
+              "properties": {
+                "merge": {
+                  "const": true
+                }
+              },
+              "required": [
+                "merge"
+              ]
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    },
+    "flow": {
+      "type": "object",
+      "required": [
+        "operations"
+      ],
+      "properties": {
+        "operations": {
+          "type": "array",
+          "uniqueItems": true,
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "stop",
+              "continue"
+            ]
+          }
+        },
+        "remainingContinuations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "continuationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxContinuations": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "inject": {
+      "type": "object",
+      "required": [
+        "context"
+      ],
+      "properties": {
+        "context": {
+          "type": "object",
+          "required": [
+            "append",
+            "deliverAt"
+          ],
+          "properties": {
+            "append": {
+              "const": true
+            },
+            "deliverAt": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "now",
+                  "next_turn"
+                ]
+              },
+              "minItems": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "elicitation": {
+      "type": "object",
+      "properties": {
+        "form": {
+          "type": "object"
+        },
+        "url": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Independent opt-in mode support. Absent/empty means no AHP elicitation mode. Only an MCP-origin empty capability is translated to form support."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "flow"
+            }
+          }
+        },
+        "required": [
+          "effects"
+        ]
+      },
+      "then": {
+        "required": [
+          "flow"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "inject"
+            }
+          }
+        },
+        "required": [
+          "effects"
+        ]
+      },
+      "then": {
+        "required": [
+          "inject"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "modify"
+            }
+          }
+        },
+        "required": [
+          "effects"
+        ]
+      },
+      "then": {
+        "required": [
+          "modify"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "modify"
+        ]
+      },
+      "then": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "modify"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "flow"
+        ]
+      },
+      "then": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "flow"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "inject"
+        ]
+      },
+      "then": {
+        "properties": {
+          "effects": {
+            "contains": {
+              "const": "inject"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "session.start": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "inject",
+                  "message"
+                ]
+              },
+              "type": "array"
+            }
+          }
+        }
+      ]
+    },
+    "config.change.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "message"
+                ]
+              },
+              "type": "array"
+            }
+          }
+        }
+      ]
+    },
+    "turn.start": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "inject",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "prompt"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "turn.finish.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "modify",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "response"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop",
+                      "continue"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "model.request.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "inject",
+                  "return",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "request"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "model.response.after": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "modify",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "response"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "model.switch.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tool.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "allow",
+                  "ask",
+                  "modify",
+                  "inject",
+                  "flow",
+                  "return",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "input"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tool.after": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "modify",
+                  "inject",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "output"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop",
+                      "continue"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tool.permission.request": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "input"
+                ]
+              },
+              "type": "object"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "tool.batch.after": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "flow",
+                  "inject",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "flow": {
+              "properties": {
+                "operations": {
+                  "items": {
+                    "enum": [
+                      "stop"
+                    ]
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "context.compact.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "return",
+                  "inject",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "instructions"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "context.compact.after": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "inject",
+                  "modify",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "summary"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "task.change.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "message"
+                ]
+              },
+              "type": "array"
+            }
+          }
+        }
+      ]
+    },
+    "user.elicitation.request": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "return",
+                  "message"
+                ]
+              },
+              "type": "array"
+            }
+          }
+        }
+      ]
+    },
+    "user.elicitation.result": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "modify",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "content"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "user.message.inbound": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "prompt"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "user.message.outbound": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "content"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
+    },
+    "workspace.change.before": {
+      "allOf": [
+        {
+          "$ref": "capabilities.schema.json"
+        },
+        {
+          "properties": {
+            "effects": {
+              "items": {
+                "enum": [
+                  "deny",
+                  "modify",
+                  "message"
+                ]
+              },
+              "type": "array"
+            },
+            "modify": {
+              "propertyNames": {
+                "enum": [
+                  "workspace"
+                ]
+              },
+              "type": "object"
+            }
+          }
+        }
+      ]
     }
   }
 }

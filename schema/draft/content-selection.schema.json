@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/content-selection.schema.json",
+  "title": "AHP content-selection (Draft)",
+  "type": "object",
+  "required": [
+    "default"
+  ],
+  "properties": {
+    "default": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "text": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "reasoning": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "images": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "audio": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "video": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    },
+    "files": {
+      "enum": [
+        "body",
+        "metadata",
+        "omit"
+      ]
+    }
+  },
+  "additionalProperties": {
+    "enum": [
+      "body",
+      "metadata",
+      "omit"
+    ]
+  },
+  "$comment": "Mutable AHP draft. ",
+  "description": "Select by descriptor category; reasoning takes its own category, otherwise classify by media type, not enclosing message role. Unlisted categories use required default. Selection never grants authorization."
+}

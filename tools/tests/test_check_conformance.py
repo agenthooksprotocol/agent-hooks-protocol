@@ -33,6 +33,10 @@ class SnapshotCheckerTests(unittest.TestCase):
             destination = self.root / name
             if source.is_dir():
                 shutil.copytree(source, destination)
+        # Include linked harness documentation without copying generated reports.
+        (self.root / "interop").mkdir()
+        for source in (REPOSITORY_ROOT / "interop").glob("*.md"):
+            shutil.copy2(source, self.root / "interop" / source.name)
         for source in REPOSITORY_ROOT.glob("*.md"):
             shutil.copy2(source, self.root / source.name)
         shutil.copy2(REPOSITORY_ROOT / "LICENSE", self.root / "LICENSE")
@@ -60,7 +64,7 @@ class SnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual([], result.errors)
         self.assertEqual(
-            (16, 31, 22, 5),
+            (28, 105, 22, 5),
             (
                 result.schema_count,
                 result.fixture_count,
@@ -90,9 +94,9 @@ class SnapshotCheckerTests(unittest.TestCase):
 
         registration = self.read_json("schema/draft/registration.schema.json")
         intercept_subscription = registration["$defs"]["interceptSubscription"]
-        self.assertEqual(
+        self.assertIn(
             "tool.before",
-            intercept_subscription["properties"]["events"]["items"]["const"],
+            intercept_subscription["properties"]["events"]["items"]["anyOf"][0]["enum"],
         )
         self.assertEqual(
             "intercept",
@@ -102,10 +106,8 @@ class SnapshotCheckerTests(unittest.TestCase):
         params = request["allOf"][1]["properties"]["params"]
         self.assertIn("capabilities", params["required"])
         self.assertEqual(
-            "deny",
-            params["properties"]["capabilities"]["allOf"][1]["properties"][
-                "effects"
-            ]["contains"]["const"],
+            "capabilities.schema.json",
+            params["properties"]["capabilities"]["allOf"][0]["$ref"],
         )
 
         fixture_manifest = self.read_json("fixtures/draft/manifest.json")
@@ -185,6 +187,32 @@ class SnapshotCheckerTests(unittest.TestCase):
         self.assertEqual([], validator.validate(fixture, aggregate, aggregate_path))
         fixture["params"]["protocolVersion"] = "1.2.3"
         self.assertNotEqual([], validator.validate(fixture, aggregate, aggregate_path))
+
+    def test_full_draft_catalogue_and_compound_effects(self) -> None:
+        snapshot = checker.Snapshot.resolve(self.root)
+        store = checker.SchemaStore(snapshot)
+        validator = checker.SubsetValidator(store)
+        path = snapshot.schema_dir / "schema.json"
+        schema = store.load(path)
+        response = {"jsonrpc": "2.0", "id": "request-1", "result": {
+            "protocolVersion": "draft", "effects": [
+                {"type": "allow"}, {"type": "ask"},
+                {"type": "modify", "target": "input", "operation": "merge", "value": {"nested": None}},
+                {"type": "message", "text": "hello"}, {"type": "return", "value": None},
+                {"type": "deny", "reason": "policy"}]}}
+        self.assertEqual([], validator.validate(response, schema, path))
+        for invalid in ({"type": "unknown"}, {"type": "deny", "reason": ""},
+                        {"type": "modify", "target": "unknown", "operation": "merge", "value": {}}):
+            response["result"]["effects"].append(invalid)
+            self.assertNotEqual([], validator.validate(response, schema, path))
+            response["result"]["effects"].pop()
+        del response["result"]["protocolVersion"]
+        self.assertNotEqual([], validator.validate(response, schema, path))
+        manifest = self.read_json("schema/draft/manifest.json")
+        names = set(manifest["sdkGeneration"]["stableNames"].values())
+        self.assertTrue({"Registration", "SessionStartEvent", "SessionEndEvent", "ToolBeforeEvent",
+                         "ToolAfterEvent", "CatalogueEvent", "ObserveNotification", "JsonRpcMessage",
+                         "Effect", "InterceptResponse"}.issubset(names))
 
     def test_rejects_protocol_version_constant_different_from_snapshot(self) -> None:
         common = self.read_json("schema/draft/common.schema.json")
@@ -519,6 +547,11 @@ class AllSnapshotsCheckerTests(unittest.TestCase):
             ("2024-11-05", "2026-08-27"),
             checker.discover_frozen_snapshots(self.root),
         )
+
+    def test_candidate_schema_is_not_a_second_active_draft(self) -> None:
+        (self.root / "schema" / "v1-candidate").mkdir(exist_ok=True)
+        with self.assertRaisesRegex(checker.FrozenSnapshotFailure, "valid YYYY-MM-DD"):
+            checker.discover_frozen_snapshots(self.root)
 
     def test_rejects_non_date_and_impossible_date_snapshot_directories(self) -> None:
         invalid_names = (

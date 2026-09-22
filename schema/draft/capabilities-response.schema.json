@@ -1,0 +1,641 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/capabilities-response.schema.json",
+  "title": "AHP capabilities-response (Draft)",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/successResponse"
+    },
+    {
+      "type": "object",
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "type": "object",
+          "required": [
+            "protocolVersion",
+            "manifest"
+          ],
+          "properties": {
+            "protocolVersion": {
+              "$ref": "common.schema.json#/$defs/protocolVersion"
+            },
+            "manifest": {
+              "type": "object",
+              "required": [
+                "events",
+                "gaps",
+                "transports",
+                "authentication",
+                "toolPaths",
+                "contentCategories",
+                "limits",
+                "managedPolicy",
+                "correlationIdentityFields"
+              ],
+              "properties": {
+                "events": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "event",
+                      "modes"
+                    ],
+                    "properties": {
+                      "event": {
+                        "enum": [
+                          "tool.before",
+                          "tool.after",
+                          "session.start",
+                          "session.end",
+                          "config.change.before",
+                          "config.change.after",
+                          "turn.start",
+                          "turn.finish.before",
+                          "turn.end",
+                          "turn.progress",
+                          "model.request.before",
+                          "model.response.after",
+                          "model.error",
+                          "model.switch.before",
+                          "model.switch.after",
+                          "tool.permission.request",
+                          "tool.permission.resolved",
+                          "tool.progress",
+                          "tool.batch.after",
+                          "context.compact.before",
+                          "context.compact.after",
+                          "task.change.before",
+                          "task.change.after",
+                          "user.attention",
+                          "user.elicitation.request",
+                          "user.elicitation.result",
+                          "user.message.inbound",
+                          "user.message.outbound",
+                          "workspace.change.before",
+                          "workspace.change.after",
+                          "file.changed",
+                          "hook.failure"
+                        ]
+                      },
+                      "modes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "uniqueItems": true,
+                        "items": {
+                          "enum": [
+                            "observe",
+                            "intercept"
+                          ]
+                        }
+                      },
+                      "capabilities": {
+                        "$ref": "capabilities.schema.json"
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "modes": {
+                              "not": {
+                                "contains": {
+                                  "const": "intercept"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "properties": {
+                                "effects": {
+                                  "maxItems": 0
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "modes": {
+                              "contains": {
+                                "const": "intercept"
+                              }
+                            }
+                          }
+                        },
+                        "then": {
+                          "required": [
+                            "capabilities"
+                          ]
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "not": {
+                                "enum": [
+                                  "tool.before",
+                                  "tool.after",
+                                  "session.start",
+                                  "config.change.before",
+                                  "turn.start",
+                                  "turn.finish.before",
+                                  "model.request.before",
+                                  "model.switch.before",
+                                  "tool.permission.request",
+                                  "tool.batch.after",
+                                  "context.compact.before",
+                                  "context.compact.after",
+                                  "task.change.before",
+                                  "user.elicitation.request",
+                                  "user.elicitation.result",
+                                  "user.message.inbound",
+                                  "user.message.outbound",
+                                  "workspace.change.before",
+                                  "model.response.after"
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "modes": {
+                              "not": {
+                                "contains": {
+                                  "const": "intercept"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "session.start"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/session.start"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "config.change.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/config.change.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "turn.start"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/turn.start"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "turn.finish.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/turn.finish.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "model.request.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/model.request.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "model.response.after"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/model.response.after"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "model.switch.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/model.switch.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "tool.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/tool.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "tool.after"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/tool.after"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "tool.permission.request"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/tool.permission.request"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "tool.batch.after"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/tool.batch.after"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "context.compact.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/context.compact.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "context.compact.after"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/context.compact.after"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "task.change.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/task.change.before"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "user.elicitation.request"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/user.elicitation.request"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "user.elicitation.result"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/user.elicitation.result"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "user.message.inbound"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/user.message.inbound"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "user.message.outbound"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/user.message.outbound"
+                            }
+                          }
+                        }
+                      },
+                      {
+                        "if": {
+                          "properties": {
+                            "event": {
+                              "const": "workspace.change.before"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "capabilities": {
+                              "$ref": "capabilities.schema.json#/$defs/workspace.change.before"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "gaps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "path",
+                      "reason"
+                    ],
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "reason": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                },
+                "transports": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "http",
+                      "stdio",
+                      "in_process"
+                    ]
+                  }
+                },
+                "authentication": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "enum": [
+                      "bearer",
+                      "oauth",
+                      "mtls",
+                      "workload"
+                    ]
+                  }
+                },
+                "limits": {
+                  "type": "object",
+                  "properties": {
+                    "maxUploadBytes": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "maxContinuations": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "minTimeoutMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "maxTimeoutMs": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "toolPaths": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "contentCategories": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "managedPolicy": {
+                  "type": "object",
+                  "required": [
+                    "scopes",
+                    "disableable"
+                  ],
+                  "properties": {
+                    "scopes": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "enum": [
+                          "user",
+                          "project",
+                          "managed"
+                        ]
+                      }
+                    },
+                    "disableable": {
+                      "type": "boolean"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "scopes": {
+                            "contains": {
+                              "const": "managed"
+                            }
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "disableable": {
+                            "const": false
+                          }
+                        }
+                      }
+                    }
+                  ]
+                },
+                "correlationIdentityFields": {
+                  "type": "array",
+                  "uniqueItems": true,
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": "Available event/item correlation field paths, never authorization identity."
+                }
+              },
+              "not": {
+                "required": [
+                  "identity"
+                ]
+              }
+            }
+          },
+          "not": {
+            "required": [
+              "effects"
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$comment": "Mutable AHP draft. "
+}

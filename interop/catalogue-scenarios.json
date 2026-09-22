@@ -1,0 +1,3277 @@
+{
+  "version": 1,
+  "suite": "catalogue",
+  "scenarios": [
+    {
+      "id": "catalogue:tool.before",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.before",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "task": 1,
+                    "options": {
+                      "recursive": true,
+                      "limit": 20
+                    },
+                    "keep": "yes"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.before",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "task": 1,
+                    "options": {
+                      "recursive": true,
+                      "limit": 20
+                    },
+                    "keep": "yes"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:tool.after",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.after",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.after",
+                "time": "2026-08-24T08:51:15Z",
+                "session": {
+                  "id": "sess_observe_123"
+                },
+                "tool": {
+                  "name": "read_file",
+                  "kind": "file_read",
+                  "input": {
+                    "path": "README.md"
+                  },
+                  "origin": "native"
+                },
+                "outcome": "ok",
+                "execution": {
+                  "status": "executed"
+                },
+                "call": {
+                  "id": "call_observe_456"
+                },
+                "path": "example",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.after",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.after",
+                "time": "2026-08-24T08:51:15Z",
+                "session": {
+                  "id": "sess_observe_123"
+                },
+                "tool": {
+                  "name": "read_file",
+                  "kind": "file_read",
+                  "input": {
+                    "path": "README.md"
+                  },
+                  "origin": "native"
+                },
+                "outcome": "ok",
+                "execution": {
+                  "status": "executed"
+                },
+                "call": {
+                  "id": "call_observe_456"
+                },
+                "path": "example",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:turn.start",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.start",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.start",
+                "turn": {
+                  "id": "turn1"
+                },
+                "trigger": "user",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.start",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.start",
+                "turn": {
+                  "id": "turn1"
+                },
+                "trigger": "user",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:turn.finish.before",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.finish.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.finish.before",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.finish.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.finish.before",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:turn.end",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.end",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.end",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.end",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.end",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:turn.progress",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.progress",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.progress",
+                "turn": {
+                  "id": "turn1"
+                },
+                "item": {
+                  "id": "example"
+                },
+                "delta": {
+                  "id": "catalogue:turn.progress:item:item1",
+                  "kind": "message",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "assistant"
+                },
+                "final": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:turn.progress",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.progress",
+                "turn": {
+                  "id": "turn1"
+                },
+                "item": {
+                  "id": "example"
+                },
+                "delta": {
+                  "id": "catalogue:turn.progress:item:item1",
+                  "kind": "message",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "assistant"
+                },
+                "final": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:model.request.before",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.request.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.request.before",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "params": {},
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.request.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.request.before",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "params": {},
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:model.response.after",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.response.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.response.after",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                },
+                "items": [],
+                "finishReason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.response.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.response.after",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                },
+                "items": [],
+                "finishReason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:model.error",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.error",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.error",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                },
+                "error": {
+                  "message": "example",
+                  "class": "example"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.error",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.error",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                },
+                "error": {
+                  "message": "example",
+                  "class": "example"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:model.switch.before",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.switch.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.switch.before",
+                "current": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "proposed": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "reason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.switch.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.switch.before",
+                "current": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "proposed": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "reason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:model.switch.after",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.switch.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.switch.after",
+                "previous": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "current": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "reason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:model.switch.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.switch.after",
+                "previous": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "current": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "reason": "example"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:tool.permission.request",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.permission.request",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.permission.request",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "suggestions": [],
+                "sandboxBypass": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.permission.request",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.permission.request",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "suggestions": [],
+                "sandboxBypass": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:tool.permission.resolved",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.permission.resolved",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.permission.resolved",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "decision": "allow",
+                "decidedBy": "user"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.permission.resolved",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.permission.resolved",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "decision": "allow",
+                "decidedBy": "user"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:tool.progress",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.progress",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.progress",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "partialOutput": {
+                  "id": "catalogue:tool.progress:item:item1",
+                  "kind": "tool_result",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "tool"
+                },
+                "backgrounded": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.progress",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.progress",
+                "tool": {
+                  "name": "run",
+                  "origin": "native",
+                  "input": {}
+                },
+                "call": {
+                  "id": "call1"
+                },
+                "path": "example",
+                "partialOutput": {
+                  "id": "catalogue:tool.progress:item:item1",
+                  "kind": "tool_result",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "tool"
+                },
+                "backgrounded": false
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:tool.batch.after",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.batch.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.batch.after",
+                "batch": {
+                  "id": "example"
+                },
+                "calls": [
+                  {
+                    "call": {
+                      "id": "example"
+                    },
+                    "tool": {
+                      "name": "example",
+                      "input": {},
+                      "origin": "native"
+                    },
+                    "path": "example",
+                    "outcome": "ok",
+                    "execution": {
+                      "status": "executed"
+                    }
+                  }
+                ]
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:tool.batch.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "tool.batch.after",
+                "batch": {
+                  "id": "example"
+                },
+                "calls": [
+                  {
+                    "call": {
+                      "id": "example"
+                    },
+                    "tool": {
+                      "name": "example",
+                      "input": {},
+                      "origin": "native"
+                    },
+                    "path": "example",
+                    "outcome": "ok",
+                    "execution": {
+                      "status": "executed"
+                    }
+                  }
+                ]
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:context.compact.before",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:context.compact.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "context.compact.before",
+                "trigger": "auto",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:context.compact.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "context.compact.before",
+                "trigger": "auto",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:context.compact.after",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:context.compact.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "context.compact.after",
+                "summary": {
+                  "id": "catalogue:context.compact.after:item:item1",
+                  "kind": "message",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "system"
+                },
+                "removed": [],
+                "execution": {
+                  "status": "executed"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:context.compact.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "context.compact.after",
+                "summary": {
+                  "id": "catalogue:context.compact.after:item:item1",
+                  "kind": "message",
+                  "mediaType": "text/plain",
+                  "selection": "metadata",
+                  "role": "system"
+                },
+                "removed": [],
+                "execution": {
+                  "status": "executed"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:task.change.before",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:task.change.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:task.change.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:task.change.after",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:task.change.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:task.change.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:workspace.change.before",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:workspace.change.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.before",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:workspace.change.before",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.before",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:workspace.change.after",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:workspace.change.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.after",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:workspace.change.after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.after",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "catalogue:file.changed",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:file.changed",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "file.changed",
+                "changes": [
+                  {
+                    "path": "/workspace/example.txt",
+                    "operation": "update",
+                    "agentCaused": true
+                  }
+                ]
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "catalogue:file.changed",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "file.changed",
+                "changes": [
+                  {
+                    "path": "/workspace/example.txt",
+                    "operation": "update",
+                    "agentCaused": true
+                  }
+                ]
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "task-modified-actual-pair",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "task:proposal",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "done"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        },
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "task:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "blocked"
+                  },
+                  "prior": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "task:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "task:proposal",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "done"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "task:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "blocked"
+                  },
+                  "prior": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "task:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          },
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "workspace-file-causal-chain",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "workspace:proposal",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.before",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        },
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "workspace:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.after",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/actually-applied"
+                  }
+                },
+                "parentEventId": "workspace:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        },
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "file:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "file.changed",
+                "changes": [
+                  {
+                    "path": "/workspace/example.txt",
+                    "operation": "update",
+                    "agentCaused": true
+                  }
+                ],
+                "parentEventId": "workspace:actual"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "workspace:proposal",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.before",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/new"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "workspace:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "workspace.change.after",
+                "workspace": {
+                  "kind": "cwd",
+                  "change": {
+                    "cwd": "/actually-applied"
+                  }
+                },
+                "parentEventId": "workspace:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "file:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "file.changed",
+                "changes": [
+                  {
+                    "path": "/workspace/example.txt",
+                    "operation": "update",
+                    "agentCaused": true
+                  }
+                ],
+                "parentEventId": "workspace:actual"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          },
+          {
+            "accepted": true,
+            "errorKind": null
+          },
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "filtered-parent",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "filtered:after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "not-delivered"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "filtered:after",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "not-delivered"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "source-local-parent",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "same",
+                "source": "urn:source:a",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        },
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "other",
+                "source": "urn:source:b",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "same"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "same",
+                "source": "urn:source:a",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "other",
+                "source": "urn:source:b",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "same"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          },
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "late-parent-first-child",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "late:child",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "late:parent"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        },
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "late:parent",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "late:child",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "late:parent"
+              },
+              "subscriptionId": "metadata"
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "late:parent",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          },
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "wrong-known-task-parent",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "rawNotify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "wrong:task",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "another-task",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "task:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "wrong:task",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "another-task",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "task:proposal"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": false,
+            "errorKind": "lineage"
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "source-local-cycle",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "rawNotify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "cycle:self",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "cycle:self"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "cycle:self",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.before",
+                "task": {
+                  "id": "task1",
+                  "operation": "create",
+                  "change": {
+                    "status": "open"
+                  }
+                },
+                "parentEventId": "cycle:self"
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": false,
+            "errorKind": "lineage"
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "no-op-actual-task",
+      "category": "lineage",
+      "steps": [
+        {
+          "op": "rawNotify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "noop:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "open"
+                  },
+                  "prior": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "noop:actual",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "task.change.after",
+                "task": {
+                  "id": "task1",
+                  "operation": "update",
+                  "change": {
+                    "status": "open"
+                  },
+                  "prior": {
+                    "status": "open"
+                  }
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": false,
+            "errorKind": "lineage"
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "typed-model-error-required",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "rawNotify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "invalid:model-error",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.error",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "invalid:model-error",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.error",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "execution": {
+                  "status": "executed"
+                }
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": false,
+            "errorKind": "schema"
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "typed-execution-enum",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "rawNotify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "invalid:execution",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.after",
+                "time": "2026-08-24T08:51:15Z",
+                "session": {
+                  "id": "sess_observe_123"
+                },
+                "tool": {
+                  "name": "read_file",
+                  "kind": "file_read",
+                  "input": {
+                    "path": "README.md"
+                  },
+                  "origin": "native"
+                },
+                "outcome": "ok",
+                "execution": {
+                  "status": "invented"
+                },
+                "call": {
+                  "id": "call_observe_456"
+                },
+                "path": "example",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "invalid:execution",
+                "source": "urn:ahp:catalogue",
+                "type": "tool.after",
+                "time": "2026-08-24T08:51:15Z",
+                "session": {
+                  "id": "sess_observe_123"
+                },
+                "tool": {
+                  "name": "read_file",
+                  "kind": "file_read",
+                  "input": {
+                    "path": "README.md"
+                  },
+                  "origin": "native"
+                },
+                "outcome": "ok",
+                "execution": {
+                  "status": "invented"
+                },
+                "call": {
+                  "id": "call_observe_456"
+                },
+                "path": "example",
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": false,
+            "errorKind": "schema"
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "healthy-after-rejections",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "healthy:after-rejections",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.end",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "healthy:after-rejections",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "turn.end",
+                "turn": {
+                  "id": "turn1"
+                },
+                "outcome": "completed",
+                "continuationCount": 0,
+                "items": []
+              },
+              "subscriptionId": "metadata"
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-observe-accepted",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": true
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-intercept-accepted",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": true
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-duplicate-backend",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-explicit-failure-policy-required",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-observe-policy-forbidden",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    },
+                    "timeoutMs": 100
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-unsupported-event",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "hook.failure"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-observe-only-interception",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "model.error"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-unenforceable-ask",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [
+            {
+              "event": "tool.before",
+              "mode": "intercept",
+              "effects": [
+                "ask"
+              ]
+            }
+          ],
+          "context": {
+            "interactive": false,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-supported-modify",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [
+            {
+              "event": "tool.before",
+              "mode": "intercept",
+              "effects": [
+                "modify"
+              ],
+              "modify": {
+                "input": {
+                  "merge": true
+                }
+              }
+            }
+          ],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": true
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-unsupported-modify-target",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [
+            {
+              "event": "tool.before",
+              "mode": "intercept",
+              "effects": [
+                "modify"
+              ],
+              "modify": {
+                "nonexistent": {
+                  "replace": true
+                }
+              }
+            }
+          ],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-resolved-credential",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ],
+                "authentication": {
+                  "type": "bearer",
+                  "tokenEnv": "CATALOGUE_TOKEN"
+                }
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {
+              "CATALOGUE_TOKEN": "TEST-ONLY-catalogue"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": true
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-missing-credential",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.after"
+                    ],
+                    "mode": "observe",
+                    "content": {
+                      "default": "metadata"
+                    }
+                  }
+                ],
+                "authentication": {
+                  "type": "bearer",
+                  "tokenEnv": "CATALOGUE_TOKEN"
+                }
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "registration-unenforceable-managed-scope",
+      "category": "registration",
+      "steps": [
+        {
+          "op": "register",
+          "registration": {
+            "protocolVersion": "draft",
+            "hooks": [
+              {
+                "id": "com.example.catalogue",
+                "transport": {
+                  "type": "http",
+                  "url": "https://policy.example.invalid/hooks"
+                },
+                "subscriptions": [
+                  {
+                    "events": [
+                      "tool.before"
+                    ],
+                    "mode": "intercept",
+                    "timeoutMs": 500,
+                    "failurePolicy": "fail-closed",
+                    "content": {
+                      "default": "metadata"
+                    },
+                    "scope": "managed",
+                    "disableable": false
+                  }
+                ]
+              }
+            ]
+          },
+          "requirements": [],
+          "context": {
+            "interactive": true,
+            "environment": {}
+          }
+        }
+      ],
+      "expected": {
+        "sent": [],
+        "registrations": [
+          {
+            "accepted": false
+          }
+        ],
+        "deliveries": []
+      },
+      "requests": {},
+      "responses": {}
+    }
+  ]
+}

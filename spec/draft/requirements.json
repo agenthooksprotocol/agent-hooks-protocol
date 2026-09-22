@@ -154,8 +154,8 @@
       "anchor": "AHP-COMP-001",
       "section": "Interceptor order",
       "profile": "tool-interception",
-      "text": "Matching interceptors run serially in deterministic registration order and evaluation stops on denial or a fail-closed operational failure.",
-      "textSha256": "bef4fda2308fd817184cacf330cbd5c1e681908e0413119e7929431413a743e1"
+      "text": "Matching interceptors run serially in deterministic registration order and decision-making stops on denial, flow stop, interruption, or a fail-closed operational failure.",
+      "textSha256": "60ffbc107ae4683f69bf63eed8772701e893bf360235f96cc20e978d88f0bb91"
     },
     {
       "id": "AHP-FAIL-001",

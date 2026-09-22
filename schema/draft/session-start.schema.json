@@ -3,22 +3,185 @@
   "$id": "https://agenthooksprotocol.org/schemas/draft/session-start.schema.json",
   "title": "AHP session.start Event (Draft)",
   "$comment": "Mutable AHP draft. Tool fields apply only to tool events, and outcome applies only to session.end.",
-  "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
+  "x-requirements": [
+    "AHP-CORE-003",
+    "AHP-CORE-004"
+  ],
   "type": "object",
-  "required": ["id", "source", "type", "time", "session"],
+  "required": [
+    "id",
+    "source",
+    "type",
+    "time",
+    "session",
+    "trigger",
+    "harness",
+    "permissionMode",
+    "manifest",
+    "items"
+  ],
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "source": {"type": "string", "format": "uri"},
-    "type": {"const": "session.start"},
-    "time": {"type": "string", "format": "date-time"},
-    "session": {"$ref": "common.schema.json#/$defs/session"},
-    "native": {"$ref": "common.schema.json#/$defs/native"},
-    "extensions": {"$ref": "extensions.schema.json"}
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "const": "session.start"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session": {
+      "$ref": "common.schema.json#/$defs/session"
+    },
+    "native": {
+      "$ref": "common.schema.json#/$defs/native"
+    },
+    "extensions": {
+      "$ref": "extensions.schema.json"
+    },
+    "parentEventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+    },
+    "turn": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "content-item.schema.json#/$defs/modelVisibleItem"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "trigger": {
+      "enum": [
+        "startup",
+        "resume",
+        "clear",
+        "compact",
+        "fork"
+      ]
+    },
+    "resumedFrom": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    },
+    "permissionMode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "harness": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "manifest": {
+      "$ref": "capabilities-response.schema.json#/allOf/1/properties/result/properties/manifest"
+    },
+    "synthesized": {
+      "type": "boolean",
+      "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+    }
   },
   "not": {
     "anyOf": [
-      {"required": ["tool"]},
-      {"required": ["outcome"]}
+      {
+        "required": [
+          "tool"
+        ]
+      },
+      {
+        "required": [
+          "outcome"
+        ]
+      }
     ]
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "trigger"
+        ],
+        "properties": {
+          "trigger": {
+            "enum": [
+              "clear",
+              "fork"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "resumedFrom"
+        ]
+      }
+    }
+  ]
 }

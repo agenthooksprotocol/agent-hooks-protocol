@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "model.switch.after",
+      "previous": {
+        "id": "example",
+        "provider": "example"
+      },
+      "current": {
+        "id": "example",
+        "provider": "example"
+      },
+      "reason": "example"
+    },
+    "subscriptionId": "observer"
+  }
+}

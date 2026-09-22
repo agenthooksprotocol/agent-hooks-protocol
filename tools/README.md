@@ -86,3 +86,25 @@ cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
 ```
 
 The structural codecs preserve unknown JSON. See [`tools/sdk-codegen/README.md`](sdk-codegen/README.md) for their compatibility contract.
+
+## Full draft TypeScript bundle
+
+`python3 tools/generate_sdk.py --sdk ../typescript-sdk` emits the full draft codec,
+canonical schemas, and source lock. Add `--check` for byte-for-byte reproducibility
+without writing SDK artifacts. See [boundary APIs and runtime scope](../docs/accepted-boundary-apis.md).
+
+`python3 tools/generate_sdk.py --all` regenerates TypeScript plus the sibling
+Python, Go and Rust codecs, canonical schema bundles and source locks. Use
+`--all --check` to compare every output without modifying SDK artifacts.
+See the [draft specification](../spec/draft/index.md) for effect, discovery,
+content and event shapes, and the boundary API documentation for runtime limits.
+
+### Format validation in the canonical subset
+
+The checker applies absolute RFC3986 URI grammar and RFC3339 lexical/calendar
+checks, not scheme-only URI checks or Python's broader ISO-date acceptance.
+Unescaped whitespace, invalid percent escapes, malformed IP literals, compact
+dates and missing timezone separators are rejected. Integer-valued JSON numbers
+such as 1.0 satisfy `integer`; booleans do not. This is not URL authorization or
+HTTP header validation. JSON Schema patterns retain search semantics; exact
+SHA-256 fields therefore additionally enforce minLength/maxLength 64.

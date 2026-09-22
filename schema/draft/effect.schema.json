@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/effect.schema.json",
+  "$comment": "Mutable AHP draft. Ordered effects are accepted and applied atomically; capabilities and composition require runtime checks.",
+  "oneOf": [
+    {
+      "$ref": "deny-effect.schema.json"
+    },
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "allow"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "ask"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "enum": [
+            "input",
+            "output",
+            "prompt",
+            "request",
+            "response",
+            "content",
+            "instructions",
+            "summary",
+            "workspace"
+          ]
+        },
+        "operation": {
+          "enum": [
+            "replace",
+            "merge"
+          ],
+          "description": "replace substitutes the whole object. merge shallowly overwrites top-level keys; nested values replace whole values and null is literal, not deletion."
+        },
+        "value": {}
+      },
+      "allOf": [
+        {
+          "if": {
+            "anyOf": [
+              {
+                "properties": {
+                  "target": {
+                    "const": "input"
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "operation": {
+                    "const": "merge"
+                  }
+                }
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "text"
+      ],
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": true
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "operation",
+        "reason"
+      ],
+      "properties": {
+        "type": {
+          "const": "flow"
+        },
+        "operation": {
+          "const": "stop"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "operation",
+        "instruction"
+      ],
+      "properties": {
+        "type": {
+          "const": "flow"
+        },
+        "operation": {
+          "const": "continue"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "deliverAt",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "inject"
+        },
+        "target": {
+          "const": "context"
+        },
+        "operation": {
+          "const": "append"
+        },
+        "deliverAt": {
+          "enum": [
+            "now",
+            "next_turn"
+          ]
+        },
+        "value": {}
+      }
+    }
+  ],
+  "title": "AHP Effect (Draft)"
+}

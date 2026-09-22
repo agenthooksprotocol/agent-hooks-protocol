@@ -1,0 +1,34 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "tool.batch.after",
+      "batch": {
+        "id": "example"
+      },
+      "calls": [
+        {
+          "call": {
+            "id": "example"
+          },
+          "tool": {
+            "name": "example",
+            "input": {},
+            "origin": "native"
+          },
+          "path": "example",
+          "outcome": "ok",
+          "execution": {
+            "status": "executed"
+          }
+        }
+      ]
+    },
+    "subscriptionId": "observer"
+  }
+}
