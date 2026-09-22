@@ -29,8 +29,7 @@ and transmits real `hooks/intercept` envelopes. The receiver itself validates th
 canonical envelopes, complete MCP JSON bodies, metadata equality, ownership,
 size, SHA-256, immutable references, and request/result pairing. Exact receiver
 receipts include the received envelope, selected body bytes and decoded result.
-The oracle alone has expected outcomes. There is no semantic control endpoint;
-`/receipts` only reads evidence. Uploads are scoped to the isolated authenticated
+The oracle holds expected outcomes; `/receipts` reads receiver evidence. Uploads are scoped to the isolated authenticated
 subscription. Wrong tokens and wrong subscriptions are rejected.
 
 The matrix covers explicit/default form mode, form accept/decline/cancel, URL
@@ -65,9 +64,7 @@ emitting a body-selected result event. Metadata/omit cannot authorize execution.
 The HTTP matrix also executes the sender SDK's atomic helper, independently
 checks its output, then uploads and delivers that actual staged output to every
 receiver SDK. Before-return, before-deny, result replace/merge and URL return/deny
-are therefore published through the real wire matrix—not replaced by expected
-fixtures inside a receiver. Failed atomic lists publish no result. The local
-helper entry point is not a semantic wire control endpoint.
+are published through the wire matrix. Failed atomic lists publish no result.
 
 Form/url registration is optional and independent. Per-request mode validation
 requires the corresponding advertised mode. An absent capability supports neither;
@@ -80,10 +77,9 @@ submitted values against the original `requestedSchema` without altering schema
 annotations/defaults or coercing submitted values. Body-selected form accepts require this validation. Metadata/omit receipts explicitly mark body
 validation as `not-selected`; they do not claim to validate unavailable bytes.
 
-Scope: HTTP bearer only in this matrix; no claims about OAuth/workload/mTLS,
-stdio, browser/OAuth completion, host UI, cancellation races or production server
-hardening. The isolated receiver is a bounded test adapter, not a deployable
-service. MCP structural and submitted form-schema validation are enforced on selected
+This matrix covers HTTP bearer. Coverage excludes OAuth/workload/mTLS,
+stdio, browser/OAuth completion, host UI, cancellation races, and production
+server hardening. MCP structural and submitted form-schema validation are enforced on selected
 bodies. The shared upload and lifecycle matrices cover
 other transport/authentication and scheduling behaviors independently.
 

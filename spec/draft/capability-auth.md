@@ -99,14 +99,11 @@ operator, organization, role, or delegation. Additional claims require trusted
 proof. Payload fields and correlation identifiers MUST NOT grant permissions.
 Credential rotation and acquisition MUST NOT create hook lifecycle events.
 
-## Extension policy and implementation evidence
+## Extension policy
 
 Existing protocol envelopes retain their extension behavior. Authentication
 objects and operation-control objects are closed to catch misspellings and secret
 injection; this does not close native payloads, tool arguments, or task state.
-`interop/auth.py` and the isolated auth fixture exercise resource enforcement with
-synthetic pinned test keys. They are not a production OAuth/JWT implementation or
-proof of federation/discovery support. Language adapters remain separately owned.
 
 ## Event-semantic capability bounds
 

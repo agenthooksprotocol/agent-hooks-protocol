@@ -34,7 +34,7 @@ failure controls. Later after callbacks see the modified summary. Provenance
 continues to identify the original generator or supplying subscription.
 
 Only a result with **`applied: true`** is eligible for downstream application. The
-runtime does not itself call a model or claim that the model consumed a summary.
+runtime leaves model invocation and summary consumption to the host.
 The default generator returns `summary:` plus the effective instructions. Hosts
 can supply another generator callback; it must generate, not apply the result.
 
@@ -73,8 +73,7 @@ Changing summary bytes changes its reference while retaining the supplied logica
 item ID. Earlier referenced bytes remain available unchanged. The returned
 `{id, ref}` is an internal handle, **not a canonical AHP content item**. A production
 host must upload bodies through the existing authenticated content-upload layer
-and create complete item descriptors before exposing AHP wire events. No context
-ledger, new protocol event, or normative method is introduced here.
+and create complete item descriptors before exposing AHP wire events.
 
 ## Host-orchestration transport harness
 
@@ -84,11 +83,10 @@ scenarios per pair. All requests pass through the sender's native HTTP/subproces
 stack and the receiver's independent public SDK runtime. No shared evaluator or
 expected outcome is sent to receivers. HTTP uses a fresh bearer token.
 
-The fixture's `compaction/run` JSON-RPC method is **non-normative host
-orchestration**, not `hooks/intercept` or a proposed AHP method. It registers fixed
-callback responses and invokes compaction. Receiver-side SDK code validates and
-settles those effects. This original harness proves runtime interoperability and transport execution.
-The separate canonical matrix below covers the requested event-envelope and
+The fixture's `compaction/run` JSON-RPC method provides test-only host
+orchestration. It registers fixed callback responses and invokes compaction. Receiver-side SDK code validates and
+settles those effects. This harness tests runtime interoperability and transport execution.
+The canonical matrix below covers the event-envelope and
 preupload path end to end.
 
 Cases cover instructions flowing into generation, serial result edits, return
@@ -125,9 +123,9 @@ not hardened production HTTP services.
 
 `compaction_wire_matrix.py` exercises all **16 sender/receiver combinations** over
 both **HTTP and stdio**. The only event-wire method is `hooks/intercept`, with
-canonical `context.compact.before` and `context.compact.after` events. There is no
-`compaction/run` method on this path. Test scheduling and subscription callbacks
-are configured locally before starting the native SDK processes.
+canonical `context.compact.before` and `context.compact.after` events. Test
+scheduling and subscription callbacks are configured locally before starting
+the native SDK processes.
 
 Each sender runs its public SDK compaction pipeline. Each hook callback:
 

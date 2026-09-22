@@ -5,8 +5,7 @@ SHA-256 digests of the complete upstream TypeScript and published JSON Schema.
 The TypeScript definitions (`ElicitRequestFormParams`, `ElicitRequestURLParams`,
 `PrimitiveSchemaDefinition`, `ElicitResult`) and the versioned elicitation spec
 https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation
-are authoritative. These files are vendored unchanged, not an independently
-invented form vocabulary. The official generated JSON Schema incorrectly narrows TypeScript `number`
+are authoritative. These files are vendored unchanged. The official generated JSON Schema incorrectly narrows TypeScript `number`
 to integer (including result values). Extraction restores TS numeric fields and
 result numbers; enum strings such as `type: "integer"` are unchanged.
 

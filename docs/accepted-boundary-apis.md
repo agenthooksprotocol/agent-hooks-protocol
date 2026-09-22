@@ -111,8 +111,7 @@ null is allowed only if all applicable schemas allow it. Known MCP transports us
 exact structural dispatch; extension transports remain unknown variants requiring
 canonical validation of their naming, location and gaps. The generator’s
 `x-sdk-discriminator` annotation does not change JSON Schema validity or declare
-native transport support. Preserve generated code ownership: regenerate rather
-than hand-edit codecs, bundled schemas or source-manifest locks.
+native transport support.
 
 Validate canonical schemas before runtime authorization and enforce cross-message
 rules separately. URI/time format validity does not establish safe endpoints;

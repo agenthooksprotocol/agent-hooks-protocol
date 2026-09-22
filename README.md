@@ -33,7 +33,7 @@ Validate the mutable snapshot with `python3 tools/check_conformance.py`, or a fr
 
 AHP is language-neutral. Normative protocol requirements must be expressible without depending on a programming language, runtime, framework, or vendor.
 
-Only repository material that an AHP release explicitly identifies as normative defines the protocol. All implementations, SDKs, bindings, examples, adapters, and generated artifacts are non-normative. This includes every TypeScript SDK or TypeScript implementation. If an SDK or example conflicts with the normative protocol, the normative protocol takes precedence.
+Only repository material that an AHP release explicitly identifies as normative defines the protocol. All implementations, SDKs, bindings, examples, adapters, and generated artifacts are non-normative. If an SDK or example conflicts with the normative protocol, the normative protocol takes precedence.
 
 Markdown and JSON Schema are the source artifacts in this repository. Generated documentation, SDKs, adapters, and reference implementations do not replace them as sources of truth.
 

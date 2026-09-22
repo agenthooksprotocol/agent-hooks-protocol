@@ -1,6 +1,6 @@
-# Actual cross-language matrix
+# Cross-language matrix
 
-Run from any directory (Python standard library only):
+Run from the workspace root (Python standard library only):
 
 ```sh
 python3 agent-hooks-protocol/interop/matrix.py --output agent-hooks-protocol/interop/matrix-results.json
@@ -48,8 +48,7 @@ never receipt evidence. Omitting that field is permitted by the contract.
 Expected rejection evidence supports the existing adapters' `actual: null` or
 `actual: {"rejected": true}` forms, together with a passed report and receipt.
 These attestations do not independently prove rollback or the rejection stage;
-SDK-local invariant tests remain required. A dishonest adapter fabricating both
-report and receipts cannot be detected by this control contract alone.
+SDK-local invariant tests remain required. The verifier relies on adapter-provided reports and receipts.
 
 HTTP servers run in matrix-owned process groups. Stdio clients launch a
 transparent runner relay, which launches the actual selected server in that

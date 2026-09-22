@@ -15,8 +15,7 @@ permission-filtered boundary payload, not a disposition or decision summary.
 Short-circuiting downgrades remaining uncalled intercept subscriptions to
 `hooks/observe`; called interceptors receive no automatic second copy. Explicit
 observers remain independent. Best-effort dispatch never delays interruption;
-selected uploads precede each notification. There is no downgrade flag or `/view`
-fallback.
+selected uploads precede each notification.
 
 ## Run
 
@@ -81,17 +80,14 @@ content permission/integrity mistakes, and race-order false passes.
 
 See [LIFECYCLE.md](LIFECYCLE.md) for the **test-control** contract. Upload HTTP
 framing, fixed `body` subscription permission, scenario instructions, marks,
-receipts, and barriers are adapter machinery, not new normative AHP methods,
-acknowledgements, or subscription registration. Raw uploads follow the
+receipts, and barriers are adapter machinery. Raw uploads follow the
 [canonical upload binding](../spec/draft/content-upload.md).
-Canonical envelopes and canonical content reference/item schemas stay unchanged.
 Canonical `params.subscriptionId` identifies the subscription; it does not grant access.
 
 Logical cancellation closes the local acceptance path immediately. Test adapters
-retain drain futures deliberately to deliver late responses; they do not claim
-that the remote operation or socket was physically terminated. This is not a
-production transport-cancellation certification, native host integration,
-durable cancellation service, rollback of completed effects, or crash recovery.
+retain drain futures to deliver late responses. Coverage excludes physical
+termination of remote operations or sockets, native host integration, durable
+cancellation, rollback of completed effects, and crash recovery.
 Published application states represent the SDK test runtime, not actual external
 tool execution or model consumption. Observation receipt rendezvous is proof
 instrumentation only; it does not introduce reliable delivery or a requirement
@@ -110,16 +106,7 @@ The adapters require exact-ID stdio routing, first-response retention, distinct
 per-request payloads, acquisition evidence, post-publication interruption handling,
 and child-PID registration/cleanup. The receive step
 retains a canonical validated response; semantic SDK evaluation and publication
-happen atomically at acceptance. These tests do not claim an evaluated private
-staging path was entered before cancellation.
-
-Observation notifications carry only the subscription identity and effective
-permission-filtered boundary payload, not a disposition or decision summary.
-Short-circuiting downgrades remaining uncalled intercept subscriptions to
-`hooks/observe`; called interceptors receive no automatic second copy. Explicit
-observers remain independent. Best-effort dispatch never delays interruption;
-selected uploads precede each notification. There is no downgrade flag or `/view`
-fallback.
+happen atomically at acceptance.
 
 ## Supplementary checks
 

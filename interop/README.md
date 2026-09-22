@@ -2,12 +2,10 @@
 
 `scenarios.json` is the language-neutral input for every SDK adapter. It follows
 [CONTRACT.md](CONTRACT.md), the canonical `schema/draft` schemas, and the composition
-rules in [the composition specification](../spec/draft/base/composition.md). The six-effect cases also preserve
-meaningful coverage from the TypeScript atomic scenarios and `draft-atomic.ts`.
-This is a **synthetic pending-boundary test evaluator**, not a claim that a
-native harness implements every boundary or authentication mode.
+rules in [the composition specification](../spec/draft/base/composition.md). The six-effect cases cover the TypeScript atomic scenarios and `draft-atomic.ts`
+using a synthetic pending-boundary evaluator.
 
-## Wire and control contract clarification
+## Wire and control contract
 
 Both `request` and `response` are **full canonical JSON-RPC envelopes**:
 
@@ -17,8 +15,7 @@ Both `request` and `response` are **full canonical JSON-RPC envelopes**:
   `request.params.state`; effects are `response.result.effects`.
 - HTTP sends the full request envelope as the `/intercept` POST body.
 - Stdio writes that same envelope as one NDJSON line. Do **not** wrap it inside
-  another `intercept` request. The control contract's `event.id` wording is
-  shorthand, not a different wire shape.
+  another `intercept` request.
 - Responses preserve the fixture envelope, including deliberately invalid
   responses. Servers validate incoming requests, but must not repair or discard
   scripted invalid responses before clients can test their rejection.
@@ -119,8 +116,7 @@ leak. No failure policy is specified by this fixture contract: rejection stops
 this row before fail-open/fail-closed policy or original execution is applied.
 The shared result contract has no rollback-state or callback-trace fields, so an
 `expectError` report alone does not prove rollback; adapter tests must also
-assert these local invariants rather than claim the file independently observes
-them.
+assert these local invariants.
 
 ## Coverage and explicit limits
 
@@ -134,17 +130,15 @@ consumption, and injection delivery capability checks.
 The default native policy makes invalidating an incoming allow resolve to allow
 again; candidate invalidation is externally visible through `executed`, but
 permission invalidation itself needs a local state assertion. The contract has
-no incoming native-approval or managed-policy field, so these fixtures do not
-claim to test renewal of actual human approval or managed-policy denial. The
-TypeScript-specific approval tests remain valuable and are not replaced.
+no incoming native-approval or managed-policy field, so renewal of actual human
+approval and managed-policy denial require separate tests, including the
+TypeScript approval tests.
 
 Not represented: multiple subscriptions dispatched serially, fail-open versus
 fail-closed transport errors, raw malformed JSON bytes, HTTP status scripting,
 barrier-driven races, actual prompt UI, actual model continuation or injection
 delivery, post-result controls, execution provenance/audit delivery, or auth
-coverage. Test these with their dedicated adapter/control harnesses. Injection
-recording does not establish an asynchronous callback protocol. Continuation
-assertions do not establish real lifecycle events or instruction delivery.
+coverage. Test these with their dedicated adapter/control harnesses.
 
 ## Regenerate and validate
 
@@ -156,7 +150,7 @@ python3 interop/generate_scenarios.py --check
 ```
 
 Generation uses only Python's standard library plus the repository's existing
-`tools/check_conformance.py` validator; it does not edit schemas or SDKs. Checks
+`tools/check_conformance.py` validator. Checks
 include unique IDs, envelope/event correlation, exclusive expected/error
 contracts, expected result structure, canonical validity of every request,
 canonical validity of positive and application-negative responses, deliberate
@@ -168,7 +162,7 @@ to verify application behavior.
 
 Expected state is partial only for non-semantic metadata. Presence of an unasserted `result`, `flow`, `injections`, `continuationInstructions`, `continuationRemaining`, or `rejected` field fails a successful-case assertion, even if its value is null/empty. In particular deny/ask/stop cannot leak a supplied result. Native input placeholders on non-tool boundaries remain tolerated when input is unspecified; asserted inputs remain exact. Diagnostic metadata does not authorize new executable outputs.
 
-Core and authentication receiver receipts must include the exact actual canonical request (direct envelope or mandatory `message` wrapper). Reduced ID/method-only evidence is rejected. This is a strengthened evidence requirement, not a wire protocol extension.
+Core and authentication receiver receipts must include the exact actual canonical request (direct envelope or mandatory `message` wrapper). Reduced ID/method-only evidence is rejected.
 
 `sender_isolation_matrix.py --workers 4` adds 24 real-SDK sender cases: event auth is configured and a real interception succeeds, while independently captured raw HTTP uploads have no upload auth configured. Four authenticated HTTP event modes × four senders establish 16 credential-present cases; four unauthenticated HTTP and four process-trusted stdio cases are controls. Captured absence of sensitive headers is not credited without exactly one correct raw upload. HTTPS client-certificate noninheritance is not claimed by this HTTP-origin probe.
 

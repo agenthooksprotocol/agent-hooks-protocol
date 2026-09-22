@@ -1,7 +1,6 @@
 # Execution payload encoding
 
-This mutable-draft binding implements the event catalogue and execution/accounting
-semantics of the v1 shape proposal. The schemas are the canonical wire grammar.
+This binding defines event payloads and execution/accounting semantics. The schemas are the canonical wire grammar.
 Common envelope fields remain `id`, URI `source`, `type`, and timestamp `time`.
 `trigger` names the session/turn initiation cause; `source` remains event identity.
 Wire timestamps use RFC 3339 syntax and calendar constraints; source uses RFC 3986
@@ -11,7 +10,7 @@ Integer-valued JSON numbers such as `1.0` count as integers under Draft 2020-12.
 Removed names are not additional standard events: `tool.error` (use
 `tool.after.outcome`), `prompt.submitted`, `agent.stop`, `notification`,
 `permission.request`, `compact.pre`, `compact.post`, `file.edited`, and `other`.
-The former `mcp.inventory` name does not require a discovery stream.
+MCP inventory discovery is not required.
 
 ## Required event-specific payloads
 

@@ -40,7 +40,6 @@ What we want to build is a small set of interoperable pieces:
 - **Compatibility and conformance tooling:** Adapters for existing hook dialects and executable tests that verify equivalent behavior.
 For the minimum control path defined by this protocol revision, a harness is about to execute a tool call and emits `tool.before` through `hooks/intercept`. The request says that `deny` is available. Each matching backend returns either no effect or one `deny` effect. No effect means that backend has no objection; it does not bypass the harness's own permission checks. A denial stops the tool call. If a backend times out, crashes, or returns an invalid response, the harness applies that backend's configured failure policy rather than treating the failure as a decision.
 AHP also defines optional `hooks/observe` notifications for lifecycle events that do not require a response. This mode supports control-adjacent audit and compatibility use cases.
-This is a starting point, not the full standard. Later profiles can add effects such as requesting approval, replacing tool input, or injecting context, but only when a harness can advertise and enforce those semantics consistently.
 ## Scope
 ### Goals
 This protocol revision aims to:
