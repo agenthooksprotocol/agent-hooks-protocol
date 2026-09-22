@@ -1,0 +1,156 @@
+name: SDK integration
+
+# No path filters: this status is safe to require on every pull request.
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sdk-integration:
+    name: SDK integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: agent-hooks-protocol
+    steps:
+      - name: Check out proposed protocol
+        uses: actions/checkout@v5
+        with:
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - name: Load immutable SDK revisions
+        id: revisions
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/reports"
+          cp interop/sdk-revisions.json "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
+          python3 - <<'PYCODE'
+          import json, os, re
+          from pathlib import Path
+          manifest = json.loads(Path('interop/sdk-revisions.json').read_text())
+          assert manifest['version'] == 1
+          assert set(manifest['sdks']) == {'python', 'typescript', 'go', 'rust'}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for language, sdk in manifest['sdks'].items():
+                  assert sdk['path'] == f'{language}-sdk'
+                  assert sdk['repository'] == f'agenthooksprotocol/{language}-sdk'
+                  assert re.fullmatch(r'[0-9a-f]{40}', sdk['revision'])
+                  print(f"{language}={sdk['revision']}", file=output)
+          PYCODE
+      - name: Check out pinned python SDK
+        uses: actions/checkout@v5
+        with:
+          repository: agenthooksprotocol/python-sdk
+          ref: ${{ steps.revisions.outputs.python }}
+          path: python-sdk
+          persist-credentials: false
+      - name: Check out pinned typescript SDK
+        uses: actions/checkout@v5
+        with:
+          repository: agenthooksprotocol/typescript-sdk
+          ref: ${{ steps.revisions.outputs.typescript }}
+          path: typescript-sdk
+          persist-credentials: false
+      - name: Check out pinned go SDK
+        uses: actions/checkout@v5
+        with:
+          repository: agenthooksprotocol/go-sdk
+          ref: ${{ steps.revisions.outputs.go }}
+          path: go-sdk
+          persist-credentials: false
+      - name: Check out pinned rust SDK
+        uses: actions/checkout@v5
+        with:
+          repository: agenthooksprotocol/rust-sdk
+          ref: ${{ steps.revisions.outputs.rust }}
+          path: rust-sdk
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Install harness dependencies and pnpm
+        run: |
+          python3 -m pip install 'jsonschema[format]>=4.23,<5'
+          corepack enable
+          corepack prepare pnpm@10.18.3 --activate
+      - name: Regenerate SDKs from proposed protocol
+        timeout-minutes: 15
+        run: python3 tools/generate_sdk.py --all 2>&1 | tee "$GITHUB_WORKSPACE/reports/generation.log"
+      # Each language and the harness still run after another suite fails.
+      # Explicit bash enables pipefail; tee must never mask a failing command.
+      - name: Install and test Python SDK
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        working-directory: python-sdk
+        run: |
+          (set -e
+            python3 -m venv .venv
+            .venv/bin/python -m pip install -e .
+            .venv/bin/python -m compileall -q src tests
+            .venv/bin/python -m unittest discover -s tests
+          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/python-sdk.log"
+      - name: Install, build and test TypeScript SDK
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        working-directory: typescript-sdk
+        run: |
+          (set -e
+            pnpm install --frozen-lockfile
+            pnpm build
+            pnpm test
+          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/typescript-sdk.log"
+      - name: Install, build and test Go SDK
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        working-directory: go-sdk
+        run: |
+          (set -e
+            go mod download
+            go build ./...
+            go vet ./...
+            go test ./...
+          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/go-sdk.log"
+      - name: Build and test Rust SDK
+        if: ${{ !cancelled() }}
+        timeout-minutes: 20
+        working-directory: rust-sdk
+        run: |
+          (set -e
+            cargo build --locked --all-targets
+            cargo test --locked
+          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/rust-sdk.log"
+      - name: Run all SDK matrices and harness unit tests
+        if: ${{ !cancelled() }}
+        timeout-minutes: 30
+        run: |
+          python3 tools/run_sdk_integration.py \
+            --reports-dir "$GITHUB_WORKSPACE/reports" --jobs 4 \
+            2>&1 | tee "$GITHUB_WORKSPACE/reports/integration.log"
+      - name: Upload SDK integration reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
