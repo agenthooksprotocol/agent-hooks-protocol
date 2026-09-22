@@ -1,9 +1,9 @@
 # Agent Hooks Protocol
 
 **Status:** Working Draft (`draft`)
-**Canonical draft:** This document
+**Canonical specification:** This document
 
-This is the canonical, language-neutral Working Draft specification. It is not a final standard and must not be represented as stable. The Base Protocol, Server Features, and compatibility-adapter requirements are normative where they use BCP 14 terms; the abstract, rationale, open questions, and references are informative. JSON Schemas constrain representable JSON shape; this prose defines protocol semantics. A conflict between prose, schemas, requirements, and fixtures is a specification defect, not permission to choose whichever behavior is convenient.
+This is the canonical, language-neutral Agent Hooks Protocol specification. The Base Protocol, Server Features, and compatibility-adapter requirements are normative where they use BCP 14 terms; the abstract, rationale, open questions, and references are informative. JSON Schemas constrain representable JSON shape; this prose defines protocol semantics. A conflict between prose, schemas, requirements, and fixtures is a specification defect, not permission to choose whichever behavior is convenient.
 
 **Protocol version:** `draft`
 **Audience:** Agent-harness implementers, compatibility-adapter authors, and policy, security, approval, and runtime-middleware vendors

@@ -390,6 +390,30 @@ class SnapshotCheckerTests(unittest.TestCase):
             if path.name != "manifest.json":
                 self.assertNotIn('"draft"', path.read_text(encoding="utf-8"))
 
+    def test_release_freeze_preserves_editorial_prose(self) -> None:
+        index = self.root / "spec/draft/index.md"
+        text = index.read_text(encoding="utf-8")
+        intro = "Editorial introduction independent of release metadata."
+        paragraphs = text.split("\n\n")
+        paragraphs[2] = intro
+        index.write_text("\n\n".join(paragraphs), encoding="utf-8")
+        changelog = self.root / "spec/draft/changelog.md"
+        changelog_text = "# Changelog\n\nRelease notes maintained by editors.\n"
+        changelog.write_text(changelog_text, encoding="utf-8")
+
+        version = "2026-08-27"
+        freeze_snapshot.freeze_snapshot(self.root, version)
+
+        published = (self.root / f"spec/{version}/index.md").read_text()
+        self.assertIn(intro, published)
+        self.assertIn(f"**Status:** Published Protocol (`{version}`)", published)
+        self.assertIn(f"**Protocol version:** `{version}`", published)
+        self.assertEqual(
+            changelog_text,
+            (self.root / f"spec/{version}/changelog.md").read_text(),
+        )
+        self.assertEqual([], checker.run_checks(self.root, version).errors)
+
     def test_release_freeze_rejects_invalid_date_and_existing_destination(self) -> None:
         with self.assertRaisesRegex(
             freeze_snapshot.FreezeFailure,
