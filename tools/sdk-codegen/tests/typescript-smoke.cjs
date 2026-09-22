@@ -73,13 +73,14 @@ for (const entry of fixture("fixtures/draft/manifest.json").cases) {
   require("node:assert/strict").deepEqual(JSON.parse(encoded), original);
 }
 const supplied = fixture("fixtures/draft/http/model-response-intercept-supplied-stop.valid.json").params.event;
+require("node:assert/strict").deepEqual(supplied.execution, { status: "skipped", reason: "supplied_result" });
 const execution = sdk.parseExecutionEvent(supplied);
 if (!execution.ok) throw new Error(`supplied execution: ${JSON.stringify(execution.diagnostics)}`);
 require("node:assert/strict").deepEqual(JSON.parse(sdk.encodeExecutionEvent(execution.value)), supplied);
-delete supplied.execution.subscriptionId;
-if (sdk.parseExecutionEvent(supplied).ok) throw new Error("missing supplier selected another execution branch");
-supplied.execution.subscriptionId = null;
-if (sdk.parseExecutionEvent(supplied).ok) throw new Error("null supplier passed parsing");
+delete supplied.execution.reason;
+if (sdk.parseExecutionEvent(supplied).ok) throw new Error("missing skipped reason selected another execution branch");
+supplied.execution.reason = null;
+if (sdk.parseExecutionEvent(supplied).ok) throw new Error("null skipped reason passed parsing");
 
 for (const transport of ["http", "stdio"]) {
   const missing = fixture(`fixtures/draft/http/mcp-${transport}-location-missing.invalid.json`).params.event;

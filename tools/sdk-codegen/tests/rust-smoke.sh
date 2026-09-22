@@ -310,12 +310,13 @@ fn canonical_positive_fixtures_and_supplied_execution() {
         assert_eq!(serde_json::from_str::<Value>(&encoded).unwrap(), original, "{}", entry["id"]);
     }
     let mut supplied = fixture("fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")["params"]["event"].clone();
+    assert_eq!(supplied["execution"], serde_json::json!({"status": "skipped", "reason": "supplied_result"}));
     let parsed = parse_execution_event(&serde_json::to_string(&supplied).unwrap());
     assert!(parsed.is_ok(), "{:?}", parsed.diagnostics());
     assert_eq!(serde_json::from_str::<Value>(&encode_execution_event(parsed.value().unwrap()).unwrap()).unwrap(), supplied);
-    supplied["execution"].as_object_mut().unwrap().remove("subscriptionId");
+    supplied["execution"].as_object_mut().unwrap().remove("reason");
     assert!(!parse_execution_event(&serde_json::to_string(&supplied).unwrap()).is_ok());
-    supplied["execution"]["subscriptionId"] = Value::Null;
+    supplied["execution"]["reason"] = Value::Null;
     assert!(!parse_execution_event(&serde_json::to_string(&supplied).unwrap()).is_ok());
     for transport in ["http", "stdio"] {
         let missing = fixture(&format!("fixtures/draft/http/mcp-{transport}-location-missing.invalid.json"))["params"]["event"].clone();

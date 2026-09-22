@@ -202,15 +202,17 @@ def main() -> None:
             fail(f"canonical fixture {case['id']} changed on round-trip")
 
     supplied = fixture(repository, "fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")["params"]["event"]
+    if supplied["execution"] != {"status": "skipped", "reason": "supplied_result"}:
+        fail("supplied execution must not require a subscription ID")
     parsed = sdk.parse_execution_event(supplied)
     if not parsed["ok"] or json.loads(sdk.encode_execution_event(parsed["value"])) != supplied:
         fail(f"supplied execution union failed: {parsed['diagnostics']}")
-    del supplied["execution"]["subscriptionId"]
+    del supplied["execution"]["reason"]
     if sdk.parse_execution_event(supplied)["ok"]:
-        fail("missing supplied-result subscription matched another execution branch")
-    supplied["execution"]["subscriptionId"] = None
+        fail("missing skipped reason matched another execution branch")
+    supplied["execution"]["reason"] = None
     if sdk.parse_execution_event(supplied)["ok"]:
-        fail("explicit null supplier was treated as valid presence")
+        fail("explicit null skipped reason was treated as valid presence")
 
     for transport in ("http", "stdio"):
         missing = fixture(repository, f"fixtures/draft/http/mcp-{transport}-location-missing.invalid.json")["params"]["event"]

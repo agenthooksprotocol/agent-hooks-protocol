@@ -236,15 +236,16 @@ func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
     }
     wire := fixture(t, "fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")
     supplied := wire["params"].(map[string]any)["event"].(map[string]any)
+    execution := supplied["execution"].(map[string]any)
+    if len(execution) != 2 || execution["status"] != "skipped" || execution["reason"] != "supplied_result" { t.Fatal("supplied execution must not require a subscription ID") }
     parsed := ParseExecutionEvent(inputJSON(t, supplied))
     if !parsed.OK { t.Fatalf("supplied execution: %+v", parsed.Diagnostics) }
     encoded, err := EncodeExecutionEvent(parsed.Value)
     if !bytes.Equal(inputJSON(t, encodedObject(t, encoded, err)), inputJSON(t, supplied)) { t.Fatal("supplied execution changed on round-trip") }
-    execution := supplied["execution"].(map[string]any)
-    delete(execution, "subscriptionId")
-    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("missing supplier selected another branch") }
-    execution["subscriptionId"] = nil
-    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("null supplier passed parsing") }
+    delete(execution, "reason")
+    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("missing skipped reason selected another branch") }
+    execution["reason"] = nil
+    if ParseExecutionEvent(inputJSON(t, supplied)).OK { t.Fatal("null skipped reason passed parsing") }
     for _, transport := range []string{"http", "stdio"} {
         invalid := fixture(t, "fixtures/draft/http/mcp-"+transport+"-location-missing.invalid.json")
         event := invalid["params"].(map[string]any)["event"].(map[string]any)
