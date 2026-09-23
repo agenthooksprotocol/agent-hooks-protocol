@@ -2359,8 +2359,7 @@
             "protocolVersion": "draft",
             "effects": [
               {
-                "type": "ask",
-                "reason": "confirm"
+                "type": "ask"
               }
             ]
           }
@@ -2557,7 +2556,15 @@
           "ref": "immutable-v1",
           "bodyBase64": "b3JpZ2luYWwgYnl0ZXM=",
           "size": 14,
-          "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698"
+          "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698",
+          "upload": {
+            "auth": {
+              "type": "bearer",
+              "tokenEnv": "AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN"
+            },
+            "timeoutMs": 5000,
+            "maxBytes": 1048576
+          }
         },
         {
           "op": "send",
@@ -2656,7 +2663,7 @@
           201,
           201,
           201,
-          403
+          401
         ]
       }
     },
@@ -2762,7 +2769,15 @@
           "ref": "unauthorized",
           "bodyBase64": "c2VjcmV0",
           "size": 6,
-          "sha256": "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b"
+          "sha256": "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b",
+          "upload": {
+            "auth": {
+              "type": "bearer",
+              "tokenEnv": "AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN"
+            },
+            "timeoutMs": 5000,
+            "maxBytes": 1048576
+          }
         }
       ],
       "expected": {
@@ -2774,7 +2789,7 @@
         "uploadStatuses": [
           400,
           400,
-          403
+          401
         ]
       }
     },

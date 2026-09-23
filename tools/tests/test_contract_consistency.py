@@ -90,10 +90,23 @@ class ContractConsistencyTests(unittest.TestCase):
         registration['hooks'][0]['futureOption'] = True
         self.assertFalse(self.errors(registration, 'registration'))
 
-    def test_effects_accept_unknown_fields_but_reject_unknown_types(self):
-        effect = {'type': 'flow', 'operation': 'stop', 'reason': 'Done'}
-        self.assertFalse(self.errors(effect, 'effect'))
-        self.assertFalse(self.errors({**effect, 'futureOption': True}, 'effect'))
+    def test_effects_reject_unknown_fields_and_types(self):
+        effects = [
+            {'type': 'allow'},
+            {'type': 'ask'},
+            {'type': 'deny', 'reason': 'Policy'},
+            {'type': 'modify', 'target': 'input', 'operation': 'merge', 'value': {}},
+            {'type': 'message', 'text': 'Notice'},
+            {'type': 'return', 'value': None},
+            {'type': 'flow', 'operation': 'stop', 'reason': 'Done'},
+            {'type': 'flow', 'operation': 'continue'},
+            {'type': 'inject', 'target': 'context', 'operation': 'append',
+             'deliverAt': 'now', 'value': {}},
+        ]
+        for effect in effects:
+            with self.subTest(effect=effect):
+                self.assertFalse(self.errors(effect, 'effect'))
+                self.assertTrue(self.errors({**effect, 'futureOption': True}, 'effect'))
         self.assertTrue(self.errors({'type': 'future-effect'}, 'effect'))
         self.assertTrue(self.errors({'effects': ['future-effect']}, 'capabilities'))
 

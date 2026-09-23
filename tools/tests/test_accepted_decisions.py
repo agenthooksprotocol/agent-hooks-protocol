@@ -100,7 +100,11 @@ class AcceptedDecisionTests(unittest.TestCase):
         value = {'jsonrpc': '2.0', 'id': 'event', 'result': {
             'protocolVersion': 'draft', 'effects': [{'type': 'deny', 'reason': 'policy'}]}}
         self.assertFalse(self.errors(value, 'intercept-response'))
-        for invalid in [{'type': 'unknown'}, {'type': 'flow', 'operation': 'unknown'}]:
+        for invalid in [{'type': 'unknown'}, {'type': 'flow', 'operation': 'unknown'},
+                        {'type': 'deny', 'reason': 'policy', 'future': True},
+                        {'type': 'allow', 'future': True},
+                        {'type': 'modify', 'target': 'input', 'operation': 'merge',
+                         'value': {}, 'future': True}]:
             broken = copy.deepcopy(value)
             broken['result']['effects'].append(invalid)
             self.assertTrue(self.errors(broken, 'intercept-response'))

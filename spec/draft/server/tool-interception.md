@@ -4,13 +4,10 @@
 ### Effect list
 
 <a id="AHP-DEC-001"></a>
-**AHP-DEC-001 — MUST.** A successful interception result contains either an empty `effects` array or exactly one valid `deny` effect.
+**AHP-DEC-001 — MUST.** A successful interception result contains an ordered `effects` array whose members are all valid and advertised for the current interception.
 
 A successful intercept result MUST contain `effects`, which MUST be a JSON array.
-For this protocol revision, the array MUST contain either:
-- No effects, or
-- Exactly one `deny` effect.
-Multiple `deny` effects from one backend are invalid. Effect ordering and combinations are reserved for a later version.
+The array MAY be empty or contain compound effects. Every member MUST satisfy its schema and the current request capability grants. Unknown effect fields, types, targets, or operations MUST reject the entire response before any effects are published. See [atomic acceptance and composition](../base/composition.md) and [capability bounds](../capability-auth.md).
 ### `deny`
 
 <a id="AHP-DEC-002"></a>
@@ -50,15 +47,15 @@ Multiple `deny` effects from one backend are invalid. Effect ordering and combin
 </table>
 A valid `deny` effect is an explicit policy result. It MUST deny regardless of whether the interceptor is configured `fail-open` or `fail-closed`.
 A backend SHOULD avoid placing secrets, stack traces, or sensitive policy internals in `reason` because the harness may show it to a user or model.
-### No `allow` effect
+### No-effect and authorization
 
 <a id="AHP-DEC-003"></a>
 **AHP-DEC-003 — MUST NOT.** An empty effect list is not an authorization grant and does not bypass harness permissions, sandboxing, or approval.
 
-This protocol revision has no `allow` effect. An empty effect list means only that the current backend has no objection. It's not possible to:
+An empty effect list means only that the current backend has no objection. It cannot:
 - Skip remaining interceptors.
 - Override a denial.
 - Bypass a host permission prompt.
 - Disable sandboxing.
 - Grant a tool capability.
-This distinction avoids importing incompatible provider meanings of “allow.”
+An advertised `allow` effect may suppress an ordinary prompt, but cannot override deny, ask, managed policy, access checks, or sandbox controls. Relevant changes invalidate approvals as defined by the composition rules.

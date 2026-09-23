@@ -57,11 +57,11 @@ This protocol revision aims to:
 This protocol revision does not:
 - Replace OpenTelemetry or define metrics, logs, traces, exporters, or telemetry semantic conventions.
 - Replace MCP, ACP, A2A, a tool protocol, or an agent-client protocol.
-- Standardize prompts, model requests, token streams, or model responses.
+- Replace native model APIs or standardize token-stream transport.
 - Define a universal tool-input schema.
 - Replace the harness's built-in permission and sandbox systems.
 - Define an effect that bypasses host permissions.
-- Standardize tool-input mutation, output replacement, context injection, or user approval prompts.
+- Require every harness to support mutation, supplied results, context injection, or approval.
 - Guarantee durable audit delivery through `hooks/observe`.
 - Require a daemon, service discovery system, streaming transport, or browser authorization flow.
 - Standardize native provider quirks such as exit codes, environment variables, or provider-specific response objects.

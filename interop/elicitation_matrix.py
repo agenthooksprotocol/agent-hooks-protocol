@@ -207,7 +207,7 @@ def replace_refs(value, refs):
     return result
 
 
-def transmit_steps(command, endpoint, token, steps, statuses, env):
+def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=None):
     """Use the native sender, verifying each upload before any dependent event."""
     if len(steps)!=len(statuses):raise AssertionError("step status count")
     results=[];refs={};immutable={};sent=[]
@@ -216,7 +216,7 @@ def transmit_steps(command, endpoint, token, steps, statuses, env):
         if step['path']=='/hooks/intercept':
             message=replace_refs(json.loads(base64.b64decode(step['bytes'])),refs)
             step['bytes']=encode(bytes_json(message))
-        plan={'endpoint':endpoint,'token':token,'steps':[step]}
+        plan={'endpoint':endpoint,'token':token,'uploadToken':upload_token,'steps':[step]}
         out=subprocess.run(command+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=30)
         if out.returncode:raise RuntimeError(out.stderr[-1500:])
         replies=json.loads(out.stdout)
@@ -265,8 +265,8 @@ def concurrent_plan():
 
 
 def run_pair(pair):
-    sender,receiver=pair;cmd=commands();token=secrets.token_urlsafe(32)
-    env=os.environ.copy();env['AHP_ELICITATION_TOKEN']=token;env['PYTHONPATH']=str(ROOT/'python-sdk/src')
+    sender,receiver=pair;cmd=commands();token=secrets.token_urlsafe(32);upload_token=secrets.token_urlsafe(32)
+    env=os.environ.copy();env['AHP_ELICITATION_TOKEN']=token;env['AHP_ELICITATION_UPLOAD_TOKEN']=upload_token;env['PYTHONPATH']=str(ROOT/'python-sdk/src')
     proc=None;stderr=tempfile.TemporaryFile()
     try:
         proc=subprocess.Popen(cmd[receiver]+['server',str(SCHEMA),'authenticated:'+sender],stdout=subprocess.PIPE,stderr=stderr,text=True,env=env)
@@ -302,7 +302,7 @@ def run_pair(pair):
         # Wrong bearer credential is sent over the same SDK client stack.
         bad=subprocess.run(cmd[sender]+['client'],input=json.dumps({'endpoint':endpoint,'token':'wrong','steps':[{'path':'/receipts','bytes':''}]}),capture_output=True,text=True,env=env,timeout=30)
         if bad.returncode or json.loads(bad.stdout)[0]['status']!=401:raise AssertionError('unauthenticated access accepted')
-        results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env)
+        results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env,upload_token)
         wanted=replace_refs(wanted,refs)
         receipts=json.loads(results[-1]['body'])
         for receipt in wanted:

@@ -126,8 +126,9 @@ class SnapshotCheckerTests(unittest.TestCase):
         )
         self.assertEqual(
             "A harness sends an event to a backend only when that backend has "
-            "a subscription whose `events` array includes the exact event name "
-            "and whose `mode` matches the delivery method.",
+            "a subscription whose `events` array matches the event name exactly or through a supported wildcard "
+            "and whose `mode` matches the delivery method, except for best-effort "
+            "observation of uncalled intercept subscriptions after short-circuit settlement.",
             by_id["AHP-REG-002"]["text"],
         )
 

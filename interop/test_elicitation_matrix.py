@@ -54,6 +54,16 @@ class ElicitationTests(unittest.TestCase):
             self.assertFalse(json_equal(expected,actual))
         self.assertTrue(json_equal({'a':[1,True]}, {'a':[1.0,True]}))
 
+    def test_sender_uses_separate_upload_credential(self):
+        reply = subprocess.CompletedProcess([], 0, json.dumps([{'status':401,'body':'{}'}]), '')
+        with patch.object(elicitation_matrix.subprocess, 'run', return_value=reply) as send:
+            elicitation_matrix.transmit_steps(['native'], 'http://unused', 'event-token',
+                [elicitation_matrix.upload(reference('local', b'body'), b'body')], [401], {},
+                upload_token='upload-token')
+        plan = json.loads(send.call_args.kwargs['input'])
+        self.assertEqual(plan['token'], 'event-token')
+        self.assertEqual(plan['uploadToken'], 'upload-token')
+
     def test_upload_status_contract(self):
         steps,statuses,_=plan_cases([])
         self.assertEqual([step['path'] for step in steps],['/upload']*3)

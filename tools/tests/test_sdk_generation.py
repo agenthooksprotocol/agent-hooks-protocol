@@ -45,7 +45,7 @@ class SdkGenerationTests(unittest.TestCase):
                     self.assertEqual(json.loads(manifest.read_text())['documents'], lock['documents'])
                     self.assertTrue((folder / ('schemas.ts' if language == 'typescript' else 'schemas.json')).is_file())
             self.assertEqual(1, sum(command[:2] == ['cargo', 'build'] for command in calls))
-            self.assertTrue(any(command[:2] == ['rustfmt', '+1.88.0'] for command in calls))
+            self.assertTrue(any(command[:4] == ['rustfmt', '+1.88.0', '--edition', '2024'] for command in calls))
 
     def test_ci_uses_shared_pipeline(self):
         workflow = (ROOT / '.github/workflows/sync-sdks.yml').read_text()

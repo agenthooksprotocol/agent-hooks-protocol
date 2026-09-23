@@ -195,11 +195,11 @@
     },
     {
       "path": "schema/draft/deny-effect.schema.json",
-      "sha256": "4ab6953cc1a78665060363819978c001b12e7f74d43bb32715b3cfe885eb105c"
+      "sha256": "8ff24b87d1e58764ba1d200446732a216bf72d870a5f4cba72f704020622cd90"
     },
     {
       "path": "schema/draft/effect.schema.json",
-      "sha256": "ec5dd77d9c902375a75c2d1b5bd7a45da534c3b7d7e0e711b0bfd10a9163a02a"
+      "sha256": "1448151926563244194ed56b15e3074ddfc8ec8c10889f2e42ab49d66be2d031"
     },
     {
       "path": "schema/draft/execution-event.schema.json",

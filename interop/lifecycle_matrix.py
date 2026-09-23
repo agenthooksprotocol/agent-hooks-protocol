@@ -334,7 +334,7 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
         scenario_file=d/'scenarios.json'; write(scenario_file,{'version':1,'scenarios':selected})
         write(server_config,{'suite':suite,'transport':transport,'readinessFile':str(readiness),'scenarioFile':str(scenario_file),'auth':configuration(mode,HERE/'fixtures','server',issuer),'uploadAuth':{'token':UPLOAD_TOKEN}})
         cfg={'suite':suite,'transport':transport,'scenarioFile':str(scenario_file),'reportFile':str(report_path),'childPidFile':str(d/'child.json'),'auth':configuration(mode,HERE/'fixtures','client',issuer),'upload':{'auth':{'type':'bearer','tokenEnv':UPLOAD_ENV},'timeoutMs':5000,'maxBytes':1048576}}
-        environment=os.environ.copy(); environment[UPLOAD_ENV]=UPLOAD_TOKEN
+        environment=os.environ.copy(); environment[UPLOAD_ENV]=UPLOAD_TOKEN; environment['AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN']='TEST-ONLY-unauthorized-upload-token'
         try:
             with (d/'server.log').open('w+') as server_log, (d/'client.log').open('w+') as client_log:
                 if transport=='http':
@@ -342,6 +342,13 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
                     address=ready(readiness,p,timeout)
                     cfg.update(endpoint=address['endpoint'],controlEndpoint=address['controlEndpoint'])
                     cfg['upload']['endpoint']=address['uploadEndpoint']
+                    # Per-step policies replace the upload binding in some SDKs.
+                    # Supply the discovered endpoint explicitly, not a wire identity.
+                    for scenario in selected:
+                        for step in scenario['steps']:
+                            if step['op']=='upload' and 'upload' in step:
+                                step['upload']={'endpoint':address['uploadEndpoint'],**step['upload']}
+                    write(scenario_file,{'version':1,'scenarios':selected})
                 else:
                     cfg.update(serverCommand=server['lifecycleServer'],serverCwd=str(server_cwd),serverConfig=str(server_config))
                 if upload_override is not None:cfg['upload']=deepcopy(upload_override)

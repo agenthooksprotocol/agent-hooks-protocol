@@ -37,6 +37,24 @@ class VerifierTests(unittest.TestCase):
     def setUp(self):
         self.scenarios=[s for s in load(HERE/'lifecycle-scenarios.json')['scenarios'] if 'chain' not in s]; self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')
+    def test_ask_fixture_valid_but_reason_extension_rejected(self):
+        from observation_wire import ObservationValidator
+        validator = ObservationValidator()
+        scenario = next(s for s in self.scenarios if s['id'] == 'ask-boundary-observed')
+        response = deepcopy(scenario['responses']['a'])
+        self.assertEqual(validator.schema_errors(response, 'intercept-response'), [])
+        response['result']['effects'][0]['reason'] = 'confirm'
+        self.assertTrue(validator.schema_errors(response, 'intercept-response'))
+
+    def test_unauthorized_upload_uses_explicit_credentials(self):
+        for name in ('immutable-upload-and-subscription-views', 'upload-integrity-rejection'):
+            scenario = next(s for s in self.scenarios if s['id'] == name)
+            uploads = [step for step in scenario['steps'] if step['op'] == 'upload']
+            denied = uploads[-1]
+            self.assertEqual(scenario['expected']['uploadStatuses'][-1], 401)
+            self.assertEqual(denied['upload']['auth'], {
+                'type': 'bearer', 'tokenEnv': 'AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN'})
+
     def test_valid_control_proof(self):self.assertEqual(self.check(),[])
     def test_failed_stdio_delivery_cannot_pass(self):
         # A sender report cannot replace the absent receiver delivery record.
@@ -58,7 +76,7 @@ class VerifierTests(unittest.TestCase):
     def test_upload_before_dispatch_required(self):
         es=self.receipts['entries']; uploads=[e for e in es if e['kind']=='upload']; self.receipts['entries']=[e for e in es if e['kind']!='upload']+uploads; self.assertTrue(self.check())
     def test_content_hash_mismatch(self):next(e for e in self.receipts['entries'] if e['kind']=='upload')['sha256']='0'*64; self.assertTrue(self.check())
-    def test_content_permission_bypass(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==403)['status']=201; self.assertTrue(self.check())
+    def test_content_permission_bypass(self):next(e for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==401)['status']=201; self.assertTrue(self.check())
     def test_receiver_assigned_upload_refs_are_used_on_wire(self):
         refs={e['ref']:'receiver:'+e['ref'] for e in self.receipts['entries'] if e['kind']=='upload' and e['status']==201}
         def rewrite(value):

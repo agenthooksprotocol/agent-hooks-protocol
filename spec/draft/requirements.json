@@ -66,8 +66,8 @@
       "anchor": "AHP-CORE-003",
       "section": "Unknown fields",
       "profile": "base",
-      "text": "Receivers ignore unknown object fields unless a claimed extension defines their meaning, while senders do not use unknown fields to alter core semantics.",
-      "textSha256": "ce2913ff8d081f3cb3227209b607e53c453c8ef3f6ae03f9b8521b2f550fc4d8"
+      "text": "Receivers ignore unknown configuration and envelope fields, validate recognized fields, and reject unknown effect fields atomically; unknown fields do not alter core semantics.",
+      "textSha256": "f9de92ae4f25a4c5f46881c3063572866d1166816e7e615344729a14ccfb7e60"
     },
     {
       "id": "AHP-EXT-001",
@@ -121,8 +121,8 @@
       "anchor": "AHP-DEC-001",
       "section": "Effect list",
       "profile": "tool-interception",
-      "text": "A successful interception result contains either an empty `effects` array or exactly one valid `deny` effect.",
-      "textSha256": "e492122789e3b5e67909d7e89c1b22b44bdda47f5c4b83d78843257a00ac9911"
+      "text": "A successful interception result contains an ordered `effects` array whose members are all valid and advertised for the current interception.",
+      "textSha256": "576ba0380365629b7559ac0f1d6f7162e18ac828e1feeb5853a003bb0bd1c406"
     },
     {
       "id": "AHP-DEC-002",
@@ -141,7 +141,7 @@
       "level": "MUST NOT",
       "document": "spec/draft/server/tool-interception.md",
       "anchor": "AHP-DEC-003",
-      "section": "No `allow` effect",
+      "section": "No-effect and authorization",
       "profile": "tool-interception",
       "text": "An empty effect list is not an authorization grant and does not bypass harness permissions, sandboxing, or approval.",
       "textSha256": "358a67acc4e87deb921386d04e7eb1517b0f2cfba915c3f7bb59ce651debb2d7"
@@ -231,8 +231,8 @@
       "anchor": "AHP-REG-002",
       "section": "Subscription dispatch",
       "profile": "base",
-      "text": "A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.",
-      "textSha256": "44c172339172372930e4ae8ad879af75f01ff03b9a6be55566b819fef35da9e8"
+      "text": "A harness sends an event to a backend only when that backend has a subscription whose `events` array matches the event name exactly or through a supported wildcard and whose `mode` matches the delivery method, except for best-effort observation of uncalled intercept subscriptions after short-circuit settlement.",
+      "textSha256": "eaa3c5300eab2f858c95820e17f8be2dfa4c50a5b030d7fc4e12ea74213a55b4"
     },
     {
       "id": "AHP-SEC-001",

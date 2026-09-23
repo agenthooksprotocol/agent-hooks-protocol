@@ -40,7 +40,7 @@ for language, destination, filename in targets:
         if language == 'go':
             subprocess.run(['gofmt', '-w', str(output / filename)], check=True)
         elif language == 'rust':
-            subprocess.run(['rustfmt', '+1.88.0', str(output / filename)], check=True)
+            subprocess.run(['rustfmt', '+1.88.0', '--edition', '2024', str(output / filename)], check=True)
         if language == 'typescript':
             (output / 'schemas.ts').write_text('// Generated canonical schema bundle. DO NOT EDIT.\nexport const schemas = ' + json.dumps(schemas, indent=2) + ';\n')
         else:

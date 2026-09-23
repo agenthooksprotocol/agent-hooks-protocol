@@ -71,7 +71,7 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 </tr>
 <tr>
 <td>`authentication`</td>
-<td>HTTP bearer only</td>
+<td>Optional endpoint authentication</td>
 <td>Credential reference; never a literal credential.</td>
 </tr>
 <tr>
@@ -90,7 +90,7 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 <tr>
 <td>`events`</td>
 <td>REQUIRED</td>
-<td>Non-empty array of exact event names. No matcher language in this protocol revision.</td>
+<td>Non-empty array of exact event names, whole-family wildcards such as `tool.*`, or `*`. No arbitrary patterns.</td>
 </tr>
 <tr>
 <td>`mode`</td>
@@ -118,13 +118,13 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 <td>Boolean; defaults to `false`.</td>
 </tr>
 </table>
-An `intercept` subscription MUST contain only `tool.before` in this protocol revision. An `observe` subscription MUST NOT include `timeoutMs` or `failurePolicy`.
+An `intercept` subscription MUST select only events the harness advertises as interceptable, including when expanding wildcards. An `observe` subscription MUST NOT include `timeoutMs` or `failurePolicy`.
 ### Subscription dispatch
 
 <a id="AHP-REG-002"></a>
-**AHP-REG-002 — MUST.** A harness sends an event to a backend only when that backend has a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method.
+**AHP-REG-002 — MUST.** A harness sends an event to a backend only when that backend has a subscription whose `events` array matches the event name exactly or through a supported wildcard and whose `mode` matches the delivery method, except for best-effort observation of uncalled intercept subscriptions after short-circuit settlement.
 
-For dispatch, `hooks/intercept` matches only `intercept` mode and `hooks/observe` matches only `observe` mode. Event names are compared exactly; this protocol revision defines no matcher language or separate `enabled` subscription state. If no subscription matches both the event name and delivery mode, the harness MUST NOT send that event to the backend.
+For normal dispatch, `hooks/intercept` matches `intercept` mode and `hooks/observe` matches `observe` mode. After short-circuit settlement, remaining uncalled matching intercept subscriptions receive best-effort `hooks/observe` as defined in [observation delivery](../observation-disposition.md). Exact selectors match only the named event; family wildcards match that event family, and `*` matches all supported events for the mode. Intercept wildcards select only advertised interceptable boundaries. There is no arbitrary matcher language or separate `enabled` subscription state. Absent a matching subscription or that short-circuit observation rule, the harness MUST NOT send that event to the backend.
 ### stdio transport fields
 A stdio transport contains:
 - `type`: exact value `stdio`
@@ -136,10 +136,7 @@ A stdio transport contains:
 An HTTP transport contains:
 - `type`: exact value `http`
 - `url`: absolute endpoint URL
-A bearer authentication object contains:
-- `type`: exact value `bearer`
-- `tokenEnv`: environment variable containing the token
-Implementations MAY support additional local secret-reference forms, but portable documents cannot assume them.
+Authentication supports the configured endpoint bindings in [capabilities and authentication](../capability-auth.md#authentication-bindings). Bearer authentication uses exactly one of `tokenEnv` or `tokenRef`; credentials are never literal values. Upload authentication is configured independently.
 ### Native harness configuration
 A harness MAY translate this registration model into its native configuration format. It may still claim protocol conformance if the resulting order, subscriptions, timeout, failure, transport, and credential semantics are equivalent.
 

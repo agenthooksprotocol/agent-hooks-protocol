@@ -1,18 +1,20 @@
 # Design rationale and references
 
 ## Design rationale
-### Why only `deny`?
-Cross-harness research shows that denial is the smallest broadly meaningful control capability. Approval prompts, forced allow, input mutation, output replacement, context injection, and agent continuation differ significantly across harnesses.
-Starting with one effect makes conformance meaningful. It also prevents the first release from standardizing ambiguous semantics merely because similar provider fields exist.
-### Why capabilities when this protocol revision has one effect?
-Capabilities make requests self-describing and establish the evolution mechanism needed by heterogeneous harnesses. They also prevent a backend from assuming behavior from a provider name.
-The small redundancy in this protocol revision is preferable to adding provider detection or an incompatible handshake later.
-### Why no `allow`?
-Existing systems use “allow” for incompatible concepts. An empty result cleanly means “this backend does not deny,” while the harness remains responsible for all other authorization.
+### Why is `deny` the minimum tool control?
+Denial is the smallest broadly meaningful tool-control capability. Mutation,
+approval, supplied results, and continuation require event-specific grants that
+reflect what the harness can actually enforce.
+### Why per-request capabilities?
+Capabilities make requests self-describing and prevent backends from inferring
+support from a provider name or the size of the event catalogue.
+### Why distinguish no effect from `allow`?
+An empty result requests no change. An advertised `allow` can suppress an ordinary
+prompt, but cannot override deny, ask, managed policy, or access restrictions.
 ### Why JSON-RPC?
 JSON-RPC already provides request, response, error, notification, and correlation semantics. MCP and ACP demonstrate that it can be used across local and remote agent transports. AHP needs only a bounded subset and does not copy MCP's streaming HTTP behavior.
 ### Why ordered serial composition?
-Control decisions must be deterministic. Serial order is easy to explain and test. It avoids races between denials and prepares for future mutation effects, where each backend may need to see the prior backend's accepted changes.
+Control decisions must be deterministic. Serial order is easy to explain and test. It avoids races between denials and lets each backend see the prior backend's accepted changes.
 ### Why is observe optional?
 Many harnesses already support OpenTelemetry, and telemetry should converge there. AHP observe mode remains useful for compatibility and control-adjacent audit, but making it part of minimum conformance would blur the protocol's purpose and create a competing event-export path.
 ### Why keep native payloads?
