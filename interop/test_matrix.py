@@ -8,6 +8,36 @@ import matrix
 import generate_scenarios
 
 
+class PreparedAdapterTests(unittest.TestCase):
+    def manifest(self):
+        return {'language': 'rust', **{role: ['cargo', 'run', '--quiet', '--bin',
+                'interop', '--', role] for role in ('client', 'server')}}
+
+    def test_prepared_rust_uses_native_binary_for_both_roles(self):
+        with patch.object(matrix, 'load', return_value=self.manifest()), patch.dict(
+            matrix.os.environ, {'AHP_RUST_INTEROP': '/isolated/interop'}
+        ):
+            adapter = matrix.load_adapter(matrix.Path('/workspace/rust-sdk/interop/adapter.json'))
+        self.assertEqual(adapter['client'], ['/isolated/interop', 'client'])
+        self.assertEqual(adapter['server'], ['/isolated/interop', 'server'])
+        self.assertEqual(adapter['cwd'], '/workspace/rust-sdk')
+
+    def test_standalone_keeps_manifest_launcher(self):
+        with patch.object(matrix, 'load', return_value=self.manifest()), patch.dict(
+            matrix.os.environ, {}, clear=True
+        ):
+            adapter = matrix.load_adapter(matrix.Path('/workspace/rust-sdk/interop/adapter.json'))
+        self.assertEqual(adapter['client'], self.manifest()['client'])
+
+    def test_prepared_rust_rejects_unrecognized_launcher(self):
+        manifest = self.manifest()
+        manifest['server'] += ['--extra']
+        with patch.object(matrix, 'load', return_value=manifest), patch.dict(
+            matrix.os.environ, {'AHP_RUST_INTEROP': '/isolated/interop'}
+        ), self.assertRaises(ValueError):
+            matrix.load_adapter(matrix.Path('/workspace/rust-sdk/interop/adapter.json'))
+
+
 class ScenarioGeneration(unittest.TestCase):
     def test_continue_without_instruction_is_accepted(self):
         document = generate_scenarios.build()
@@ -180,12 +210,30 @@ class Integrity(unittest.TestCase):
             groups = matrix.run_group(adapter, adapter, self.scenarios, matrix.HERE/'scenarios.json', issuer, 1)
         self.assertEqual(sum(g['status'] == 'failed' for g in groups), 6)
         self.assertTrue(all(g['results'][0]['status'] == 'failed' for g in groups if g['status'] == 'failed'))
+        for group in groups:
+            if group['status'] == 'failed':
+                stage = 'client spawn' if group['transport'] == 'stdio' else 'server spawn'
+                self.assertEqual(group['errors'], [stage + ': FileNotFoundError'])
 
     def test_missing_report_from_successful_process(self):
         adapter = dict(language='fake', cwd=str(matrix.HERE), client=[sys.executable, '-c', 'pass'], server=[sys.executable, '-c', 'pass'])
         with matrix.Issuer() as issuer:
             groups = matrix.run_group(adapter, adapter, self.scenarios, matrix.HERE/'scenarios.json', issuer, 1)
         self.assertEqual(sum(g['status'] == 'failed' for g in groups), 6)
+
+    def test_missing_report_diagnostics_do_not_expose_adapter_output(self):
+        for code in (0, 7):
+            with self.subTest(code=code):
+                command = [sys.executable, '-c',
+                           f'import sys; print("SECRET-output"); sys.stderr.write("SECRET-error"); sys.exit({code})']
+                adapter = dict(language='fake', cwd=str(matrix.HERE), client=command, server=command)
+                with matrix.Issuer() as issuer, patch.object(matrix, 'MODES', ('none',)):
+                    groups = matrix.run_group(adapter, adapter, self.scenarios, matrix.HERE/'scenarios.json', issuer, 1)
+                stdio = next(g for g in groups if g['transport'] == 'stdio')
+                self.assertEqual(stdio['status'], 'failed')
+                self.assertEqual(stdio['errors'], ['client report: FileNotFoundError',
+                                                   f'Client exit code: {code}'])
+                self.assertTrue(all(row['status'] == 'failed' for row in stdio['results']))
 
     def test_readiness_allows_additive_health_metrics(self):
         with patch.object(matrix.Path, 'exists', return_value=True), patch.object(matrix, 'load', return_value={'controlEndpoint': 'http://local'}), patch.object(matrix, 'control', return_value={'ready': True, 'tlsRejections': 0}):

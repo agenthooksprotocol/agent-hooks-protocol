@@ -21,6 +21,21 @@ MODES = ('none', 'bearer', 'oauth', 'mtls', 'workload')
 def load(path):
     return json.loads(Path(path).read_text())
 
+def load_adapter(path):
+    adapter = dict(load(path), cwd=str(path.parent.parent))
+    binary = os.environ.get('AHP_RUST_INTEROP')
+    if adapter['language'] == 'rust' and binary:
+        # Only replace the pinned Cargo launcher, never reinterpret arbitrary
+        # adapter arguments. Compilation is an orchestration prerequisite, not
+        # part of the SDK's bounded stdio discovery exchange.
+        for role in ('client', 'server'):
+            expected = ['cargo', 'run', '--quiet', '--bin', 'interop', '--', role]
+            if adapter[role] != expected:
+                raise ValueError('unexpected Rust interop launcher')
+            adapter[role] = [binary, role]
+    return adapter
+
+
 def write(path, value):
     path = Path(path)
     temporary = path.with_suffix('.tmp')
@@ -201,32 +216,43 @@ def run_group(client, server, scenarios, scenario_file, issuer, timeout):
                           auth=configuration(mode, HERE/'fixtures', 'client', issuer))
                 rows = [dict(id=s['id'], expected=s.get('expected', {'expectError': True}), actual=None, status='failed', adapterStatus='missing') for s in scenarios]
                 errors = []
+                stage = 'configuration'
+                code = None
                 try:
                     with (temp/'stderr.log').open('wb') as log:
                         if transport == 'http':
                             write(temp/'server.json', sc)
+                            stage = 'server spawn'
                             process = subprocess.Popen(server['server'] + ['--config', str(temp/'server.json')], cwd=server['cwd'], stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
                             processes.append(process)
+                            stage = 'server readiness'
                             cc['endpoint'] = ready(sc['readinessFile'], process, timeout)['endpoint']
                         else:
                             sc.update(relayCommand=server['server'], relayCwd=server['cwd'], watchdog=timeout, receiptFile=str(temp/'receipts.json'), relayIdentity=str(temp/'relay.json'))
                             write(temp/'server.json', sc)
                             cc.update(serverCommand=[sys.executable, str(Path(__file__).resolve()), '--relay'], serverCwd=str(HERE), serverConfig=str(temp/'server.json'))
                         write(temp/'client.json', cc)
+                        stage = 'client spawn'
                         process = subprocess.Popen(client['client'] + ['--config', str(temp/'client.json')], cwd=client['cwd'], stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
                         processes.append(process)
+                        stage = 'client wait'
                         code = process.wait(timeout=timeout)
+                        stage = 'client report'
                         report = load(cc['reportFile'])
                         try:
                             receipts = control(load(sc['readinessFile'])['controlEndpoint'], '/receipts') if transport == 'http' else load(temp/'receipts.json')
                         except Exception as exc:
                             receipts = {'requests': []}
                             errors.append('Receipts: ' + type(exc).__name__)
+                        stage = 'verification'
                         rows, validation_errors = verify(scenarios, report, receipts, client['language'], code)
                         errors.extend(validation_errors)
                 except Exception as exc:
-                    # Never copy logs/config credentials to the public artifact.
-                    errors.append(type(exc).__name__)
+                    # Only fixed stage labels, exception types and numeric exit codes:
+                    # exception messages, paths and adapter logs can contain credentials.
+                    errors.append(stage + ': ' + type(exc).__name__)
+                    if code is not None:
+                        errors.append('Client exit code: ' + str(code))
                 finally:
                     if (temp/'relay.json').exists():
                         try:
@@ -260,7 +286,7 @@ def main():
         return 0
     adapters = []
     for path in sorted(HERE.parent.parent.glob('*-sdk/interop/adapter.json')):
-        adapters.append(dict(load(path), cwd=str(path.parent.parent)))
+        adapters.append(load_adapter(path))
     names = {a['language'] for a in adapters}
     for selected in (args.clients, args.servers):
         if selected and not set(selected) <= names:

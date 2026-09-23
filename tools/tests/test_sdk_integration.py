@@ -31,9 +31,42 @@ class SDKIntegrationTests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(runner, 'ROOT', self.root), patch.object(
             runner.subprocess, 'Popen', popen
-        ), redirect_stdout(output):
+        ), patch.object(runner, 'prepare_adapters', return_value=[{'status': 'passed'}]), redirect_stdout(output):
             code = runner.main(['--reports-dir', str(self.reports), '--jobs', '7', '--timeout', '12'])
         return code, json.loads((self.reports / 'summary.json').read_text()), output.getvalue()
+
+    def test_declared_build_commands_use_run_owned_directory(self):
+        directory = self.root / 'isolated-bin'
+        directory.mkdir()
+        with patch.object(runner, 'run_command', return_value={'status': 'passed'}) as run:
+            with redirect_stdout(io.StringIO()):
+                results = runner.prepare_adapters(self.root, directory, self.reports, 12)
+        self.assertEqual(len(results), 4)
+        self.assertEqual(tuple(row['name'] for row in results),
+                         ('go-elicitation', 'go-compaction', 'go-compaction-wire', 'rust-interop'))
+        for call, name in zip(run.call_args_list, runner.GO_ADAPTERS):
+            self.assertEqual(call.args, (
+                ['go', 'build', '-o', str(directory / name), './cmd/' + name],
+                self.root.parent / 'go-sdk', self.reports / f'build-go-{name}.log', 12))
+
+        sdk = self.root.parent / 'rust-sdk'
+        self.assertEqual(run.call_args_list[-1].args, (
+            ['cargo', 'build', '--locked', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
+            sdk, self.reports / 'build-rust-interop.log', 12))
+
+    def test_failed_preparation_blocks_suites_and_clears_stale_reports(self):
+        self.reports.mkdir()
+        (self.reports / 'matrix.json').write_text('{}')
+        with patch.object(runner, 'ROOT', self.root), patch.object(
+            runner, 'prepare_adapters', return_value=[{'status': 'failed'}]
+        ), patch.object(runner, 'run_command') as run, redirect_stdout(io.StringIO()):
+            code = runner.main(['--reports-dir', str(self.reports)])
+        self.assertEqual(code, 1)
+        run.assert_not_called()
+        self.assertFalse((self.reports / 'matrix.json').exists())
+        summary = json.loads((self.reports / 'summary.json').read_text())
+        self.assertEqual(summary['suites'], [])
+        self.assertEqual(summary['prerequisites'], [{'status': 'failed'}])
 
     def test_full_suite_inventory_and_actual_cli_flags(self):
         suites = {name: (cmd, cwd) for name, cmd, cwd in runner.suite_commands(self.root, self.reports, 7)}
@@ -57,8 +90,11 @@ class SDKIntegrationTests(unittest.TestCase):
                 *flags, '--report' if name == 'auth' else '--output', str(self.reports / f'{name}.json')])
 
     def test_success_logs_and_lean_stdout(self):
+        directories = set()
         def execute(command, **kwargs):
-            self.assertNotIn('env', kwargs)
+            self.assertIn('AHP_GO_ADAPTER_DIR', kwargs['env'])
+            self.assertTrue(Path(kwargs['env']['AHP_GO_ADAPTER_DIR']).is_dir())
+            directories.add(kwargs['env']['AHP_GO_ADAPTER_DIR'])
             self.assertTrue(kwargs['start_new_session'])
             self.assertEqual(kwargs['stderr'], subprocess.STDOUT)
             kwargs['stdout'].write('verbose adapter details\n' * 50)
@@ -71,6 +107,8 @@ class SDKIntegrationTests(unittest.TestCase):
         self.assertEqual(len(output.splitlines()), 12)
         self.assertNotIn('verbose adapter details', output)
         self.assertEqual(len(list(self.reports.glob('*.log'))), 11)
+        self.assertEqual(len(directories), 1)
+        self.assertTrue(all(not Path(directory).exists() for directory in directories))
 
     def test_failure_and_spawn_error_do_not_short_circuit(self):
         processes = [Mock(wait=Mock(return_value=9)), OSError('secret details')]

@@ -8,6 +8,7 @@ knows expected results. No proxy or central semantic evaluator is on the wire.
 import argparse, base64, copy, hashlib, json, os, secrets, selectors, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from adapter_builds import go_command
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parent.parent
@@ -35,7 +36,7 @@ def commands():
     return {
       'typescript':['node',str(ROOT/'typescript-sdk/interop/elicitation.mjs')],
       'python':[str(ROOT/'python-sdk/.venv/bin/python'),str(ROOT/'python-sdk/interop/elicitation.py')],
-      'go':['/tmp/ahp-elicitation-go'],
+      'go':go_command('elicitation'),
       'rust':[str(ROOT/'rust-sdk/target/debug/elicitation')],
     }
 

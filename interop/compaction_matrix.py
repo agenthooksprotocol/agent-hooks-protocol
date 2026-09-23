@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from adapter_builds import go_command
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -40,7 +41,7 @@ def stderr_tail(stream):
 def commands():
     return {'typescript': ['node', str(ROOT/'typescript-sdk/interop/compaction.mjs')],
             'python': [str(ROOT/'python-sdk/.venv/bin/python'), str(ROOT/'python-sdk/interop/compaction.py')],
-            'go': ['/tmp/ahp-compaction-go'],
+            'go': go_command('compaction'),
             'rust': [str(ROOT/'rust-sdk/target/debug/compaction')]}
 
 

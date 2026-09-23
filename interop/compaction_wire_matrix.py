@@ -8,6 +8,7 @@ events and final downstream application. HTTP uploads precede BOTH transports.
 import argparse, copy, hashlib, json, os, secrets, selectors, signal, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from adapter_builds import go_command
 from compaction_matrix import LANGUAGES, commands as transport_commands
 
 HERE=Path(__file__).resolve().parent
@@ -18,7 +19,7 @@ SCHEMA=ROOT/'agent-hooks-protocol/schema/draft'
 def commands():
     return {'python':[str(ROOT/'python-sdk/.venv/bin/python'),str(ROOT/'python-sdk/interop/compaction_wire.py')],
             'typescript':['node',str(ROOT/'typescript-sdk/interop/compaction-wire.mjs')],
-            'go':['/tmp/ahp-compaction-wire-go'],
+            'go':go_command('compaction-wire'),
             'rust':[str(ROOT/'rust-sdk/target/debug/compaction_wire')]}
 
 

@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import time
 import unittest
+from unittest.mock import Mock, patch
 import io
 from jsonschema import Draft202012Validator
 from urllib.parse import urlencode, urlsplit
@@ -103,7 +104,22 @@ def exchange(endpoint, path, headers=(), payload=None, context=None, form=False)
         if payload is not None:
             connection.putheader('Content-Length', str(len(payload)))
             connection.putheader('Content-Type', 'application/x-www-form-urlencoded' if form else 'application/json')
-        connection.endheaders(payload)
+        try:
+            connection.endheaders(payload)
+        except (ssl.SSLEOFError, ConnectionResetError, BrokenPipeError):
+            # TLS 1.3 can finish the client handshake before the server rejects
+            # its certificate. A separate POST body write can then mask the
+            # pending alert with EOF/EPIPE. Read only from this same connection:
+            # never retry the request or count a bare disconnect as rejection.
+            if url.scheme == 'https' and connection.sock is not None:
+                try:
+                    connection.sock.recv(1)
+                except ssl.SSLError as alert:
+                    if getattr(alert, 'reason', None):
+                        raise
+                except OSError:
+                    pass
+            raise
         response = connection.getresponse()
         data = response.read(1048577)
         if len(data) > 1048576:
@@ -377,6 +393,49 @@ class PositiveControlTests(unittest.TestCase):
         self.check(valid_receipts([self.receipt], [self.receipt], self.request, False))
         self.check(not valid_receipts([], [self.receipt], self.request, False))
         self.check(not valid_receipts([self.receipt], [{}], self.request, False))
+
+    def test_pending_tls_alert_after_request_write_failure(self):
+        for error in (ssl.SSLEOFError(), ConnectionResetError(), BrokenPipeError()):
+            with self.subTest(error=type(error).__name__):
+                connection = Mock()
+                connection.endheaders.side_effect = error
+                alert = ssl.SSLError('certificate required')
+                alert.reason = 'TLSV13_ALERT_CERTIFICATE_REQUIRED'
+                connection.sock.recv.side_effect = alert
+                with patch.object(http.client, 'HTTPSConnection', return_value=connection):
+                    with self.assertRaises(ssl.SSLError) as caught:
+                        exchange('https://localhost:443', '/intercept', payload=b'{}')
+                self.check(caught.exception is alert)
+                connection.sock.recv.assert_called_once_with(1)
+                connection.endheaders.assert_called_once_with(b'{}')
+                connection.getresponse.assert_not_called()
+                connection.close.assert_called_once()
+
+    def test_write_failure_without_pending_tls_alert_still_fails(self):
+        for outcome in (b'', b'x', TimeoutError(), ConnectionResetError(), ssl.SSLEOFError()):
+            with self.subTest(outcome=repr(outcome)):
+                connection = Mock()
+                error = ssl.SSLEOFError()
+                connection.endheaders.side_effect = error
+                if isinstance(outcome, BaseException):
+                    connection.sock.recv.side_effect = outcome
+                else:
+                    connection.sock.recv.return_value = outcome
+                with patch.object(http.client, 'HTTPSConnection', return_value=connection):
+                    with self.assertRaises(ssl.SSLEOFError) as caught:
+                        exchange('https://localhost:443', '/intercept', payload=b'{}')
+                self.check(caught.exception is error)
+                connection.getresponse.assert_not_called()
+                connection.close.assert_called_once()
+
+    def test_plain_http_write_failure_does_not_read_tls_alert(self):
+        connection = Mock()
+        connection.endheaders.side_effect = BrokenPipeError()
+        with patch.object(http.client, 'HTTPConnection', return_value=connection):
+            with self.assertRaises(BrokenPipeError):
+                exchange('http://localhost:80', '/intercept', payload=b'{}')
+        connection.sock.recv.assert_not_called()
+        connection.close.assert_called_once()
 
     def test_correlated_certificate_evidence_positive(self):
         self.check(certificate_evidence(self.before, self.after))

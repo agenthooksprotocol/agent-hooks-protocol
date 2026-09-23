@@ -103,7 +103,6 @@ From the workspace root (four SDK repositories and protocol repository siblings)
 
 ```sh
 (cd typescript-sdk && pnpm --filter @agenthooksprotocol/sdk build)
-(cd go-sdk && go build -o /tmp/ahp-compaction-go ./cmd/compaction)
 (cd rust-sdk && cargo build --bin compaction)
 python-sdk/.venv/bin/python agent-hooks-protocol/interop/compaction_matrix.py
 python-sdk/.venv/bin/python -m unittest discover -s agent-hooks-protocol/interop -p test_compaction_matrix.py
@@ -171,7 +170,6 @@ Build and run from the workspace root:
 
 ```sh
 (cd typescript-sdk && pnpm --filter @agenthooksprotocol/sdk build)
-(cd go-sdk && go build -o /tmp/ahp-compaction-wire-go ./cmd/compaction-wire && go build -o /tmp/ahp-compaction-go ./cmd/compaction)
 (cd rust-sdk && cargo build --bin compaction_wire --bin compaction)
 python-sdk/.venv/bin/python agent-hooks-protocol/interop/compaction_wire_matrix.py
 python-sdk/.venv/bin/python -m unittest discover -s agent-hooks-protocol/interop -p test_compaction_wire_matrix.py

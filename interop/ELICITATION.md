@@ -11,7 +11,6 @@ From the workspace root (the parent of the five repositories):
 
 ```sh
 (cd typescript-sdk && pnpm --filter @agenthooksprotocol/sdk build)
-(cd go-sdk && go build -o /tmp/ahp-elicitation-go ./cmd/elicitation)
 (cd rust-sdk && cargo build --bin elicitation)
 python3 agent-hooks-protocol/interop/elicitation_matrix.py
 (cd agent-hooks-protocol/interop && python3 -m unittest test_elicitation_matrix)

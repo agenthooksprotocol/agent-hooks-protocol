@@ -23,6 +23,16 @@ the pull request's proposed merge tree, not the default branch's generator.
    committed lockfile. TypeScript uses `pnpm install --frozen-lockfile` and the
    repository's ordered workspace build, not guessed `dist` paths.
 5. Run `python3 tools/run_sdk_integration.py --reports-dir PATH --jobs 4`.
+   The runner builds Go elicitation, compaction, and compaction-wire adapters
+   from the sibling sources into a fresh temporary directory, exports that
+   directory only to its test processes, and removes it on exit. Build failures
+   stop matrix execution and are recorded in `summary.json` prerequisites and
+   `build-go-*.log`; no global `/tmp/ahp-*` executable is reused. Standalone
+   elicitation/compaction matrices use `go -C <sdk> run ./cmd/<adapter>` when no
+   prepared directory is supplied. The runner also builds Rust's interop binary
+   and selects it for the matrix's client/server commands, avoiding nested Cargo
+   startup or build-lock contention inside the SDK's unchanged discovery deadline.
+   Its build result is recorded in prerequisites and `build-rust-interop.log`.
    The runner discovers siblings relative to the spec, runs the cross-language
    matrices and harness unit suites, writes reports, aggregates failures, and
    must exit nonzero for missing adapters. It must not silently reduce the

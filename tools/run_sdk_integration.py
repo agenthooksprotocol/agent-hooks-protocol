@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Run prepared sibling SDKs through the shared harness (no builds or installs).
+"""Run installed sibling SDKs through the shared harness.
+
+Go matrix adapters are built into a fresh run-owned directory before tests.
+Rust interop is built before the matrix so nested stdio startup never runs Cargo.
 
 --jobs controls runners that expose concurrency flags. Elicitation and compaction
 currently fix their own pools at four; suites run sequentially. Observation wire
@@ -16,9 +19,11 @@ import signal
 import subprocess
 import sys
 import time
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LANGUAGES = ('typescript', 'python', 'go', 'rust')
+GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire')
 MANIFEST_COMMANDS = ('client', 'server', 'lifecycleClient', 'lifecycleServer')
 
 
@@ -71,14 +76,15 @@ def suite_commands(root: Path, reports: Path, jobs: int):
     return suites
 
 
-def run_command(command, cwd: Path, log: Path, timeout: int) -> dict:
+def run_command(command, cwd: Path, log: Path, timeout: int, env=None) -> dict:
     started = time.monotonic()
     status = 'failed'
     code = None
     with log.open('w') as output:
         try:
             process = subprocess.Popen(command, cwd=cwd, stdout=output,
-                                       stderr=subprocess.STDOUT, start_new_session=True)
+                                       stderr=subprocess.STDOUT, start_new_session=True,
+                                       **({'env': env} if env is not None else {}))
             try:
                 code = process.wait(timeout=timeout)
                 status = 'passed' if code == 0 else 'failed'
@@ -104,6 +110,25 @@ def positive_int(value):
     return number
 
 
+def prepare_adapters(root, directory, reports, timeout):
+    """Build declared adapters before timed protocol exchanges."""
+    results = []
+    for name in GO_ADAPTERS:
+        result = {'name': 'go-' + name, **run_command(
+            ['go', 'build', '-o', str(directory / name), './cmd/' + name],
+            root.parent / 'go-sdk', reports / f'build-go-{name}.log', timeout)}
+        results.append(result)
+        print(f"build-go-{name}: {result['status']}", flush=True)
+    name = 'rust-interop'
+    sdk = root.parent / 'rust-sdk'
+    result = {'name': name, **run_command(
+        ['cargo', 'build', '--locked', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
+        sdk, reports / 'build-rust-interop.log', timeout)}
+    results.append(result)
+    print(f"build-{name}: {result['status']}", flush=True)
+    return results
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports-dir', type=Path, required=True)
@@ -114,16 +139,22 @@ def main(argv=None):
     reports = args.reports_dir.resolve()
     reports.mkdir(parents=True, exist_ok=True)
     errors = validate_manifests(ROOT)
-    results = []
-    for name, command, cwd in suite_commands(ROOT, reports, args.jobs):
-        # Failed commands must not leave stale reports from an earlier run.
+    # Remove stale reports even when preparation fails before any suite starts.
+    for name, _, _ in suite_commands(ROOT, reports, args.jobs):
         (reports / f'{name}.json').unlink(missing_ok=True)
-        result = {'name': name, **run_command(command, cwd, reports / f'{name}.log', args.timeout)}
-        results.append(result)
-        print(f"{name}: {result['status']}", flush=True)
-    failed = bool(errors) or any(row['status'] != 'passed' for row in results)
+    results = []
+    with tempfile.TemporaryDirectory(prefix='ahp-go-adapters-') as directory:
+        prerequisites = prepare_adapters(ROOT, Path(directory), reports, args.timeout)
+        env = {**os.environ, 'AHP_GO_ADAPTER_DIR': directory,
+               'AHP_RUST_INTEROP': str(ROOT.parent / 'rust-sdk/target/debug/interop')}
+        if all(row['status'] == 'passed' for row in prerequisites):
+            for name, command, cwd in suite_commands(ROOT, reports, args.jobs):
+                result = {'name': name, **run_command(command, cwd, reports / f'{name}.log', args.timeout, env=env)}
+                results.append(result)
+                print(f"{name}: {result['status']}", flush=True)
+    failed = bool(errors) or any(row['status'] != 'passed' for row in prerequisites + results)
     summary = {'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
-               'suites': results}
+               'prerequisites': prerequisites, 'suites': results}
     (reports / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(f"SDK integration: {summary['status']}; {len(errors)} manifest errors; reports: {reports}")
     return int(failed)
