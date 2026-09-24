@@ -6,6 +6,7 @@ The following are operational failures:
 - Deadline exceeded
 - Connection refused, reset, or lost
 - Backend process launch failure or abnormal exit
+- Authentication failure, including credential resolution, acquisition, or refresh failure
 - Non-success HTTP response
 - Malformed UTF-8, JSON, or JSON-RPC
 - Mismatched JSON-RPC request and response IDs
@@ -23,6 +24,7 @@ An explicit `deny` is not an operational failure.
 Each intercept subscription MUST explicitly configure one of:
 - `fail-open`: Continue unchanged after an operational failure.
 - `fail-closed`: Deny the operation after an operational failure.
+Authentication failures follow the same configured policy as other operational failures; they do not unconditionally deny the underlying operation. Fail-open does not permit unauthenticated fallback delivery.
 There is no implicit default for intercept subscriptions. Requiring an explicit value prevents a security-sensitive deployment from inheriting an unexpected default.
 Observe subscriptions are always non-blocking and effectively fail open. They MUST NOT specify `failurePolicy`.
 ### Synthetic denial
@@ -42,6 +44,6 @@ When the deadline expires, the harness MUST ignore any later response and apply 
 **AHP-CORE-004 — MUST.** A retry preserves event, session, and tool-call identities and event content, and a backend tolerates duplicate delivery.
 
 A harness MAY retry an intercept request only while the original deadline remains active. Every retry MUST reuse the same event ID, JSON-RPC ID, session ID, call ID, and event contents.
-A backend SHOULD treat repeated delivery of the same subscription payload from the same source as a retry and return the same semantic result. Side-effect deduplication MUST distinguish subscription delivery from logical `(source, event.id)` occurrence; distinct subscriptions are not interchangeable retry state.
+Distinct local subscriptions can produce identical deliveries to the same backend. Handling that configuration, including any deduplication or idempotency behavior, is a backend concern; this protocol does not require per-subscription deduplication or introduce a wire delivery discriminator. A backend MAY provide idempotency support according to its configuration.
 An observer transport MAY retry a failed notification when it can detect delivery failure. Retries MUST preserve the exact subscription payload and identities. Observation remains best effort; This protocol revision does not guarantee at-least-once or exactly-once delivery.
 A harness MUST NOT retry an explicit denial or a successful empty-effect response.

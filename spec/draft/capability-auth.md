@@ -85,8 +85,14 @@ Unsupported authentication MUST fail before event delivery or body transfer.
 Secret values MUST NOT occur in registration, events, native metadata, or reports.
 Credential references name deployment-managed secrets, not portable secret values.
 
-* `bearer`: configure exactly one of `tokenEnv` or `tokenRef`. Resolution failure
-  MUST fail closed. Send the resolved token in exactly one Authorization header.
+Authentication failures, including credential resolution, acquisition, and refresh
+failures, are operational failures. The configured interception failure policy
+determines whether the underlying harness operation continues or is denied;
+authentication failures do not override that policy. Failed authentication MUST
+NOT cause fallback to unauthenticated delivery. See [failure semantics](base/failure.md).
+
+* `bearer`: configure exactly one of `tokenEnv` or `tokenRef`. If resolution fails,
+  do not send the request. Send the resolved token in exactly one Authorization header.
 * `oauth`: configure HTTPS `issuer`, protected `resource`, `clientId`, `flow`,
   optional `scopes`, and optional `clientSecretRef`. Implementations MUST use
   standards-based protected-resource/authorization-server discovery and supported

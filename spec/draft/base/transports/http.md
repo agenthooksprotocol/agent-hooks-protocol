@@ -22,7 +22,9 @@ Implementations MUST validate server certificates using platform trust policy un
 Event and discovery endpoints use the authentication bindings defined in
 [capabilities and authentication](../../capability-auth.md#authentication-bindings):
 `bearer`, `oauth`, `mtls`, or `workload`, according to advertised support.
-Unsupported authentication MUST fail before delivery. Credential resolution and
-validation MUST fail closed; payload correlation fields never grant authority.
+Unsupported authentication, credential resolution failure, and credential
+validation failure MUST prevent delivery without the configured authentication.
+For interception, the configured failure policy determines whether the underlying
+harness operation continues or is denied. Payload correlation fields never grant authority.
 Upload endpoints use their independently configured authentication and MUST NOT
 inherit event credentials. See [content uploads](../../content-upload.md).
