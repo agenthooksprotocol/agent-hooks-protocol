@@ -1,0 +1,6916 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "cancel-before-reply",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancel-before-reply:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "cancel-before-reply:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancel-before-reply:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              },
+              {
+                "type": "return",
+                "value": {
+                  "supplied": true
+                }
+              },
+              {
+                "type": "flow",
+                "operation": "continue",
+                "instruction": "continue staged"
+              },
+              {
+                "type": "inject",
+                "target": "context",
+                "operation": "append",
+                "deliverAt": "now",
+                "value": {
+                  "text": "Context now"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "cancel",
+          "key": "a"
+        },
+        {
+          "op": "failOpen",
+          "key": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [],
+        "cancelled": [
+          "cancel-before-reply:a"
+        ],
+        "ignored": [
+          "a"
+        ],
+        "states": {},
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "cancel-after-reply-before-acceptance",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancel-after-reply-before-acceptance:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "cancel-after-reply-before-acceptance:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancel-after-reply-before-acceptance:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              },
+              {
+                "type": "return",
+                "value": {
+                  "supplied": true
+                }
+              },
+              {
+                "type": "flow",
+                "operation": "continue",
+                "instruction": "continue staged"
+              },
+              {
+                "type": "inject",
+                "target": "context",
+                "operation": "append",
+                "deliverAt": "now",
+                "value": {
+                  "text": "Context now"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "cancel",
+          "key": "a"
+        },
+        {
+          "op": "failOpen",
+          "key": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [],
+        "cancelled": [
+          "cancel-after-reply-before-acceptance:a"
+        ],
+        "ignored": [],
+        "states": {},
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "late-old-while-next-pending",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "late-old-while-next-pending:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "late-old-while-next-pending:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "late-old-while-next-pending:b",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "late-old-while-next-pending:b",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "late-old-while-next-pending:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "late-old-while-next-pending:b",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "next"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-next"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "cancel",
+          "key": "a"
+        },
+        {
+          "op": "send",
+          "key": "b",
+          "slot": "b"
+        },
+        {
+          "op": "wait",
+          "key": "b",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        },
+        {
+          "op": "release",
+          "key": "b"
+        },
+        {
+          "op": "receive",
+          "slot": "b"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        },
+        {
+          "op": "failOpen",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "late-old-while-next-pending:b"
+        ],
+        "cancelled": [
+          "late-old-while-next-pending:a"
+        ],
+        "ignored": [
+          "a"
+        ],
+        "states": {
+          "late-old-while-next-pending:b": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "next"
+            },
+            "messages": [
+              "published-next"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "duplicate-reply-ignored",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "duplicate-reply-ignored:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "duplicate-reply-ignored:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "duplicate-reply-ignored:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "duplicate"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 2
+        },
+        {
+          "op": "receive",
+          "slot": "duplicate"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "duplicate-reply-ignored:a"
+        ],
+        "cancelled": [],
+        "ignored": [
+          "duplicate"
+        ],
+        "states": {
+          "duplicate-reply-ignored:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "request-specific-acceptance",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "request-specific-acceptance:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "request-specific-acceptance:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "request-specific-acceptance:b",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "request-specific-acceptance:b",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "request-specific-acceptance:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "first"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-first"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "request-specific-acceptance:b",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "second"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-second"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "send",
+          "key": "b",
+          "slot": "b"
+        },
+        {
+          "op": "wait",
+          "key": "b",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "release",
+          "key": "b"
+        },
+        {
+          "op": "receive",
+          "slot": "b"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        }
+      ],
+      "expected": {
+        "published": [
+          "request-specific-acceptance:a",
+          "request-specific-acceptance:b"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "request-specific-acceptance:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "first"
+            },
+            "messages": [
+              "published-first"
+            ]
+          },
+          "request-specific-acceptance:b": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "second"
+            },
+            "messages": [
+              "published-second"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "two-staged-reverse-acceptance",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "two-staged-reverse-acceptance:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "two-staged-reverse-acceptance:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "two-staged-reverse-acceptance:b",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "two-staged-reverse-acceptance:b",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "two-staged-reverse-acceptance:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "first"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-first"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "two-staged-reverse-acceptance:b",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "second"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-second"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "send",
+          "key": "b",
+          "slot": "b"
+        },
+        {
+          "op": "wait",
+          "key": "b",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "b"
+        },
+        {
+          "op": "receive",
+          "slot": "b"
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        }
+      ],
+      "expected": {
+        "published": [
+          "two-staged-reverse-acceptance:a",
+          "two-staged-reverse-acceptance:b"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "two-staged-reverse-acceptance:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "first"
+            },
+            "messages": [
+              "published-first"
+            ]
+          },
+          "two-staged-reverse-acceptance:b": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "second"
+            },
+            "messages": [
+              "published-second"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "first-staged-response-wins",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "first-staged-response-wins:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "first-staged-response-wins:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "first-staged-response-wins:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "duplicate"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 2
+        },
+        {
+          "op": "receive",
+          "slot": "duplicate"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "first-staged-response-wins:a"
+        ],
+        "cancelled": [],
+        "ignored": [
+          "duplicate"
+        ],
+        "states": {
+          "first-staged-response-wins:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "first-staged-response-wins:a",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "message",
+                  "text": "published"
+                },
+                {
+                  "type": "allow"
+                }
+              ]
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "first-staged-response-wins:a",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "MUST-NOT-REPLACE"
+                  }
+                },
+                {
+                  "type": "message",
+                  "text": "MUST-NOT-PUBLISH"
+                },
+                {
+                  "type": "allow"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "interrupt-after-publication",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "interrupt-after-publication:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "interrupt-after-publication:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "interrupt-after-publication:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "cancel",
+          "key": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "failOpen",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        }
+      ],
+      "expected": {
+        "published": [
+          "interrupt-after-publication:a"
+        ],
+        "cancelled": [
+          "interrupt-after-publication:a"
+        ],
+        "ignored": [],
+        "states": {
+          "interrupt-after-publication:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "interrupt-after-publication:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "settled-observer-effects-ignored",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "settled-observer-effects-ignored:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "settled-observer-effects-ignored:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "settled-observer-effects-ignored:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "body"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "settled-observer-effects-ignored:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "settled-observer-effects-ignored:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "settled-observer-effects-ignored:a",
+            "subscription": "body",
+            "input": {
+              "value": "settled"
+            }
+          },
+          {
+            "eventId": "settled-observer-effects-ignored:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "denied-boundary-observed",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "denied-boundary-observed:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "denied-boundary-observed:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "denied-boundary-observed:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "deny",
+                "reason": "blocked"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        }
+      ],
+      "expected": {
+        "published": [
+          "denied-boundary-observed:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "denied-boundary-observed:a": {
+            "decision": "deny",
+            "executed": false,
+            "input": {
+              "value": "original"
+            },
+            "messages": []
+          }
+        },
+        "observations": [
+          {
+            "eventId": "denied-boundary-observed:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "original"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "cancelled-boundary-observed",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancelled-boundary-observed:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "cancelled-boundary-observed:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "cancelled-boundary-observed:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              },
+              {
+                "type": "return",
+                "value": {
+                  "supplied": true
+                }
+              },
+              {
+                "type": "flow",
+                "operation": "continue",
+                "instruction": "continue staged"
+              },
+              {
+                "type": "inject",
+                "target": "context",
+                "operation": "append",
+                "deliverAt": "now",
+                "value": {
+                  "text": "Context now"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "cancel",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "failOpen",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [],
+        "cancelled": [
+          "cancelled-boundary-observed:a"
+        ],
+        "ignored": [
+          "a"
+        ],
+        "states": {},
+        "observations": [
+          {
+            "eventId": "cancelled-boundary-observed:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "original"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "stopped-boundary-observed",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stopped-boundary-observed:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "stopped-boundary-observed:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stopped-boundary-observed:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "flow",
+                "operation": "stop",
+                "reason": "Stop this boundary"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        }
+      ],
+      "expected": {
+        "published": [
+          "stopped-boundary-observed:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "stopped-boundary-observed:a": {
+            "decision": "allow",
+            "executed": false,
+            "flow": "stop",
+            "input": {
+              "value": "original"
+            },
+            "messages": []
+          }
+        },
+        "observations": [
+          {
+            "eventId": "stopped-boundary-observed:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "original"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "ask-boundary-observed",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "ask-boundary-observed:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "ask-boundary-observed:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "ask-boundary-observed:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "ask"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata"
+        }
+      ],
+      "expected": {
+        "published": [
+          "ask-boundary-observed:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "ask-boundary-observed:a": {
+            "decision": "ask",
+            "executed": false,
+            "input": {
+              "value": "original"
+            },
+            "messages": []
+          }
+        },
+        "observations": [
+          {
+            "eventId": "ask-boundary-observed:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "original"
+            }
+          }
+        ],
+        "uploadStatuses": []
+      }
+    },
+    {
+      "id": "immutable-upload-and-subscription-views",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "immutable-upload-and-subscription-views:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "immutable-upload-and-subscription-views:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "immutable-upload-and-subscription-views:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "immutable-v1",
+          "bodyBase64": "b3JpZ2luYWwgYnl0ZXM=",
+          "size": 14,
+          "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "immutable-retry",
+          "bodyBase64": "b3JpZ2luYWwgYnl0ZXM=",
+          "size": 14,
+          "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "immutable-changed",
+          "bodyBase64": "Y2hhbmdlZCBieXRlcw==",
+          "size": 13,
+          "sha256": "aa2353a76c07b8615467bb59085dc2d9867c94f2c1d2e7a15df72b196bfdebf0"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "immutable-v2",
+          "bodyBase64": "Y2hhbmdlZCBieXRlcw==",
+          "size": 13,
+          "sha256": "aa2353a76c07b8615467bb59085dc2d9867c94f2c1d2e7a15df72b196bfdebf0"
+        },
+        {
+          "op": "upload",
+          "subscription": "metadata",
+          "ref": "immutable-v1",
+          "bodyBase64": "b3JpZ2luYWwgYnl0ZXM=",
+          "size": 14,
+          "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698",
+          "upload": {
+            "auth": {
+              "type": "bearer",
+              "tokenEnv": "AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN"
+            },
+            "timeoutMs": 5000,
+            "maxBytes": 1048576
+          }
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "body",
+          "items": [
+            {
+              "id": "logical-item",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "immutable-v1",
+                "size": 14,
+                "sha256": "52c3935626c104b2cbc9031291a1c4d56614c38f52072a361d658a58a9c48698"
+              }
+            }
+          ]
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "metadata",
+          "items": [
+            {
+              "id": "logical-item",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "gap": {
+                "reason": "content permission denied",
+                "path": "items.logical-item"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "published": [
+          "immutable-upload-and-subscription-views:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "immutable-upload-and-subscription-views:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "immutable-upload-and-subscription-views:a",
+            "subscription": "body",
+            "input": {
+              "value": "settled"
+            }
+          },
+          {
+            "eventId": "immutable-upload-and-subscription-views:a",
+            "subscription": "metadata",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": [
+          201,
+          201,
+          201,
+          201,
+          401
+        ]
+      }
+    },
+    {
+      "id": "upload-integrity-rejection",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "upload-integrity-rejection:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "upload-integrity-rejection:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "upload-integrity-rejection:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": []
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "bad-size",
+          "bodyBase64": "Ym9keQ==",
+          "size": 99,
+          "sha256": "230d8358dc8e8890b4c58deeb62912ee2f20357ae92a5cc861b98e68fe31acb5"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "bad-hash",
+          "bodyBase64": "Ym9keQ==",
+          "size": 4,
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "op": "upload",
+          "subscription": "metadata",
+          "ref": "unauthorized",
+          "bodyBase64": "c2VjcmV0",
+          "size": 6,
+          "sha256": "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b",
+          "upload": {
+            "auth": {
+              "type": "bearer",
+              "tokenEnv": "AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN"
+            },
+            "timeoutMs": 5000,
+            "maxBytes": 1048576
+          }
+        }
+      ],
+      "expected": {
+        "published": [],
+        "cancelled": [],
+        "ignored": [],
+        "states": {},
+        "observations": [],
+        "uploadStatuses": [
+          400,
+          400,
+          401
+        ]
+      }
+    },
+    {
+      "id": "changed-body-new-reference",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "changed-body-new-reference:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "changed-body-new-reference:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "changed-body-new-reference:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "changed-new-ref",
+          "bodyBase64": "bmV3IGJ5dGVz",
+          "size": 9,
+          "sha256": "11e2defd59f47c7f2aac84d6a5d6747e98e785afffb72c8bb7b05ec74e1d663c"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "body",
+          "items": [
+            {
+              "id": "logical-item",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "changed-new-ref",
+                "size": 9,
+                "sha256": "11e2defd59f47c7f2aac84d6a5d6747e98e785afffb72c8bb7b05ec74e1d663c"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "published": [
+          "changed-body-new-reference:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "changed-body-new-reference:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "changed-body-new-reference:a",
+            "subscription": "body",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": [
+          201
+        ]
+      }
+    },
+    {
+      "id": "normal-content-kinds",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "normal-content-kinds:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "normal-content-kinds:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "normal-content-kinds:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "normal-reasoning",
+          "bodyBase64": "cmVhc29uaW5nIGNvbnRlbnQ=",
+          "size": 17,
+          "sha256": "261434a74444152ab11054a2dd5f636b8d437102466b9906569ef773b0a1162a"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "normal-skill",
+          "bodyBase64": "c2tpbGwgY29udGVudA==",
+          "size": 13,
+          "sha256": "a55d9c00dea0cb0185ca98064b42d188e82f772cd36030ae52dc583bb0c33e14"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "normal-native",
+          "bodyBase64": "bmF0aXZlIGNvbnRlbnQ=",
+          "size": 14,
+          "sha256": "d4b6074dd16095b67dee1be8a177159912f5fa79b4bc26314189efa5ac745b6e"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "body",
+          "items": [
+            {
+              "id": "reasoning-item",
+              "kind": "reasoning",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "normal-reasoning",
+                "size": 17,
+                "sha256": "261434a74444152ab11054a2dd5f636b8d437102466b9906569ef773b0a1162a"
+              }
+            },
+            {
+              "id": "skill-item",
+              "kind": "skill",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "normal-skill",
+                "size": 13,
+                "sha256": "a55d9c00dea0cb0185ca98064b42d188e82f772cd36030ae52dc583bb0c33e14"
+              }
+            },
+            {
+              "id": "native-item",
+              "kind": "native",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "normal-native",
+                "size": 14,
+                "sha256": "d4b6074dd16095b67dee1be8a177159912f5fa79b4bc26314189efa5ac745b6e"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "published": [
+          "normal-content-kinds:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "normal-content-kinds:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "normal-content-kinds:a",
+            "subscription": "body",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": [
+          201,
+          201,
+          201
+        ]
+      }
+    },
+    {
+      "id": "arbitrary-binary-and-empty-content",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "arbitrary-binary-and-empty-content:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "arbitrary-binary-and-empty-content:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "arbitrary-binary-and-empty-content:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "binary-ref",
+          "bodyBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/wD//g==",
+          "size": 259,
+          "sha256": "35ae368ae7ba3740114a050d300d17262b8f6c5003fdc89d176b29e6acda702f"
+        },
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "empty-ref",
+          "bodyBase64": "",
+          "size": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "observe",
+          "key": "a",
+          "subscription": "body",
+          "items": [
+            {
+              "id": "binary",
+              "kind": "text",
+              "mediaType": "application/octet-stream",
+              "selection": "body",
+              "body": {
+                "ref": "binary-ref",
+                "size": 259,
+                "sha256": "35ae368ae7ba3740114a050d300d17262b8f6c5003fdc89d176b29e6acda702f"
+              }
+            },
+            {
+              "id": "empty",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "body",
+              "body": {
+                "ref": "empty-ref",
+                "size": 0,
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "published": [
+          "arbitrary-binary-and-empty-content:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "arbitrary-binary-and-empty-content:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [
+          {
+            "eventId": "arbitrary-binary-and-empty-content:a",
+            "subscription": "body",
+            "input": {
+              "value": "settled"
+            }
+          }
+        ],
+        "uploadStatuses": [
+          201,
+          201
+        ]
+      }
+    },
+    {
+      "id": "intercept-content-upload-before-send",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "intercept-content-upload-before-send:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "intercept-content-upload-before-send:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "logical-item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "body": {
+                    "ref": "intercept-body",
+                    "size": 11,
+                    "sha256": "edf00354a955a65bb62f5ceb32c356e028761b5113eb7d00eadafdfe365d93a7"
+                  }
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "intercept-content-upload-before-send:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "upload",
+          "subscription": "body",
+          "ref": "intercept-body",
+          "bodyBase64": "/wBpbnRlcmNlcHQ=",
+          "size": 11,
+          "sha256": "edf00354a955a65bb62f5ceb32c356e028761b5113eb7d00eadafdfe365d93a7"
+        },
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "intercept-content-upload-before-send:a"
+        ],
+        "cancelled": [],
+        "ignored": [],
+        "states": {
+          "intercept-content-upload-before-send:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": [
+          201
+        ]
+      }
+    },
+    {
+      "id": "stdio-unsolicited-old-before-live",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unsolicited-old-before-live:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "stdio-unsolicited-old-before-live:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unsolicited-old-before-live:b",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "stdio-unsolicited-old-before-live:b",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unsolicited-old-before-live:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "first"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-first"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        },
+        "b": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unsolicited-old-before-live:b",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "second"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published-second"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        },
+        {
+          "op": "send",
+          "key": "b",
+          "slot": "b"
+        },
+        {
+          "op": "wait",
+          "key": "b",
+          "count": 1
+        },
+        {
+          "op": "emit",
+          "response": {
+            "jsonrpc": "2.0",
+            "id": "stdio-unsolicited-old-before-live:a",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "stale-must-not-replace"
+                  }
+                },
+                {
+                  "type": "message",
+                  "text": "published-first"
+                },
+                {
+                  "type": "allow"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "release",
+          "key": "b"
+        },
+        {
+          "op": "receive",
+          "slot": "b"
+        },
+        {
+          "op": "accept",
+          "key": "b"
+        }
+      ],
+      "expected": {
+        "published": [
+          "stdio-unsolicited-old-before-live:a",
+          "stdio-unsolicited-old-before-live:b"
+        ],
+        "cancelled": [],
+        "ignored": [
+          "unsolicited:stdio-unsolicited-old-before-live:a"
+        ],
+        "states": {
+          "stdio-unsolicited-old-before-live:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "first"
+            },
+            "messages": [
+              "published-first"
+            ]
+          },
+          "stdio-unsolicited-old-before-live:b": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "second"
+            },
+            "messages": [
+              "published-second"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      },
+      "transports": [
+        "stdio"
+      ]
+    },
+    {
+      "id": "stdio-unknown-before-live",
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unknown-before-live:a",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "stdio-unknown-before-live:a",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              }
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "ask",
+                "modify",
+                "message",
+                "return",
+                "flow",
+                "inject"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              },
+              "inject": {
+                "context": {
+                  "append": true,
+                  "deliverAt": [
+                    "now",
+                    "next_turn"
+                  ]
+                }
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "stdio-unknown-before-live:a",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "message",
+                "text": "published"
+              },
+              {
+                "type": "allow"
+              }
+            ]
+          }
+        }
+      },
+      "steps": [
+        {
+          "op": "send",
+          "key": "a",
+          "slot": "a"
+        },
+        {
+          "op": "wait",
+          "key": "a",
+          "count": 1
+        },
+        {
+          "op": "emit",
+          "response": {
+            "jsonrpc": "2.0",
+            "id": "unknown:stdio-unknown-before-live",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "message",
+                  "text": "published"
+                },
+                {
+                  "type": "allow"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "op": "release",
+          "key": "a"
+        },
+        {
+          "op": "receive",
+          "slot": "a"
+        },
+        {
+          "op": "accept",
+          "key": "a"
+        }
+      ],
+      "expected": {
+        "published": [
+          "stdio-unknown-before-live:a"
+        ],
+        "cancelled": [],
+        "ignored": [
+          "unsolicited:unknown:stdio-unknown-before-live"
+        ],
+        "states": {
+          "stdio-unknown-before-live:a": {
+            "decision": "allow",
+            "executed": true,
+            "input": {
+              "value": "settled"
+            },
+            "messages": [
+              "published"
+            ]
+          }
+        },
+        "observations": [],
+        "uploadStatuses": []
+      },
+      "transports": [
+        "stdio"
+      ]
+    },
+    {
+      "id": "observation-chain-deny",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-deny:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-deny:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-deny:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-deny:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-deny",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-deny:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-deny:a"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-deny:b",
+          "observation-chain-deny:c",
+          "observation-chain-deny:audit"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-stop",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-stop:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-stop:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-stop:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-stop:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-stop",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-stop",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-stop:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-stop",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "flow",
+                "operation": "stop",
+                "reason": "stop"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-stop",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "flow",
+                  "operation": "stop",
+                  "reason": "stop"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-stop:a"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-stop:b",
+          "observation-chain-stop:c",
+          "observation-chain-stop:audit"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-stop",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-deny-stop",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-deny-stop:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-deny-stop:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-deny-stop:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-deny-stop:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny-stop",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-deny-stop",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-deny-stop:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny-stop",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              },
+              {
+                "type": "flow",
+                "operation": "stop",
+                "reason": "stop"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny-stop",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                },
+                {
+                  "type": "flow",
+                  "operation": "stop",
+                  "reason": "stop"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-deny-stop:a"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-deny-stop:b",
+          "observation-chain-deny-stop:c",
+          "observation-chain-deny-stop:audit"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny-stop",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-stop",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny-stop:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-deny-no-explicit",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-deny-no-explicit:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-deny-no-explicit:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-deny-no-explicit:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny-no-explicit",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-deny-no-explicit",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-deny-no-explicit:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-deny-no-explicit",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny-no-explicit",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-deny-no-explicit:a"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-deny-no-explicit:b",
+          "observation-chain-deny-no-explicit:c"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-deny-no-explicit",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-no-explicit",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny-no-explicit:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-no-explicit",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-deny-no-explicit",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-deny-no-explicit:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-fail-open",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-fail-open:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-fail-open:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-fail-open:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-fail-open:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-fail-open",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-fail-open",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-fail-open:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-fail-open",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-open",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "return",
+                  "value": {
+                    "unadvertised": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-open",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-fail-open:a",
+          "observation-chain-fail-open:b"
+        ],
+        "failures": [
+          "observation-chain-fail-open:a"
+        ],
+        "observations": [
+          "observation-chain-fail-open:c",
+          "observation-chain-fail-open:audit"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-open",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-open",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-open:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-open",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-open",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": []
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-open",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-open:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-open",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-open:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-fail-closed",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-fail-closed:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-closed",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-fail-closed:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-closed",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-fail-closed:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-closed",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-fail-closed:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-closed",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-fail-closed",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-fail-closed",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-fail-closed:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-fail-closed",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-closed",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "return",
+                  "value": {
+                    "unadvertised": true
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-closed",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-fail-closed:a"
+        ],
+        "failures": [
+          "observation-chain-fail-closed:a"
+        ],
+        "observations": [
+          "observation-chain-fail-closed:b",
+          "observation-chain-fail-closed:c",
+          "observation-chain-fail-closed:audit"
+        ],
+        "input": {
+          "value": "original"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-fail-closed",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-closed",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-closed:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-closed",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-closed",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-closed:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-fail-closed",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-fail-closed:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-interrupt",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-interrupt:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-interrupt:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-interrupt:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-interrupt:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": true,
+        "holdObservers": true
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-interrupt",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-interrupt",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-interrupt:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-interrupt",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-interrupt",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-interrupt:a"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-interrupt:b",
+          "observation-chain-interrupt:c",
+          "observation-chain-interrupt:audit"
+        ],
+        "input": {
+          "value": "original"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-interrupt",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-interrupt",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-interrupt:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-interrupt",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": []
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-interrupt",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-interrupt:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-interrupt",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-interrupt:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-continue",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-continue:a",
+            "backend": "shared",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-continue:b",
+            "backend": "b",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "omit"
+          },
+          {
+            "id": "observation-chain-continue:c",
+            "backend": "c",
+            "mode": "intercept",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          },
+          {
+            "id": "observation-chain-continue:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-continue",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-continue",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-continue:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-continue",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "allow"
+                }
+              ]
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": []
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [
+          "observation-chain-continue:a",
+          "observation-chain-continue:b",
+          "observation-chain-continue:c"
+        ],
+        "failures": [],
+        "observations": [
+          "observation-chain-continue:audit"
+        ],
+        "input": {
+          "value": "settled"
+        }
+      },
+      "chainProof": {
+        "requests": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-continue",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-continue:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-continue",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": []
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          },
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-continue",
+            "method": "hooks/intercept",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-continue",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-continue:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              },
+              "capabilities": {
+                "effects": [
+                  "allow",
+                  "deny",
+                  "modify",
+                  "flow"
+                ],
+                "modify": {
+                  "input": {
+                    "replace": true,
+                    "merge": true
+                  }
+                },
+                "flow": {
+                  "operations": [
+                    "stop"
+                  ]
+                }
+              },
+              "state": {
+                "permission": "none",
+                "candidate": null
+              }
+            }
+          }
+        ],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-continue",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "settled"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-continue:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "observation-chain-native",
+      "chain": {
+        "subscriptions": [
+          {
+            "id": "observation-chain-native:audit",
+            "backend": "shared",
+            "mode": "observe",
+            "failurePolicy": "fail-open",
+            "content": "metadata"
+          }
+        ],
+        "interrupt": false,
+        "holdObservers": false
+      },
+      "requests": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-native",
+          "method": "hooks/intercept",
+          "params": {
+            "protocolVersion": "draft",
+            "event": {
+              "id": "observation-chain-native",
+              "source": "urn:ahp:interop",
+              "type": "tool.before",
+              "time": "2026-01-01T00:00:00Z",
+              "session": {
+                "id": "interop"
+              },
+              "call": {
+                "id": "call-1"
+              },
+              "path": "native",
+              "tool": {
+                "origin": "native",
+                "name": "task",
+                "kind": "task",
+                "input": {
+                  "value": "original"
+                }
+              },
+              "items": [
+                {
+                  "id": "observation-chain-native:item",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "metadata"
+                }
+              ]
+            },
+            "capabilities": {
+              "effects": [
+                "allow",
+                "deny",
+                "modify",
+                "flow"
+              ],
+              "modify": {
+                "input": {
+                  "replace": true,
+                  "merge": true
+                }
+              },
+              "flow": {
+                "operations": [
+                  "stop"
+                ]
+              }
+            },
+            "state": {
+              "permission": "none",
+              "candidate": null
+            }
+          }
+        }
+      },
+      "responses": {
+        "a": {
+          "jsonrpc": "2.0",
+          "id": "observation-chain-native",
+          "result": {
+            "protocolVersion": "draft",
+            "effects": [
+              {
+                "type": "modify",
+                "target": "input",
+                "operation": "replace",
+                "value": {
+                  "value": "settled"
+                }
+              },
+              {
+                "type": "deny",
+                "reason": "policy"
+              }
+            ]
+          }
+        }
+      },
+      "responseSequences": {
+        "a": [
+          {
+            "jsonrpc": "2.0",
+            "id": "observation-chain-native",
+            "result": {
+              "protocolVersion": "draft",
+              "effects": [
+                {
+                  "type": "modify",
+                  "target": "input",
+                  "operation": "replace",
+                  "value": {
+                    "value": "settled"
+                  }
+                },
+                {
+                  "type": "deny",
+                  "reason": "policy"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "steps": [],
+      "expected": {
+        "called": [],
+        "failures": [],
+        "observations": [
+          "observation-chain-native:audit"
+        ],
+        "input": {
+          "value": "original"
+        }
+      },
+      "chainProof": {
+        "requests": [],
+        "observations": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "observation-chain-native",
+                "source": "urn:ahp:interop",
+                "type": "tool.before",
+                "time": "2026-01-01T00:00:00Z",
+                "session": {
+                  "id": "interop"
+                },
+                "call": {
+                  "id": "call-1"
+                },
+                "path": "native",
+                "tool": {
+                  "origin": "native",
+                  "name": "task",
+                  "kind": "task",
+                  "input": {
+                    "value": "original"
+                  }
+                },
+                "items": [
+                  {
+                    "id": "observation-chain-native:item",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

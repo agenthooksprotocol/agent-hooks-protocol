@@ -35,73 +35,239 @@
       "schema/draft/session-start.schema.json#": "SessionStartEvent",
       "schema/draft/tool-after.schema.json#": "ToolAfterEvent",
       "schema/draft/tool-before.schema.json#": "ToolBeforeEvent",
-      "schema/draft/tool-error.schema.json#": "ToolErrorEvent"
+      "schema/draft/effect.schema.json#": "Effect",
+      "schema/draft/intercept-response.schema.json#": "InterceptResponse",
+      "schema/draft/content-reference.schema.json#": "ContentReference",
+      "schema/draft/content-selection.schema.json#": "ContentSelection",
+      "schema/draft/content-item.schema.json#": "ContentItem",
+      "schema/draft/catalogue-event.schema.json#": "CatalogueEvent",
+      "schema/draft/capabilities-request.schema.json#": "CapabilitiesRequest",
+      "schema/draft/capabilities-response.schema.json#": "CapabilitiesResponse",
+      "schema/draft/catalogue-event.schema.json#/$defs/config.change.before": "ConfigChangeBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/config.change.after": "ConfigChangeAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/turn.start": "TurnStartEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/turn.finish.before": "TurnFinishBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/turn.end": "TurnEndEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/turn.progress": "TurnProgressEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/model.request.before": "ModelRequestBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/model.response.after": "ModelResponseAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/model.error": "ModelErrorEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/model.switch.before": "ModelSwitchBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/model.switch.after": "ModelSwitchAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/tool.permission.request": "ToolPermissionRequestEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/tool.permission.resolved": "ToolPermissionResolvedEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/tool.progress": "ToolProgressEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/tool.batch.after": "ToolBatchAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/context.compact.before": "ContextCompactBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/context.compact.after": "ContextCompactAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/task.change.before": "TaskChangeBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/task.change.after": "TaskChangeAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/user.attention": "UserAttentionEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/user.elicitation.request": "UserElicitationRequestEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/user.elicitation.result": "UserElicitationResultEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/user.message.inbound": "UserMessageInboundEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/user.message.outbound": "UserMessageOutboundEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/workspace.change.before": "WorkspaceChangeBeforeEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/workspace.change.after": "WorkspaceChangeAfterEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/file.changed": "FileChangedEvent",
+      "schema/draft/catalogue-event.schema.json#/$defs/hook.failure": "HookFailureEvent",
+      "schema/draft/content-upload.schema.json#": "ContentUpload",
+      "schema/draft/execution-event.schema.json#": "ExecutionEvent",
+      "schema/draft/execution-event.schema.json#/$defs/model": "ExecutionEventModel",
+      "schema/draft/execution-event.schema.json#/$defs/attempt": "ExecutionEventAttempt",
+      "schema/draft/execution-event.schema.json#/$defs/error": "ExecutionEventError",
+      "schema/draft/execution-event.schema.json#/$defs/execution": "ExecutionEventExecution",
+      "schema/draft/execution-event.schema.json#/$defs/usage": "ExecutionEventUsage",
+      "schema/draft/execution-event.schema.json#/$defs/attemptUsage": "ExecutionEventAttemptusage",
+      "schema/draft/execution-event.schema.json#/$defs/turnUsage": "ExecutionEventTurnusage",
+      "schema/draft/execution-event.schema.json#/$defs/mcp": "ExecutionEventMcp",
+      "schema/draft/execution-event.schema.json#/$defs/tool": "ExecutionEventTool",
+      "schema/draft/execution-event.schema.json#/$defs/batch": "ExecutionEventBatch",
+      "schema/draft/execution-event.schema.json#/$defs/fileChange": "ExecutionEventFilechange",
+      "schema/draft/execution-event.schema.json#/$defs/tokenCounts": "ExecutionEventTokencounts",
+      "schema/draft/execution-event.schema.json#/$defs/turn.start": "ExecutionEventTurnStart",
+      "schema/draft/execution-event.schema.json#/$defs/turn.finish.before": "ExecutionEventTurnFinishBefore",
+      "schema/draft/execution-event.schema.json#/$defs/turn.end": "ExecutionEventTurnEnd",
+      "schema/draft/execution-event.schema.json#/$defs/turn.progress": "ExecutionEventTurnProgress",
+      "schema/draft/execution-event.schema.json#/$defs/model.request.before": "ExecutionEventModelRequestBefore",
+      "schema/draft/execution-event.schema.json#/$defs/model.response.after": "ExecutionEventModelResponseAfter",
+      "schema/draft/execution-event.schema.json#/$defs/model.error": "ExecutionEventModelError",
+      "schema/draft/execution-event.schema.json#/$defs/model.switch.before": "ExecutionEventModelSwitchBefore",
+      "schema/draft/execution-event.schema.json#/$defs/model.switch.after": "ExecutionEventModelSwitchAfter",
+      "schema/draft/execution-event.schema.json#/$defs/tool.permission.request": "ExecutionEventToolPermissionRequest",
+      "schema/draft/execution-event.schema.json#/$defs/tool.permission.resolved": "ExecutionEventToolPermissionResolved",
+      "schema/draft/execution-event.schema.json#/$defs/tool.progress": "ExecutionEventToolProgress",
+      "schema/draft/execution-event.schema.json#/$defs/tool.batch.after": "ExecutionEventToolBatchAfter",
+      "schema/draft/execution-event.schema.json#/$defs/context.compact.before": "ExecutionEventContextCompactBefore",
+      "schema/draft/execution-event.schema.json#/$defs/context.compact.after": "ExecutionEventContextCompactAfter",
+      "schema/draft/interaction-event.schema.json#": "InteractionEvent",
+      "schema/draft/interaction-event.schema.json#/$defs/config.change.before": "InteractionEventConfigChangeBefore",
+      "schema/draft/interaction-event.schema.json#/$defs/config.change.after": "InteractionEventConfigChangeAfter",
+      "schema/draft/interaction-event.schema.json#/$defs/user.attention": "InteractionEventUserAttention",
+      "schema/draft/interaction-event.schema.json#/$defs/user.elicitation.request": "InteractionEventUserElicitationRequest",
+      "schema/draft/interaction-event.schema.json#/$defs/user.elicitation.result": "InteractionEventUserElicitationResult",
+      "schema/draft/interaction-event.schema.json#/$defs/user.message.inbound": "InteractionEventUserMessageInbound",
+      "schema/draft/interaction-event.schema.json#/$defs/user.message.outbound": "InteractionEventUserMessageOutbound",
+      "schema/draft/interaction-event.schema.json#/$defs/hook.failure": "InteractionEventHookFailure",
+      "schema/draft/registration.schema.json#/$defs/contentReceiver": "RegistrationContentreceiver",
+      "schema/draft/task-workspace-event.schema.json#": "TaskWorkspaceEvent",
+      "schema/draft/task-workspace-event.schema.json#/$defs/task.change.before": "TaskWorkspaceEventTaskChangeBefore",
+      "schema/draft/task-workspace-event.schema.json#/$defs/task.change.after": "TaskWorkspaceEventTaskChangeAfter",
+      "schema/draft/task-workspace-event.schema.json#/$defs/workspace.change.before": "TaskWorkspaceEventWorkspaceChangeBefore",
+      "schema/draft/task-workspace-event.schema.json#/$defs/workspace.change.after": "TaskWorkspaceEventWorkspaceChangeAfter",
+      "schema/draft/task-workspace-event.schema.json#/$defs/file.changed": "TaskWorkspaceEventFileChanged",
+      "schema/draft/capabilities-response.schema.json#/allOf/1/properties/result/properties/manifest": "StaticCapabilityManifest",
+      "schema/draft/capabilities.schema.json#/$defs/session.start": "SessionStartCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/config.change.before": "ConfigChangeBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/turn.start": "TurnStartCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/turn.finish.before": "TurnFinishBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/model.request.before": "ModelRequestBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/model.response.after": "ModelResponseAfterCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/model.switch.before": "ModelSwitchBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/tool.before": "ToolBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/tool.after": "ToolAfterCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/tool.permission.request": "ToolPermissionRequestCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/tool.batch.after": "ToolBatchAfterCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/context.compact.before": "ContextCompactBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/context.compact.after": "ContextCompactAfterCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/task.change.before": "TaskChangeBeforeCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/user.elicitation.request": "UserElicitationRequestCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/user.elicitation.result": "UserElicitationResultCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/user.message.inbound": "UserMessageInboundCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/user.message.outbound": "UserMessageOutboundCapabilities",
+      "schema/draft/capabilities.schema.json#/$defs/workspace.change.before": "WorkspaceChangeBeforeCapabilities",
+      "schema/draft/content-item.schema.json#/$defs/modelVisibleItem": "ModelVisibleItem",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/BooleanSchema": "McpElicitationBooleanSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestFormParams": "McpElicitationElicitRequestFormParams",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestParams": "McpElicitationElicitRequestParams",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/ElicitRequestURLParams": "McpElicitationElicitRequestURLParams",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/ElicitResult": "McpElicitationElicitResult",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/LegacyTitledEnumSchema": "McpElicitationLegacyTitledEnumSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/NumberSchema": "McpElicitationNumberSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/PrimitiveSchemaDefinition": "McpElicitationPrimitiveSchemaDefinition",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/ProgressToken": "McpElicitationProgressToken",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/StringSchema": "McpElicitationStringSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/TaskMetadata": "McpElicitationTaskMetadata",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/TitledMultiSelectEnumSchema": "McpElicitationTitledMultiSelectEnumSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/TitledSingleSelectEnumSchema": "McpElicitationTitledSingleSelectEnumSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/UntitledMultiSelectEnumSchema": "McpElicitationUntitledMultiSelectEnumSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/UntitledSingleSelectEnumSchema": "McpElicitationUntitledSingleSelectEnumSchema",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/request": "McpElicitationRequest",
+      "schema/draft/mcp-elicitation.schema.json#/$defs/result": "McpElicitationResult"
     }
   },
   "documents": [
     {
+      "path": "schema/draft/capabilities-request.schema.json",
+      "sha256": "c139a439d0e21bc59bd2e69b596e684484ba0052a7fdf6f2ec0810d1a5fad299"
+    },
+    {
+      "path": "schema/draft/capabilities-response.schema.json",
+      "sha256": "90c09d1eef78a8d95c4c82fa1c978fb55fd60938cffa3ad60c3def6ab7ace8e1"
+    },
+    {
       "path": "schema/draft/capabilities.schema.json",
-      "sha256": "86df74f313d4b615dea800490c1bc66881bf7be50f23c5a7877c9b5ee4cce560"
+      "sha256": "c29b8effdb09a492bc791885ece3d59a824c4082771c782f41cacbb2304fc103"
+    },
+    {
+      "path": "schema/draft/catalogue-event.schema.json",
+      "sha256": "06ed4bc91478a93c8edc3b454d58e18e581f537c65fd1688f1533bd058bdbf4e"
     },
     {
       "path": "schema/draft/common.schema.json",
-      "sha256": "eabcfe3ecc4f1b0ba7d3fcc77614386dae3d5f6fa18843ba13fda67396e34f70"
+      "sha256": "d46f541db8a5f2a401a6b2b77f1d93e75076847e8f2b2e5d5ed201b8562107e5"
+    },
+    {
+      "path": "schema/draft/content-item.schema.json",
+      "sha256": "ef15f47f3f57f3004e89046a79429944b5361e302719f4f45bbf819667a13a38"
+    },
+    {
+      "path": "schema/draft/content-reference.schema.json",
+      "sha256": "24221c52d428c6104ce6f526f278d000169777f866adbc2c2de90a635469d692"
+    },
+    {
+      "path": "schema/draft/content-selection.schema.json",
+      "sha256": "fe57bce4a7a6c7a8d51728634349621ba327b5ef118bc60b1c330260392e2a62"
+    },
+    {
+      "path": "schema/draft/content-upload.schema.json",
+      "sha256": "1a516c5bae9e09e1b0cb32536cdd0d0eb1e80540ad29e9b65e392eceef6e4701"
     },
     {
       "path": "schema/draft/deny-effect.schema.json",
-      "sha256": "54d798325b266f77925ce81d052d14f305d322b4db41a12be762363b795252db"
+      "sha256": "8ff24b87d1e58764ba1d200446732a216bf72d870a5f4cba72f704020622cd90"
+    },
+    {
+      "path": "schema/draft/effect.schema.json",
+      "sha256": "1448151926563244194ed56b15e3074ddfc8ec8c10889f2e42ab49d66be2d031"
+    },
+    {
+      "path": "schema/draft/execution-event.schema.json",
+      "sha256": "d9b13cf28e20eced629cfe8eb822eb6dfb2ac453fe14e6d2334c2f4b2793512a"
     },
     {
       "path": "schema/draft/extensions.schema.json",
-      "sha256": "09a9e65edae23917a1a4341a86567e7c7b514ed6f5a60201c574492894826a5d"
+      "sha256": "5722deafc1bf750e19e033702659fecd6a0804e598d114ebbd9aef9daac48835"
+    },
+    {
+      "path": "schema/draft/interaction-event.schema.json",
+      "sha256": "34550586dde5748f14df80e8879b5eec5e3b2ae5353ef84b0208e9248d6a0fb2"
     },
     {
       "path": "schema/draft/intercept-deny-response.schema.json",
-      "sha256": "e2e7f41d43db177b8761a6a4475a5a25b25ad3ed499ce56baa12b570e8932ff1"
+      "sha256": "74f024322660b73e370ad086bde82edf0f94bbe7c440592de4ea083e292bcbf6"
     },
     {
       "path": "schema/draft/intercept-no-effect-response.schema.json",
-      "sha256": "1af965094b74f39c08d241eee5abd856ff7025d34c1638395d6309d214229b75"
+      "sha256": "65429ed03e5580fbd906331f57d60042c18f97eb43d1103140ed9e7101642c16"
     },
     {
       "path": "schema/draft/intercept-request.schema.json",
-      "sha256": "a2627ec8ef83d68d0a357e33e7965a221336e47b00189e9783ff381c96f87a0d"
+      "sha256": "fbd5ed20681d918c8647382de6a2bc07de14a7ac57f756e68d2f3293043d534e"
+    },
+    {
+      "path": "schema/draft/intercept-response.schema.json",
+      "sha256": "9b71855630e8f5194631395ba907696dea3cd232884aaea783bfe9341711404f"
     },
     {
       "path": "schema/draft/json-rpc-message.schema.json",
-      "sha256": "562d8719249cc6e004a1e60778c0843e58fa03b96d8b484ad3172c2bd38ed65a"
+      "sha256": "721a8e485e855863915c982368830d28091b8fd83f61e077d12c539714940ffa"
+    },
+    {
+      "path": "schema/draft/mcp-elicitation.schema.json",
+      "sha256": "52473b9e5dda9c514081319c9543d03a6ac85997a8fa98355b00502819f99e69"
     },
     {
       "path": "schema/draft/observe-notification.schema.json",
-      "sha256": "e7bfdd5dca338aa0a1e56995a28f1157dbe507f1ad8bba39ce519a53ba31d358"
+      "sha256": "27255ccd1a6d0fa788161825f4df74f7e0b3c074a8dc7c8cdeb7e07df11d55cf"
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "d03e6c23dde5bdcea076318cfbcf074c00dd84f09b0b713329ce02650200017e"
+      "sha256": "76f429521eec5c85dfb6ce8e9a56108a4fa582912fc6ddf25d324af86ea557c0"
     },
     {
       "path": "schema/draft/schema.json",
-      "sha256": "60a3e3a10faac6daa4a928b1ec07dd214b64b7ca993b87149e9ba1ec2f47150d"
+      "sha256": "191b1fd79f7550f69e6f2bb39ec7953fac727eed5721c7a36fb30d8fc029e8d0"
     },
     {
       "path": "schema/draft/session-end.schema.json",
-      "sha256": "a1448dc381f8df8cbed4131dee185acf68ea920c8fe16d810d40a92f52a8c3c4"
+      "sha256": "9d42bb96f2114e6b31db34f2fc1f40244c45e259c0dd27d2e3d1ea85bdc98cbc"
     },
     {
       "path": "schema/draft/session-start.schema.json",
-      "sha256": "4c6a262535f26f3dfcba584553c0cc2f1994017c479c6aaf616e7896e38de96c"
+      "sha256": "11da44d294f939941f19caa4b614a0e48743ceafdb3da70a5eb020a003bc3580"
+    },
+    {
+      "path": "schema/draft/task-workspace-event.schema.json",
+      "sha256": "9a11955ba26ca3d2d7f9362f82460d8247f77720d2991b54117b88b42338be21"
     },
     {
       "path": "schema/draft/tool-after.schema.json",
-      "sha256": "5bf13629d1c0d607378e50ecdda1274ac1054c6d2732ee9127fd7d5bbaf4a599"
+      "sha256": "a5f110d150df12ed4bb0ae7e4b8fd7b5dbb3973da7499a8f9931184c6824408a"
     },
     {
       "path": "schema/draft/tool-before.schema.json",
-      "sha256": "fbced659b80ad85f9ea6638da3798211fd99dc7c05ee1d934f72d5f8c476df29"
-    },
-    {
-      "path": "schema/draft/tool-error.schema.json",
-      "sha256": "a835d29c5bc8919a6f548797f3db2457aa600d27dbbb7bbc8e08d61ad4213ccf"
+      "sha256": "8edb0bb32cd96b3e15e7a82d64f964b746cd51e3d98b0270d55a3e30ac57aef6"
     }
   ]
 }

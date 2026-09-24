@@ -1,0 +1,60 @@
+{
+  "jsonrpc": "2.0",
+  "id": "discovery",
+  "result": {
+    "protocolVersion": "draft",
+    "manifest": {
+      "events": [
+        {
+          "event": "task.change.after",
+          "modes": [
+            "observe"
+          ],
+          "capabilities": {
+            "effects": []
+          }
+        }
+      ],
+      "gaps": [
+        {
+          "path": "model.reasoning",
+          "reason": "not exposed"
+        }
+      ],
+      "transports": [
+        "http",
+        "stdio"
+      ],
+      "authentication": [
+        "bearer"
+      ],
+      "toolPaths": [
+        "native"
+      ],
+      "contentCategories": [
+        "text"
+      ],
+      "limits": {
+        "maxUploadBytes": 1048576,
+        "maxContinuations": 4,
+        "minTimeoutMs": 1,
+        "maxTimeoutMs": 30000
+      },
+      "managedPolicy": {
+        "scopes": [
+          "user"
+        ],
+        "disableable": true
+      },
+      "correlationIdentityFields": [
+        "id",
+        "source",
+        "parentEventId",
+        "session.id",
+        "turn.id",
+        "call.id",
+        "items.id"
+      ]
+    }
+  }
+}

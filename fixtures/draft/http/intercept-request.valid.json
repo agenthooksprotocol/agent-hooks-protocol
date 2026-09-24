@@ -9,14 +9,27 @@
       "source": "https://harness.example/runtime/42",
       "type": "tool.before",
       "time": "2026-08-24T08:51:14Z",
-      "session": {"id": "sess_http_123"},
+      "session": {
+        "id": "sess_http_123"
+      },
       "tool": {
-        "callId": "call_http_456",
         "name": "write_file",
         "kind": "file_write",
-        "input": {"path": "README.md", "content": "example"}
-      }
+        "input": {
+          "path": "README.md",
+          "content": "example"
+        },
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_http_456"
+      },
+      "path": "example"
     },
-    "capabilities": {"effects": ["deny"]}
+    "capabilities": {
+      "effects": [
+        "deny"
+      ]
+    }
   }
 }

@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "turn.progress",
+      "turn": {
+        "id": "turn1"
+      },
+      "item": {
+        "id": "example"
+      },
+      "delta": {
+        "id": "item1",
+        "kind": "message",
+        "mediaType": "text/plain",
+        "selection": "metadata",
+        "role": "assistant"
+      },
+      "final": false
+    }
+  }
+}

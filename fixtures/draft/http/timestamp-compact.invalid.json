@@ -1,0 +1,28 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt_observe_before_001",
+      "source": "https://harness.example/runtime/42",
+      "type": "tool.before",
+      "time": "20260915T120000+0000",
+      "session": {
+        "id": "sess_observe_123"
+      },
+      "tool": {
+        "name": "read_file",
+        "kind": "file_read",
+        "input": {
+          "path": "README.md"
+        },
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_observe_456"
+      },
+      "path": "example"
+    }
+  }
+}

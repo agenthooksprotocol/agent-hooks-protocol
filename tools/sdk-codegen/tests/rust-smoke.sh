@@ -133,7 +133,7 @@ use std::path::PathBuf;
 use ahp_generated_rust_smoke::{
     BackendTransport, Capabilities, CapabilitiesEffectsItem, DiagnosticCode,
     InterceptSubscriptionFailurePolicy, JsonRpcId, JsonRpcMessage, JsonRpcResponseId,
-    ParseDiagnostic, ParseResult, ToolBeforeEventToolKind, encode_registration,
+    ParseDiagnostic, ParseResult, ExecutionEventToolOrigin, encode_registration,
     parse_intercept_deny_response, parse_intercept_request, parse_json_rpc_message,
     parse_registration_value, recursive,
 };
@@ -232,12 +232,12 @@ fn preserves_forward_compatible_values_with_warnings() {
     assert_eq!(encoded, registration);
 
     let mut request = fixture("fixtures/draft/http/intercept-request.valid.json");
-    request["params"]["event"]["tool"]["kind"] = json!("future_tool");
+    request["params"]["event"]["tool"]["origin"] = json!("future_origin");
     let result = parse_intercept_request(&serde_json::to_string(&request).unwrap());
     assert!(result.is_ok());
     assert!(result.diagnostics().iter().any(|item| item.code == DiagnosticCode::UnknownEnum));
-    let kind: ToolBeforeEventToolKind = serde_json::from_value(json!("future_tool")).unwrap();
-    assert!(matches!(kind, ToolBeforeEventToolKind::Unknown(value) if value == "future_tool"));
+    let kind: ExecutionEventToolOrigin = serde_json::from_value(json!("future_origin")).unwrap();
+    assert!(matches!(kind, ExecutionEventToolOrigin::Unknown(value) if value == "future_origin"));
     assert_eq!(
         serde_json::to_value(InterceptSubscriptionFailurePolicy::FailOpen).unwrap(),
         json!("fail-open")
@@ -290,6 +290,40 @@ fn reports_structural_failures_and_keeps_valid_json_raw() {
     assert!(!result.is_ok());
     assert!(result.diagnostics().iter().any(|item| item.code == DiagnosticCode::InvalidKnownVariant));
 }
+#[test]
+fn canonical_positive_fixtures_and_supplied_execution() {
+    use ahp_generated_rust_smoke::{parse_wire_message, encode_wire_message, parse_execution_event, encode_execution_event};
+    let manifest = fixture("fixtures/draft/manifest.json");
+    for entry in manifest["cases"].as_array().unwrap() {
+        let binding = entry["binding"].as_str().unwrap();
+        if entry["expectedValid"] != true || !["http-json", "registration-json"].contains(&binding) { continue; }
+        let original = fixture(entry["path"].as_str().unwrap());
+        let encoded = if binding == "registration-json" {
+            let parsed = parse_registration_value(original.clone());
+            assert!(parsed.is_ok(), "{}: {:?}", entry["id"], parsed.diagnostics());
+            encode_registration(parsed.value().unwrap()).unwrap()
+        } else {
+            let parsed = parse_wire_message(&serde_json::to_string(&original).unwrap());
+            assert!(parsed.is_ok(), "{}: {:?}", entry["id"], parsed.diagnostics());
+            encode_wire_message(parsed.value().unwrap()).unwrap()
+        };
+        assert_eq!(serde_json::from_str::<Value>(&encoded).unwrap(), original, "{}", entry["id"]);
+    }
+    let mut supplied = fixture("fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")["params"]["event"].clone();
+    assert_eq!(supplied["execution"], serde_json::json!({"status": "skipped", "reason": "supplied_result"}));
+    let parsed = parse_execution_event(&serde_json::to_string(&supplied).unwrap());
+    assert!(parsed.is_ok(), "{:?}", parsed.diagnostics());
+    assert_eq!(serde_json::from_str::<Value>(&encode_execution_event(parsed.value().unwrap()).unwrap()).unwrap(), supplied);
+    supplied["execution"].as_object_mut().unwrap().remove("reason");
+    assert!(!parse_execution_event(&serde_json::to_string(&supplied).unwrap()).is_ok());
+    supplied["execution"]["reason"] = Value::Null;
+    assert!(!parse_execution_event(&serde_json::to_string(&supplied).unwrap()).is_ok());
+    for transport in ["http", "stdio"] {
+        let missing = fixture(&format!("fixtures/draft/http/mcp-{transport}-location-missing.invalid.json"))["params"]["event"].clone();
+        assert!(!ahp_generated_rust_smoke::parse_tool_before_event(&serde_json::to_string(&missing).unwrap()).is_ok(), "required-only {transport} location predicate was lost");
+    }
+}
+
 RS
 
 AHP_REPOSITORY="$repository" RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-D warnings" \

@@ -11,10 +11,75 @@
       "session": {
         "id": "sess_observe_123",
         "cwd": "/repo",
-        "workspaceRoots": ["/repo"],
+        "workspaceRoots": [
+          "/repo"
+        ],
         "model": "example-model",
-        "agent": {"id": "agent_main", "type": "primary"}
-      }
+        "agent": {
+          "id": "agent_main",
+          "type": "primary"
+        }
+      },
+      "trigger": "startup",
+      "harness": {
+        "name": "example",
+        "version": "example"
+      },
+      "permissionMode": "example",
+      "manifest": {
+        "events": [
+          {
+            "event": "task.change.after",
+            "modes": [
+              "observe"
+            ],
+            "capabilities": {
+              "effects": []
+            }
+          }
+        ],
+        "gaps": [
+          {
+            "path": "model.reasoning",
+            "reason": "not exposed"
+          }
+        ],
+        "transports": [
+          "http",
+          "stdio"
+        ],
+        "authentication": [
+          "bearer"
+        ],
+        "toolPaths": [
+          "native"
+        ],
+        "contentCategories": [
+          "text"
+        ],
+        "limits": {
+          "maxUploadBytes": 1048576,
+          "maxContinuations": 4,
+          "minTimeoutMs": 1,
+          "maxTimeoutMs": 30000
+        },
+        "managedPolicy": {
+          "scopes": [
+            "user"
+          ],
+          "disableable": true
+        },
+        "correlationIdentityFields": [
+          "id",
+          "source",
+          "parentEventId",
+          "session.id",
+          "turn.id",
+          "call.id",
+          "items.id"
+        ]
+      },
+      "items": []
     }
   }
 }

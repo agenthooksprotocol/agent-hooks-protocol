@@ -79,7 +79,12 @@ fn required_value(arguments: &mut impl Iterator<Item = String>, option: &str) ->
         .with_context(|| format!("{option} requires a value"))
 }
 
+fn normalize_terminal_newline(contents: &str) -> String {
+    format!("{}\n", contents.trim_end_matches(['\r', '\n']))
+}
+
 fn write_output(path: Option<&str>, contents: &str) -> Result<()> {
+    let contents = normalize_terminal_newline(contents);
     match path {
         None | Some("-") => print!("{contents}"),
         Some(path) => {
@@ -112,11 +117,45 @@ mod tests {
     use super::*;
 
     #[test]
+    fn output_has_exactly_one_terminal_newline() {
+        for contents in ["code", "code\n", "code\n\n", "code\r\n\r\n"] {
+            assert_eq!(normalize_terminal_newline(contents), "code\n");
+        }
+        assert_eq!(normalize_terminal_newline(""), "\n");
+        assert_eq!(
+            normalize_terminal_newline("first\n\nsecond\n\n"),
+            "first\n\nsecond\n"
+        );
+    }
+
+    #[test]
     fn current_profile_compiles() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = compiler::compile(&repository, "draft").unwrap();
         assert_eq!(ir.schema_revision, "draft");
-        assert_eq!(ir.roots.len(), 15);
+        assert_eq!(ir.roots.len(), 26);
         assert!(ir.types.iter().any(|item| item.name == "InterceptRequest"));
+        // Union selectors must be exact literals, not an open enum that also
+        // accepts supplied_result and creates an ambiguous known execution.
+        let execution = ir
+            .types
+            .iter()
+            .find(|item| item.name == "ExecutionEventExecution")
+            .unwrap();
+        let model::Shape::Union { variants, .. } = &execution.shape else {
+            panic!("expected execution union");
+        };
+        assert_eq!(variants.len(), 6);
+        for variant in variants.iter().skip(1) {
+            let model::Shape::Object { properties, .. } = variant else {
+                panic!("expected execution object");
+            };
+            let reason = properties
+                .iter()
+                .find(|property| property.wire_name == "reason")
+                .unwrap();
+            assert!(reason.required);
+            assert!(matches!(reason.shape, model::Shape::Literal { .. }));
+        }
     }
 }

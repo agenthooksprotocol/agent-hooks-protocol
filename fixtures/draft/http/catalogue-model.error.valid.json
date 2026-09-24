@@ -1,0 +1,28 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "model.error",
+      "model": {
+        "id": "example",
+        "provider": "example"
+      },
+      "attempt": {
+        "id": "example",
+        "number": 1
+      },
+      "execution": {
+        "status": "executed"
+      },
+      "error": {
+        "message": "example",
+        "class": "example"
+      }
+    }
+  }
+}

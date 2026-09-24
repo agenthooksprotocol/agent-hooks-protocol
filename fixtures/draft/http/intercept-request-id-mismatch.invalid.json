@@ -9,9 +9,26 @@
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
       "type": "tool.before",
       "time": "2026-08-24T08:51:14Z",
-      "session": {"id": "sess_http_123"},
-      "tool": {"callId": "call_http_456", "name": "Bash", "kind": "shell", "input": {"command": "true"}}
+      "session": {
+        "id": "sess_http_123"
+      },
+      "tool": {
+        "name": "Bash",
+        "kind": "shell",
+        "input": {
+          "command": "true"
+        },
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_http_456"
+      },
+      "path": "example"
     },
-    "capabilities": {"effects": ["deny"]}
+    "capabilities": {
+      "effects": [
+        "deny"
+      ]
+    }
   }
 }

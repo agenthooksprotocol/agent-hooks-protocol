@@ -1,0 +1,46 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "method": "hooks/intercept",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "model.response.after",
+      "model": {
+        "id": "example",
+        "provider": "example"
+      },
+      "attempt": {
+        "id": "example",
+        "number": 1
+      },
+      "execution": {
+        "status": "skipped",
+        "reason": "supplied_result"
+      },
+      "items": [
+        {
+          "id": "assistant1",
+          "kind": "message",
+          "role": "assistant",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        }
+      ],
+      "finishReason": "example"
+    },
+    "capabilities": {
+      "effects": [
+        "flow"
+      ],
+      "flow": {
+        "operations": [
+          "stop"
+        ]
+      }
+    }
+  }
+}

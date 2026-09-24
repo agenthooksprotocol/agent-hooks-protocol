@@ -167,6 +167,58 @@ impl Compiler<'_> {
             .as_object()
             .ok_or_else(|| anyhow!("schema {document}#{pointer} is not an object or boolean"))?;
 
+        if let Some(types) = object.get("type").and_then(Value::as_array) {
+            let branches = types
+                .iter()
+                .map(|kind| {
+                    let mut branch = object.clone();
+                    branch.insert("type".to_owned(), kind.clone());
+                    Value::Object(branch)
+                })
+                .collect::<Vec<_>>();
+            return self.lower_union(document, pointer, &branches, UnionMode::AnyOf);
+        }
+
+        // Draft 2020-12 applies sibling object and composition constraints together.
+        // Preserve the named field shape instead of discarding it for a union.
+        if object.contains_key("type") || object.contains_key("properties") {
+            for keyword in ["oneOf", "anyOf", "allOf"] {
+                if let Some(branches) = object.get(keyword).and_then(Value::as_array) {
+                    // Conditional validation must not wrap an otherwise plain model.
+                    if keyword == "allOf" && branches.iter().all(conditional_validation_only) {
+                        continue;
+                    }
+                    let mut base = object.clone();
+                    base.remove(keyword);
+                    let mut variants = vec![self.lower(document, pointer, &Value::Object(base))?];
+                    if keyword == "allOf" {
+                        for (index, branch) in branches.iter().enumerate() {
+                            variants.push(self.lower(
+                                document,
+                                &child_pointer(pointer, keyword, index),
+                                branch,
+                            )?);
+                        }
+                    } else {
+                        // Reuse normal lowering to retain and validate selector metadata.
+                        let mut composition = serde_json::Map::new();
+                        composition.insert(keyword.to_owned(), Value::Array(branches.clone()));
+                        if keyword == "oneOf"
+                            && let Some(tag) = object.get("x-sdk-discriminator")
+                        {
+                            composition.insert("x-sdk-discriminator".to_owned(), tag.clone());
+                        }
+                        variants.push(self.lower(
+                            document,
+                            pointer,
+                            &Value::Object(composition),
+                        )?);
+                    }
+                    return Ok(Shape::Intersection { variants });
+                }
+            }
+        }
+
         if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
             ensure!(
                 object
@@ -182,13 +234,13 @@ impl Compiler<'_> {
             return Ok(Shape::Ref { name: name.clone() });
         }
         if let Some(value) = object.get("const") {
-            ensure_no_structural_siblings(object, &["const"], "const", document, pointer)?;
+            ensure_no_structural_siblings(object, &["const", "type"], "const", document, pointer)?;
             return Ok(Shape::Literal {
                 value: value.clone(),
             });
         }
         if let Some(values) = object.get("enum").and_then(Value::as_array) {
-            ensure_no_structural_siblings(object, &["enum"], "enum", document, pointer)?;
+            ensure_no_structural_siblings(object, &["enum", "type"], "enum", document, pointer)?;
             ensure!(!values.is_empty(), "empty enum at {document}#{pointer}");
             return Ok(Shape::Enum {
                 values: values.clone(),
@@ -197,7 +249,51 @@ impl Compiler<'_> {
         }
         if let Some(variants) = object.get("oneOf").and_then(Value::as_array) {
             ensure_no_structural_siblings(object, &["oneOf"], "oneOf", document, pointer)?;
-            return self.lower_union(document, pointer, variants, UnionMode::OneOf);
+            let mut union = self.lower_union(document, pointer, variants, UnionMode::OneOf)?;
+            if let Some(tag) = object.get("x-sdk-discriminator") {
+                let tag = tag.as_str().ok_or_else(|| {
+                    anyhow!("x-sdk-discriminator must be a string at {document}#{pointer}")
+                })?;
+                let mut known = BTreeSet::new();
+                for variant in variants {
+                    ensure!(
+                        variant
+                            .get("required")
+                            .and_then(Value::as_array)
+                            .is_some_and(|fields| fields
+                                .iter()
+                                .any(|field| field.as_str() == Some(tag))),
+                        "explicit discriminator must be required by every branch at {document}#{pointer}"
+                    );
+                    let field = variant
+                        .get("properties")
+                        .and_then(|props| props.get(tag))
+                        .ok_or_else(|| {
+                            anyhow!(
+                                "explicit discriminator missing from branch at {document}#{pointer}"
+                            )
+                        })?;
+                    if let Some(value) = field.get("const").and_then(Value::as_str) {
+                        ensure!(
+                            known.insert(value),
+                            "duplicate explicit discriminator at {document}#{pointer}"
+                        );
+                    } else {
+                        ensure!(
+                            field.get("type").and_then(Value::as_str) == Some("string"),
+                            "explicit discriminator fallback must be a string at {document}#{pointer}"
+                        );
+                    }
+                }
+                ensure!(
+                    !known.is_empty(),
+                    "explicit discriminator needs a known literal branch at {document}#{pointer}"
+                );
+                if let Shape::Union { discriminator, .. } = &mut union {
+                    *discriminator = Some(tag.to_owned());
+                }
+            }
+            return Ok(union);
         }
         if let Some(variants) = object.get("anyOf").and_then(Value::as_array) {
             ensure_no_structural_siblings(object, &["anyOf"], "anyOf", document, pointer)?;
@@ -245,6 +341,7 @@ impl Compiler<'_> {
             }
             Some("object") | None
                 if object.contains_key("properties")
+                    || object.contains_key("required")
                     || object.get("type").and_then(Value::as_str) == Some("object") =>
             {
                 if let Some(variants) = object.get("allOf").and_then(Value::as_array) {
@@ -274,14 +371,29 @@ impl Compiler<'_> {
                         });
                     }
                 }
+                // A required name need not also appear under properties. Retain
+                // its presence constraint (including explicit null as present),
+                // especially for anyOf/allOf branch predicates.
+                for wire_name in &required {
+                    if !properties
+                        .iter()
+                        .any(|property| property.wire_name == *wire_name)
+                    {
+                        properties.push(Property {
+                            wire_name: (*wire_name).to_owned(),
+                            required: true,
+                            shape: Shape::Any,
+                        });
+                    }
+                }
                 properties.sort_by(|a, b| a.wire_name.cmp(&b.wire_name));
                 let forbidden_property_sets = forbidden_property_sets(object, document, pointer)?;
                 let additional = match object.get("additionalProperties") {
                     None | Some(Value::Bool(true)) => AdditionalProperties::Allowed,
                     Some(Value::Bool(false)) => AdditionalProperties::Forbidden,
-                    Some(_) => {
-                        bail!("typed additionalProperties is unsupported at {document}#{pointer}")
-                    }
+                    // Codecs preserve unknown fields, including schema-typed map entries.
+                    // Their constraints are enforced by canonical schema validation, not parsing.
+                    Some(_) => AdditionalProperties::Allowed,
                 };
                 Ok(Shape::Object {
                     properties,
@@ -606,6 +718,8 @@ fn supported_keyword(key: &str) -> bool {
                 | "contains"
                 | "minContains"
                 | "maxContains"
+                | "minProperties"
+                | "maxProperties"
                 | "minItems"
                 | "maxItems"
                 | "uniqueItems"
@@ -691,6 +805,8 @@ fn annotation_or_validation_keyword(key: &str) -> bool {
                 | "exclusiveMinimum"
                 | "exclusiveMaximum"
                 | "multipleOf"
+                | "minProperties"
+                | "maxProperties"
                 | "minItems"
                 | "maxItems"
                 | "uniqueItems"
@@ -723,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unhandled_structural_siblings() {
+    fn lowers_union_with_object_siblings() {
         let profile = Profile {
             stable_names: BTreeMap::new(),
         };
@@ -736,7 +852,88 @@ mod tests {
             "oneOf": [{"type": "string"}, {"type": "number"}],
             "properties": {"value": {"type": "string"}}
         });
-        assert!(compiler.lower("schema.json", "", &schema).is_err());
+        assert!(matches!(
+            compiler.lower("schema.json", "", &schema).unwrap(),
+            Shape::Intersection { .. }
+        ));
+    }
+
+    #[test]
+    fn required_only_predicates_retain_presence_without_inventing_a_type() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let shape = compiler
+            .lower(
+                "schema.json",
+                "",
+                &serde_json::json!({"required": ["value"]}),
+            )
+            .unwrap();
+        let Shape::Object { properties, .. } = shape else {
+            panic!("expected object");
+        };
+        assert_eq!(properties.len(), 1);
+        assert_eq!(properties[0].wire_name, "value");
+        assert!(properties[0].required);
+        assert!(matches!(properties[0].shape, Shape::Any));
+    }
+
+    #[test]
+    fn explicit_selector_preserves_known_tags_and_unknown_fallback() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let schema = serde_json::json!({
+            "x-sdk-discriminator": "transport",
+            "oneOf": [
+                {"type": "object", "required": ["transport"], "properties": {"transport": {"const": "http"}}},
+                {"type": "object", "required": ["transport"], "properties": {"transport": {"type": "string", "pattern": "^_.+"}}}
+            ]
+        });
+        let Shape::Union { discriminator, .. } =
+            compiler.lower("schema.json", "", &schema).unwrap()
+        else {
+            panic!("expected union");
+        };
+        assert_eq!(discriminator.as_deref(), Some("transport"));
+        // Sibling constraints must not bypass the explicit-selector path.
+        for sibling in [
+            serde_json::json!({"type": "object"}),
+            serde_json::json!({"properties": {}}),
+        ] {
+            let mut with_sibling = schema.clone();
+            with_sibling
+                .as_object_mut()
+                .unwrap()
+                .extend(sibling.as_object().unwrap().clone());
+            let Shape::Intersection { variants } =
+                compiler.lower("schema.json", "", &with_sibling).unwrap()
+            else {
+                panic!("expected intersection");
+            };
+            assert!(
+                matches!(&variants[1], Shape::Union { discriminator, .. } if discriminator.as_deref() == Some("transport"))
+            );
+            with_sibling["x-sdk-discriminator"] = serde_json::json!(42);
+            assert!(compiler.lower("schema.json", "", &with_sibling).is_err());
+            with_sibling["x-sdk-discriminator"] = serde_json::json!("transport");
+            with_sibling["oneOf"][1]["required"] = serde_json::json!([]);
+            assert!(compiler.lower("schema.json", "", &with_sibling).is_err());
+        }
+        let mut missing_tag = schema.clone();
+        missing_tag["oneOf"][1]["required"] = serde_json::json!([]);
+        assert!(compiler.lower("schema.json", "", &missing_tag).is_err());
     }
 
     #[test]

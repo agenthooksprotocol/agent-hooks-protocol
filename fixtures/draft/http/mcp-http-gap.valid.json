@@ -1,0 +1,44 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt_observe_before_001",
+      "source": "https://harness.example/runtime/42",
+      "type": "tool.before",
+      "time": "2026-08-24T08:51:14Z",
+      "session": {
+        "id": "sess_observe_123"
+      },
+      "tool": {
+        "name": "read_file",
+        "kind": "file_read",
+        "input": {
+          "path": "README.md"
+        },
+        "origin": "mcp",
+        "mcp": {
+          "server": {
+            "id": "server"
+          },
+          "toolName": "read",
+          "provenance": "runtime",
+          "connection": {
+            "transport": "http",
+            "gaps": [
+              {
+                "path": "url",
+                "reason": "not disclosed"
+              }
+            ]
+          }
+        }
+      },
+      "call": {
+        "id": "call_observe_456"
+      },
+      "path": "example"
+    }
+  }
+}

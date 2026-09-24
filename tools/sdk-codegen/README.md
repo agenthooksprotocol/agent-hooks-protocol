@@ -36,3 +36,25 @@ The current `draft` snapshot permits integer request IDs and null response IDs. 
 A push to `main` that changes schema snapshots, the generator, or draft conformance metadata runs `.github/workflows/sync-sdks.yml`. The workflow regenerates the TypeScript, Python, Go, and Rust SDKs and opens or updates one `automation/schema-sync` pull request in each SDK repository. Each SDK records the exact source commit, schema snapshot, manifest digest, and language in `ahp-codegen.lock.json`.
 
 Cross-repository writes use a dedicated GitHub App. Configure `SDK_SYNC_APP_ID` as an Actions variable and `SDK_SYNC_APP_PRIVATE_KEY` as an Actions secret in this repository. The App requires **Contents: read and write** and **Pull requests: read and write** permissions. Each synchronization job mints a short-lived token scoped to its allowlisted target repository. Do not expose these credentials to pull-request workflows.
+
+## Draft composite-schema support
+
+The compiler lowers object/composition siblings as intersections, accepts JSON
+Schema type arrays, and recognizes object-count constraints. Typed additional
+properties remain preserved JSON in generated codecs; their value constraints,
+cardinality, conditionals, formats, and permission rules require canonical schema
+validation. This is not a compatibility mode or a relaxation of the wire grammar.
+
+### Exact union selectors and presence predicates
+
+Finite branch selectors must use literal alternatives rather than relying on an
+open enum to exclude a sibling's known tag. Execution reasons are normalized this
+way without changing canonical wire validity. Required-only schemas retain every
+required member as presence-only Any fields; a missing member differs from null.
+
+An inline oneOf may use `x-sdk-discriminator` when it deliberately has exact known
+string tags plus a string-valued extension fallback. The compiler checks that the
+selector is required in each branch and known literal values are unique. Codecs
+select a known literal exactly; other tags are preserved as unknown variants.
+Canonical validation still controls allowed extension syntax and required data.
+This is not structural candidate scoring or a replacement for schema validation.

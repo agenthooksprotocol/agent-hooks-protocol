@@ -1,35 +1,577 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agenthooksprotocol.org/schemas/draft/intercept-request.schema.json",
-  "title": "AHP hooks/intercept Request for tool.before (Draft)",
+  "title": "AHP hooks/intercept Request (Draft)",
   "$comment": "Mutable AHP draft. The request id/event id equality is also checked by conformance tooling.",
-  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001", "AHP-TB-001", "AHP-CAP-001", "AHP-CAP-002"],
+  "x-requirements": [
+    "AHP-RPC-001",
+    "AHP-RPC-002",
+    "AHP-VER-001",
+    "AHP-TB-001",
+    "AHP-CAP-001",
+    "AHP-CAP-002"
+  ],
   "allOf": [
-    {"$ref": "common.schema.json#/$defs/request"},
+    {
+      "$ref": "common.schema.json#/$defs/request"
+    },
     {
       "type": "object",
       "properties": {
-        "method": {"const": "hooks/intercept"},
+        "method": {
+          "const": "hooks/intercept"
+        },
         "params": {
           "type": "object",
-          "required": ["protocolVersion", "event", "capabilities"],
+          "required": [
+            "protocolVersion",
+            "event",
+            "capabilities"
+          ],
           "properties": {
-            "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
-            "event": {"$ref": "tool-before.schema.json"},
+            "protocolVersion": {
+              "$ref": "common.schema.json#/$defs/protocolVersion"
+            },
+            "event": {
+              "oneOf": [
+                {
+                  "$ref": "tool-before.schema.json"
+                },
+                {
+                  "$ref": "tool-after.schema.json"
+                },
+                {
+                  "$ref": "session-start.schema.json"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/config.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.start"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.finish.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.request.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.switch.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.permission.request"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.batch.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/context.compact.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/context.compact.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/task.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.elicitation.request"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.elicitation.result"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.message.inbound"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.message.outbound"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/workspace.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.response.after"
+                }
+              ]
+            },
             "capabilities": {
               "allOf": [
-                {"$ref": "capabilities.schema.json"},
+                {
+                  "$ref": "capabilities.schema.json"
+                },
                 {
                   "properties": {
-                    "effects": {"contains": {"const": "deny"}, "minContains": 1}
+                    "flow": {
+                      "if": {
+                        "properties": {
+                          "operations": {
+                            "contains": {
+                              "const": "continue"
+                            }
+                          }
+                        },
+                        "required": [
+                          "operations"
+                        ]
+                      },
+                      "then": {
+                        "required": [
+                          "remainingContinuations",
+                          "continuationCount"
+                        ]
+                      }
+                    }
                   }
                 }
               ]
             },
-            "extensions": {"$ref": "extensions.schema.json"}
-          }
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "state": {
+              "type": "object",
+              "required": [
+                "permission",
+                "candidate"
+              ],
+              "properties": {
+                "permission": {
+                  "enum": [
+                    "none",
+                    "allow",
+                    "ask",
+                    "deny"
+                  ]
+                },
+                "candidate": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "value"
+                      ],
+                      "properties": {
+                        "value": true,
+                        "provenance": {
+                          "type": "object",
+                          "properties": {},
+                          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
+                        }
+                      }
+                    }
+                  ]
+                },
+                "flow": {
+                  "enum": [
+                    "none",
+                    "stop",
+                    "continue"
+                  ]
+                },
+                "instructions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "injections": {
+                  "type": "array",
+                  "items": {}
+                }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "session.start"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/session.start"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "config.change.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/config.change.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "turn.start"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/turn.start"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "turn.finish.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/turn.finish.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "model.request.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/model.request.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "model.response.after"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/model.response.after"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "model.switch.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/model.switch.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "tool.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/tool.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "tool.after"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/tool.after"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "tool.permission.request"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/tool.permission.request"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "tool.batch.after"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/tool.batch.after"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "context.compact.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/context.compact.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "context.compact.after"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/context.compact.after"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "task.change.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/task.change.before"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "user.elicitation.request"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/user.elicitation.request"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "user.elicitation.result"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/user.elicitation.result"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "user.message.inbound"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/user.message.inbound"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "user.message.outbound"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/user.message.outbound"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "event": {
+                    "properties": {
+                      "type": {
+                        "const": "workspace.change.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "capabilities": {
+                    "$ref": "capabilities.schema.json#/$defs/workspace.change.before"
+                  }
+                }
+              }
+            }
+          ]
         }
-      }
+      },
+      "required": [
+        "method",
+        "params"
+      ]
     }
   ]
 }

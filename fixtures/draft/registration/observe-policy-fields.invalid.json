@@ -3,9 +3,20 @@
   "hooks": [
     {
       "id": "com.example.observer",
-      "transport": {"type": "stdio", "command": "observer", "lifecycle": "per_event"},
+      "transport": {
+        "type": "stdio",
+        "command": "observer",
+        "lifecycle": "per_event"
+      },
       "subscriptions": [
-        {"events": ["session.start"], "mode": "observe", "timeoutMs": 100, "failurePolicy": "fail-open"}
+        {
+          "events": [
+            "session.start"
+          ],
+          "mode": "observe",
+          "timeoutMs": 100,
+          "failurePolicy": "fail-open"
+        }
       ]
     }
   ]

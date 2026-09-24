@@ -1,0 +1,37 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "task.change.after",
+      "parentEventId": "proposal1",
+      "task": {
+        "id": "task1",
+        "operation": "update",
+        "change": {
+          "status": "done"
+        },
+        "prior": {
+          "status": "active"
+        }
+      },
+      "items": [
+        {
+          "id": "item1",
+          "kind": "tool_result",
+          "mediaType": "text/plain",
+          "selection": "metadata",
+          "body": {
+            "ref": "upload1",
+            "size": 3,
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        }
+      ]
+    }
+  }
+}

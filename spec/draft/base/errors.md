@@ -43,4 +43,4 @@ Example:
   }
 }
 ```
-Any JSON-RPC error is an operational failure and is handled using the subscription's failure policy. Error `data` MUST NOT contain secrets.
+For interception, any JSON-RPC error is an operational failure and is handled using the subscription's failure policy. Discovery errors fail discovery; they do not create a session, an effect, or a subscription decision. Notifications MUST NOT receive JSON-RPC success or error responses. Error `data` MUST NOT contain secrets.

@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "protocolVersion": "draft",
+    "effects": [
+      {
+        "type": "message",
+        "text": "Continuation requested without an instruction."
+      },
+      {
+        "type": "flow",
+        "operation": "continue"
+      }
+    ]
+  }
+}

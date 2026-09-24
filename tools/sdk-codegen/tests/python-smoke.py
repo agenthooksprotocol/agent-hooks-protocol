@@ -138,7 +138,7 @@ def main() -> None:
     result = sdk.parse_json_rpc_message(request)
     if not result["ok"]:
         fail(f"request envelope did not select exactly one branch: {result['diagnostics']}")
-    request["params"]["event"]["tool"]["kind"] = "future_tool"
+    request["params"]["event"]["tool"]["origin"] = "future_origin"
     result = sdk.parse_intercept_request(request)
     if not result["ok"] or "unknown_enum" not in diagnostic_codes(result):
         fail(f"unknown enum value was not preserved: {result['diagnostics']}")
@@ -186,6 +186,38 @@ def main() -> None:
     result = sdk.parse_registration(malformed)
     if result["ok"] or "invalid_known_variant" not in diagnostic_codes(result):
         fail("malformed known variant fell back instead of failing")
+
+    # Every canonical positive fixture must structurally parse and round-trip.
+    manifest = fixture(repository, "fixtures/draft/manifest.json")
+    for case in manifest["cases"]:
+        if not case["expectedValid"] or case["binding"] not in ("http-json", "registration-json"):
+            continue
+        original = fixture(repository, case["path"])
+        parse = sdk.parse_registration if case["binding"] == "registration-json" else sdk.parse_wire_message
+        encode = sdk.encode_registration if case["binding"] == "registration-json" else sdk.encode_wire_message
+        parsed = parse(original)
+        if not parsed["ok"]:
+            fail(f"canonical fixture {case['id']} did not parse: {parsed['diagnostics']}")
+        if json.loads(encode(parsed["value"])) != original:
+            fail(f"canonical fixture {case['id']} changed on round-trip")
+
+    supplied = fixture(repository, "fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")["params"]["event"]
+    if supplied["execution"] != {"status": "skipped", "reason": "supplied_result"}:
+        fail("supplied execution must not require a subscription ID")
+    parsed = sdk.parse_execution_event(supplied)
+    if not parsed["ok"] or json.loads(sdk.encode_execution_event(parsed["value"])) != supplied:
+        fail(f"supplied execution union failed: {parsed['diagnostics']}")
+    del supplied["execution"]["reason"]
+    if sdk.parse_execution_event(supplied)["ok"]:
+        fail("missing skipped reason matched another execution branch")
+    supplied["execution"]["reason"] = None
+    if sdk.parse_execution_event(supplied)["ok"]:
+        fail("explicit null skipped reason was treated as valid presence")
+
+    for transport in ("http", "stdio"):
+        missing = fixture(repository, f"fixtures/draft/http/mcp-{transport}-location-missing.invalid.json")["params"]["event"]
+        if sdk.parse_tool_before_event(missing)["ok"]:
+            fail(f"required-only {transport} location predicate was lost")
 
     print("generated Python codec smoke tests passed")
 
