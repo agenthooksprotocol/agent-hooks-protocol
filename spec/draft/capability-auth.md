@@ -153,27 +153,28 @@ its issuer, resource, scope, and client constraints.
   `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. It uses the
   standards-based discovery and validation above; it is not required merely to
   encounter an OAuth-protected endpoint.
-* `mtls`: configure `certificateRef`, `privateKeyRef`, and `trustRootsRef`.
-  TLS client certificate selection MUST use a preconfigured client identity and
-  local endpoint/trust policy. A TLS CertificateRequest can precede any HTTP
-  response; clients MUST NOT require HTTP discovery before the TLS handshake.
-  Validate the certificate chain, validity, intended usage, and receiver name.
-  The resource maps the verified client certificate to authorized principals.
-  A certificate copied into a header is not authentication. Clients MAY use
-  preconfigured TLS identities with HTTP OAuth; this draft does not define a
-  portable composite registration grammar.
-* `workload`: configure `profile`, `credentialRef`, trusted `issuer`, and target
-  `audience`. `profile` is a URI identifying a concrete, documented verification
-  or exchange profile supported by both parties, not an endpoint to fetch or send
-  credentials to automatically. The profile MUST define credential format,
-  verification or exchange, trust establishment, audience binding, and any server
-  advertisement mechanism. A server MAY advertise workload requirements only
-  through that defined mechanism. The client controls platform, identity, and
-  trust configuration; validate issuer proof, signature, audience, validity, and
-  authorization. A generic workload label is not an interoperable protocol.
-  This draft standardizes no workload profile or workload discovery wire format.
-  A missing or unsupported profile MUST fail before credential acquisition or
-  transmission; deployment-specific profiles MUST be reported as such.
+
+### Deployment-specific authentication
+
+<a id="AHP-AUTH-001"></a>
+**AHP-AUTH-001 — MUST.** Portable endpoint authentication bindings MUST use `bearer` or `oauth`; workload identity, federation, and client-certificate configuration are deployment-specific, not portable AHP authentication variants.
+
+Deployments MAY use workload identity, federation, or client certificates beneath
+or alongside AHP through HTTP/TLS configuration or credential-provider extensions.
+These mechanisms are outside portable AHP configuration and capability claims;
+AHP defines no workload profile requirement, plugin protocol, or discovery format
+for them. A credential provider MAY supply a token through a portable bearer
+reference without making its acquisition mechanism part of AHP.
+
+TLS client certificate selection uses preconfigured identity and local endpoint/trust
+policy before HTTP; it MUST NOT depend on an HTTP challenge. Validate certificate
+chains, validity, intended usage, and receiver names. A certificate copied into an
+HTTP header does not establish a verified TLS identity. Resources MUST authorize
+the verified client principal. Deployment-specific workload/federation credentials
+MUST be validated for issuer proof, signature, audience, validity, and authorization
+under local trust policy. Deployment-specific
+authentication MUST preserve the credential isolation, trust validation, failure,
+deadline, cancellation, and no-downgrade requirements in this section.
 
 Event and upload endpoints apply these rules independently, including discovery,
 explicit binding precedence, and token/cache resource boundaries. An absent upload

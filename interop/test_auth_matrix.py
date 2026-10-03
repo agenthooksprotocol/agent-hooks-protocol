@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Real-wire auth matrix; run from any cwd. No credentials/log bodies in reports."""
+"""Deployment HTTP/TLS/credential-provider matrix; not portable AHP mechanisms.
+
+Run from any cwd. No credentials/log bodies in reports.
+"""
 import argparse
 import base64
 from contextlib import contextmanager
@@ -494,7 +497,9 @@ def main():
         targetedReproduction='Add --language python|go|rust|typescript --mode bearer|oauth|workload|mtls --report /tmp/auth-repro.json',
         findings=[{k: r[k] for k in ('language', 'mode', 'case', 'checks')}
                   for r in results if r['status'] != 'passed'], scope=[
+        'Deployment HTTP/TLS/credential-provider tests, not five portable AHP mechanisms.',
         'HTTP endpoint auth and capability discovery separately; all four adapters and five modes.',
+        'Workload tokens use bearer HTTP auth; mTLS is out-of-band TLS, not AHP registration auth.',
         'none accepts missing/wrong credentials intentionally; not negative authentication coverage.',
         'JWT purpose mutated under correct key; cross-purpose uses other purpose and signing key.',
         'Each negative requires explicit auth rejection, healthy control, zero accepted receipts.',

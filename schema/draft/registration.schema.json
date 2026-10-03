@@ -169,65 +169,6 @@
               }
             }
           }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "certificateRef",
-            "privateKeyRef",
-            "trustRootsRef"
-          ],
-          "properties": {
-            "type": {
-              "const": "mtls"
-            },
-            "certificateRef": {
-              "type": "string",
-              "minLength": 1
-            },
-            "privateKeyRef": {
-              "type": "string",
-              "minLength": 1
-            },
-            "trustRootsRef": {
-              "type": "string",
-              "minLength": 1
-            }
-          }
-        },
-        {
-          "type": "object",
-          "required": [
-            "type",
-            "credentialRef",
-            "issuer",
-            "audience",
-            "profile"
-          ],
-          "properties": {
-            "type": {
-              "const": "workload"
-            },
-            "credentialRef": {
-              "type": "string",
-              "minLength": 1
-            },
-            "issuer": {
-              "type": "string",
-              "minLength": 1
-            },
-            "audience": {
-              "type": "string",
-              "minLength": 1
-            },
-            "profile": {
-              "type": "string",
-              "format": "uri",
-              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
-              "description": "Identifier of a concrete supported verification/exchange profile, not an automatically fetched URL. This draft standardizes no workload profile."
-            }
-          }
         }
       ],
       "$comment": "Branches are disjoint by required type. Unknown mechanism values are invalid, not forward-compatible identity selectors."

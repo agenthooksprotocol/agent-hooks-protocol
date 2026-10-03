@@ -17,7 +17,7 @@ sequentially. No protocol effect application occurs in the Python controller.
 
 ## Coverage and counts
 
-Four clients × four servers × two transports × five auth labels produce
+Four clients × four servers × two transports × five deployment auth labels produce
 160 combination records. HTTP runs all five modes (`none`, `bearer`, `oauth`,
 `mtls`, `workload`); stdio runs process trust (`none`) only. The other 64
 stdio combinations are explicit **inapplicable**, never passed or executed.
@@ -25,7 +25,11 @@ Scenario execution totals depend on the generated scenario set; read the report
 for executed and inapplicable counts rather than treating grid dimensions as passes.
 HTTP OAuth uses the shared synthetic issuer; mTLS uses shared test certificate
 fixtures; workload uses the shared signed assertion configuration. This is
-local synthetic trust, not production federation. Authentication rejection
+local synthetic trust, not production federation. These are deployment
+HTTP/TLS/credential-provider tests, not five portable AHP mechanisms: workload
+tokens use bearer references, and mTLS is configured out of band with absent
+HTTP authentication when TLS alone authenticates the deployment. Portable
+capabilities advertise only bearer/OAuth. Authentication rejection
 cases are outside this positive matrix and require the separate auth suite.
 
 ## Integrity and lifecycle

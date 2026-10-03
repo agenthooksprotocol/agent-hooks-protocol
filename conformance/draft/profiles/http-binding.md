@@ -21,17 +21,18 @@ unsupported ones, including:
   event/upload endpoints or cache entries.
 - Failed explicit bearer resolution/rejection and OAuth preset mismatch without
   identity switching, unauthenticated fallback, or discovery overriding the preset.
-- Preconfigured TLS certificate selection before HTTP, without requiring a challenge.
-- Missing/unsupported workload profiles rejected before acquisition; a claimed
-  deployment profile needs its own advertisement, verification/exchange, and trust
-  evidence. A generic `workload` capability is insufficient.
 - Bounded acquisition/refresh/retries and host interaction under dispatch deadlines
   and cancellation, separate bounded preparation/upload budgets, and both failure
   policies preserving the underlying operation and forbidding late delivery.
 
 Repository schema tests validate omitted bindings, shared upload/event preset
-shapes, secret-reference exclusivity, and required workload profile identifiers.
+shapes, secret-reference exclusivity, and rejection of non-portable mechanism types.
 They do not execute OAuth discovery, TLS, token validation, or workload exchange.
 The existing SDK integration matrices exercise their pinned legacy behavior, not
 this discovery contract; a passing matrix does not certify these runtime cases.
 Implementations MUST report unsupported authentication paths as capability gaps.
+
+Deployment-specific workload/federation and client-certificate tests MAY supply
+additional security evidence, but MUST NOT be reported as portable AHP
+authentication variants. Their HTTP/TLS or credential-provider configuration is
+outside AHP; the general security and timing requirements still apply.

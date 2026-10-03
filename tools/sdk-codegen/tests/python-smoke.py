@@ -188,6 +188,11 @@ def main() -> None:
         fail("malformed known variant fell back instead of failing")
 
     # Every canonical positive fixture must structurally parse and round-trip.
+    for mechanism in ("mtls", "workload"):
+        config = fixture(repository, f"fixtures/draft/registration/{mechanism}.invalid.json")
+        if sdk.parse_registration(config)["ok"]:
+            fail(f"non-portable auth accepted: {mechanism}")
+
     manifest = fixture(repository, "fixtures/draft/manifest.json")
     for case in manifest["cases"]:
         if not case["expectedValid"] or case["binding"] not in ("http-json", "registration-json"):

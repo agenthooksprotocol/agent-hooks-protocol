@@ -23,8 +23,9 @@ Event and capability-discovery endpoints follow
 [authentication bindings](../../capability-auth.md#authentication-bindings).
 Without an explicit HTTP binding, clients attempt the endpoint and handle standard
 OAuth protected-resource discovery; absence does not mean anonymous-only delivery.
-Explicit `bearer`, `oauth`, `mtls`, and concrete `workload` profile bindings remain
-endpoint-bound client policy. TLS identity selection can precede HTTP discovery.
+Explicit `bearer` and `oauth` bindings remain endpoint-bound client policy.
+Deployment-specific TLS identity selection can precede HTTP discovery and is
+outside portable AHP configuration.
 Unsupported authentication and credential failures MUST NOT cause an unauthenticated
 fallback or automatic replacement of an explicit binding. For interception, the
 configured failure policy determines whether the underlying harness operation

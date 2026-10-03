@@ -55,14 +55,10 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             {'type': 'oauth', 'issuer': 'https://issuer.example',
              'resource': 'https://hooks.example/events', 'clientId': 'client',
              'flow': 'authorization_code_pkce', 'scopes': ['hooks']},
-            {'type': 'mtls', 'certificateRef': 'cert', 'privateKeyRef': 'key', 'trustRootsRef': 'roots'},
-            {'type': 'workload', 'credentialRef': 'identity', 'issuer': 'trusted-platform',
-             'audience': 'hooks', 'profile': 'urn:example:deployment-profile'},
         ]
         for binding in bindings:
             with self.subTest(binding=binding):
                 self.assertFalse(self.errors(self.with_bindings(event=binding, upload=binding)))
-        # Accepting a profile identifier is not proof that an implementation supports it.
 
     def test_invalid_bindings_rejected_at_either_endpoint(self):
         workload = {'type': 'workload', 'credentialRef': 'identity',
@@ -82,12 +78,23 @@ class AuthenticationConfigurationTests(unittest.TestCase):
                 self.assertTrue(self.errors(self.with_bindings(event=binding)))
                 self.assertTrue(self.errors(self.with_bindings(upload=binding)))
 
-    def test_unknown_fields_do_not_replace_required_profile(self):
-        binding = {'type': 'workload', 'credentialRef': 'identity',
-                   'issuer': 'trusted', 'audience': 'hooks', 'futureProfile': 'urn:example:profile'}
-        self.assertTrue(self.errors(self.with_bindings(event=binding)))
-        binding['profile'] = 'urn:example:profile'
-        self.assertFalse(self.errors(self.with_bindings(event=binding)))
+    def test_unknown_fields_do_not_authorize_removed_mechanisms(self):
+        for mechanism in ('mtls', 'workload'):
+            binding = {'type': mechanism, 'certificateRef': 'cert', 'privateKeyRef': 'key',
+                       'trustRootsRef': 'roots', 'credentialRef': 'identity',
+                       'issuer': 'trusted', 'audience': 'hooks', 'profile': 'urn:example:profile'}
+            self.assertTrue(self.errors(self.with_bindings(event=binding)))
+            self.assertTrue(self.errors(self.with_bindings(upload=binding)))
+        binding = {'type': 'bearer', 'tokenRef': 'identity', 'futureField': 'ignored'}
+        self.assertFalse(self.errors(self.with_bindings(event=binding, upload=binding)))
+
+    def test_capabilities_advertise_only_portable_mechanisms(self):
+        value = json.loads((ROOT / 'fixtures/draft/http/capabilities-response.valid.json').read_text())
+        path = self.snapshot.schema_dir / 'capabilities-response.schema.json'
+        for mechanism in ('bearer', 'oauth', 'mtls', 'workload'):
+            value['result']['manifest']['authentication'] = [mechanism]
+            errors = self.validator.validate(value, self.store.load(path), path)
+            self.assertEqual(bool(errors), mechanism in ('mtls', 'workload'))
 
     def test_explicit_http_binding_remains_invalid_on_stdio(self):
         config = self.with_bindings(event={'type': 'bearer', 'tokenEnv': 'TOKEN'})

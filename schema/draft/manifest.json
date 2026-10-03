@@ -163,7 +163,7 @@
     },
     {
       "path": "schema/draft/capabilities-response.schema.json",
-      "sha256": "90c09d1eef78a8d95c4c82fa1c978fb55fd60938cffa3ad60c3def6ab7ace8e1"
+      "sha256": "9e3b33d4bde82670770ad598dd70bb276bda120c4429783747dc91defc6911a8"
     },
     {
       "path": "schema/draft/capabilities.schema.json",
@@ -243,7 +243,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "35b149406f6a9550474334508034e0f07aa97f4427b91410b89eb4ed0ab81724"
+      "sha256": "3788ae90ee2aa057473ed03833f5310584d531e90a7f50b00541b013ab0a1c11"
     },
     {
       "path": "schema/draft/schema.json",

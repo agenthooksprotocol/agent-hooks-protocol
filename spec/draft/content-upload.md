@@ -14,8 +14,7 @@ configured loopback tests. HTTP upload is independent of event transport, includ
 stdio. `maxBytes` is a transfer limit, not permission to truncate content.
 
 `auth`, when configured, uses the same explicit endpoint bindings as event delivery:
-`bearer` (exactly one of `tokenEnv` or `tokenRef`), `oauth`, `mtls`, or a concrete
-`workload` profile. See [authentication bindings](capability-auth.md#authentication-bindings).
+`bearer` (exactly one of `tokenEnv` or `tokenRef`) or `oauth`. See [authentication bindings](capability-auth.md#authentication-bindings).
 The sender MUST resolve upload credentials independently. Absence of `upload.auth`
 uses standard OAuth protected-resource discovery on this endpoint, not event
 credentials or an anonymous-only assumption. Upload authentication, discovery,
