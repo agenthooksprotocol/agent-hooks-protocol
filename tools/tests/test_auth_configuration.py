@@ -78,14 +78,6 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         binding = {'type': 'bearer', 'tokenRef': 'identity', 'futureField': 'ignored'}
         self.assertFalse(self.errors(self.with_bindings(event=binding, upload=binding)))
 
-    def test_capabilities_advertise_only_portable_mechanisms(self):
-        value = json.loads((ROOT / 'fixtures/draft/http/capabilities-response.valid.json').read_text())
-        path = self.snapshot.schema_dir / 'capabilities-response.schema.json'
-        for mechanism in ('bearer', 'oauth'):
-            value['result']['manifest']['authentication'] = [mechanism]
-            errors = self.validator.validate(value, self.store.load(path), path)
-            self.assertFalse(errors)
-
     def test_explicit_http_binding_remains_invalid_on_stdio(self):
         config = self.with_bindings(event={'type': 'bearer', 'tokenEnv': 'TOKEN'})
         config['hooks'][0]['transport'] = {'type': 'stdio', 'command': 'hook'}

@@ -28,8 +28,8 @@ unsupported ones, including:
 Repository schema tests validate omitted bindings, shared upload/event preset
 shapes, secret-reference exclusivity, and rejection of non-portable mechanism types.
 They do not execute OAuth discovery, TLS, token validation, or workload exchange.
-The existing SDK integration matrices exercise their pinned legacy behavior, not
-this discovery contract; a passing matrix does not certify these runtime cases.
+The SDK integration matrices do not execute OAuth discovery; a passing matrix
+does not certify these runtime cases.
 Implementations MUST report unsupported authentication paths as capability gaps.
 
 Deployment-specific workload/federation and client-certificate tests MAY supply
