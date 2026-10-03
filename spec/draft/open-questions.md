@@ -12,3 +12,4 @@ Current normative requirements remain binding.
 6. Should `native` live in the core envelope or be defined entirely as an extension?
 7. Which fields need explicit maximum sizes in the first conformance schema?
 8. Should authentication and registration remain in the same document as core protocol semantics or become separate bindings?
+9. Which concrete workload verification/exchange profiles should become portable AHP profiles? This draft requires a supported profile but defines no common workload advertisement or exchange protocol.

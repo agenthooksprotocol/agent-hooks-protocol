@@ -191,7 +191,7 @@
     },
     {
       "path": "schema/draft/content-upload.schema.json",
-      "sha256": "1a516c5bae9e09e1b0cb32536cdd0d0eb1e80540ad29e9b65e392eceef6e4701"
+      "sha256": "a405adb54b8de11f3814840f7cbcd54d76cdcc2e25d00942f1c1755eb05c6753"
     },
     {
       "path": "schema/draft/deny-effect.schema.json",
@@ -243,7 +243,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "76f429521eec5c85dfb6ce8e9a56108a4fa582912fc6ddf25d324af86ea557c0"
+      "sha256": "7a1113bb47bce6de51024f26f5fd7277913e050f5e2b4cc7c5c1e26b293bd847"
     },
     {
       "path": "schema/draft/schema.json",

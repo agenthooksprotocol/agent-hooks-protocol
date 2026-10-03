@@ -73,7 +73,7 @@
     {
       "id": "http",
       "path": "conformance/draft/profiles/http-binding.md",
-      "sha256": "b2c6ea6ee9b5ed668ad72088fe0ecf557378211f16c3820fb850eb0824943462",
+      "sha256": "ac09198d0a58f96ffaa08b8647fe9f58b97cdd978d5bf32717827aa4822c25fa",
       "roles": [
         "harness",
         "backend"

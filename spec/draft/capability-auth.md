@@ -79,45 +79,132 @@ for both endpoints only when its resource and permissions cover both. See
 
 ## Authentication bindings
 
+Servers advertise authentication requirements; clients select identities and enforce
+local trust policy. A server advertisement MUST NOT select a local secret, client
+certificate, workload platform, or trusted issuer on the client's behalf.
+`manifest.authentication` lists implementation support, not per-endpoint requirements
+or a negotiation protocol. `hooks/capabilities` is not an authentication bootstrap.
+
 Remote HTTP MUST use TLS with receiver validation. Plain HTTP is reserved for an
 explicitly trusted local test/process boundary, never an implicit downgrade.
-Unsupported authentication MUST fail before event delivery or body transfer.
-Secret values MUST NOT occur in registration, events, native metadata, or reports.
-Credential references name deployment-managed secrets, not portable secret values.
+Secret values MUST NOT occur in registration, events, native metadata, logs, denial
+reasons, or JSON-RPC error data. Credential references name deployment-managed
+secrets, not portable secret values. Payload identifiers and upload references
+MUST NOT grant authority.
 
-Authentication failures, including credential resolution, acquisition, and refresh
-failures, are operational failures. The configured interception failure policy
-determines whether the underlying harness operation continues or is denied;
-authentication failures do not override that policy. Failed authentication MUST
-NOT cause fallback to unauthenticated delivery. See [failure semantics](base/failure.md).
+### HTTP without an explicit binding
 
-* `bearer`: configure exactly one of `tokenEnv` or `tokenRef`. If resolution fails,
-  do not send the request. Send the resolved token in exactly one Authorization header.
-* `oauth`: configure HTTPS `issuer`, protected `resource`, `clientId`, `flow`,
-  optional `scopes`, and optional `clientSecretRef`. Implementations MUST use
-  standards-based protected-resource/authorization-server discovery and supported
-  client registration. Interactive `authorization_code_pkce` MUST use PKCE;
-  unattended `client_credentials` MUST be explicitly supported by the issuer.
-  Validate issuer, resource/audience, expiry, and required scope. Token acquisition,
-  refresh, and discovery are binding operations, not AHP methods or effects.
+When endpoint authentication is absent, the client MUST attempt the configured
+endpoint without an HTTP credential, subject to local policy and TLS identity
+selection below. Absence does not mean anonymous-only: a successful response may
+be accepted, but an OAuth-protected endpoint MUST be handled using the protected
+resource discovery procedure in [MCP 2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),
+[RFC 9728](https://www.rfc-editor.org/rfc/rfc9728.html), and authorization-server
+metadata ([RFC 8414](https://www.rfc-editor.org/rfc/rfc8414.html) or the OpenID
+Connect Discovery fallback specified by MCP). This adopts that discovery procedure,
+not MCP transport framing or arbitrary authentication negotiation.
+OAuth-protected servers MUST publish RFC 9728 protected-resource metadata with at
+least one authorization server and provide discovery through a 401 challenge's
+`resource_metadata` parameter or the standard well-known locations, as specified
+by MCP. These are OAuth requirements, not a generic AHP auth advertisement format.
+
+On HTTP 401, clients MUST parse `WWW-Authenticate` and use its `resource_metadata`
+URL when present. Otherwise they MUST try the RFC 9728 well-known locations in
+MCP's order: endpoint-path-specific, then origin-root. Protected-resource metadata
+identifies the resource and its authorization servers. Clients MUST validate the
+resource identifier under RFC 9728 section 3.3, select an authorization server
+per local trust policy, and discover its metadata using MCP's ordered OAuth/OIDC
+well-known locations. AHP defines no additional challenge, metadata field, or
+method to negotiate bearer, mTLS, or workload credentials.
+
+Discovery is untrusted input, not permission to send credentials. Clients MUST
+validate HTTPS URLs, server certificates, exact discovered issuer identity,
+resource/audience, scope requirements, and token validity. Challenge scopes describe
+requirements, not consent: clients MUST request only locally permitted scopes and
+MUST NOT assume `scopes_supported` is the required set for a particular request. Clients MUST request
+resource-bound tokens using RFC 8707 and MUST NOT use a token for another resource.
+Clients MUST apply local destination/SSRF policy to metadata, registration,
+authorization, and token endpoints, including DNS resolution and every redirect;
+metadata MUST NOT authorize access to otherwise forbidden local or private targets.
+Redirects require explicit endpoint policy and MUST NOT forward credentials to a
+different origin or resource. Clients MUST NOT send secrets, workload assertions,
+or client credentials to arbitrary advertised URLs. A cached identity or token
+MUST remain bound to its trusted issuer, resource, client, and authorized scope.
+
+Client registration and selection of a supported OAuth flow remain client policy.
+Interactive authorization MUST use authorization code with PKCE and validated
+redirect URIs/state; unattended client credentials require explicit issuer support.
+Clients MAY expose host UI/callbacks to prepare or renew authorization, but these
+are not AHP methods, hook events, or effects. If interaction is unavailable,
+unsupported, denied, cancelled, or cannot complete within the remaining budget,
+authorization fails operationally; clients MUST NOT silently switch identities.
+
+### Explicit endpoint bindings
+
+An explicit binding takes precedence over automatic HTTP discovery. Failure to
+resolve or use it MUST NOT trigger an automatic switch to OAuth, another binding,
+or unauthenticated delivery. Discovery within an explicit OAuth preset MUST obey
+its issuer, resource, scope, and client constraints.
+
+* `bearer`: configure exactly one of `tokenEnv` or `tokenRef`, bound to this endpoint.
+  If resolution fails, do not send the request. Send the resolved token in exactly
+  one Authorization header. A challenge cannot choose a different local secret.
+* `oauth`: an optional preset configures HTTPS `issuer`, protected `resource`,
+  `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. It uses the
+  standards-based discovery and validation above; it is not required merely to
+  encounter an OAuth-protected endpoint.
 * `mtls`: configure `certificateRef`, `privateKeyRef`, and `trustRootsRef`.
+  TLS client certificate selection MUST use a preconfigured client identity and
+  local endpoint/trust policy. A TLS CertificateRequest can precede any HTTP
+  response; clients MUST NOT require HTTP discovery before the TLS handshake.
   Validate the certificate chain, validity, intended usage, and receiver name.
   The resource maps the verified client certificate to authorized principals.
-  A certificate copied into a header is not authentication.
-* `workload`: configure `credentialRef`, trusted `issuer`, and target `audience`.
-  Validate issuer proof, signature, audience, validity, and authorization using
-  the configured platform's supported verification or exchange mechanism. A
-  workload name, environment label, or self-signed untrusted assertion is not proof.
+  A certificate copied into a header is not authentication. Clients MAY use
+  preconfigured TLS identities with HTTP OAuth; this draft does not define a
+  portable composite registration grammar.
+* `workload`: configure `profile`, `credentialRef`, trusted `issuer`, and target
+  `audience`. `profile` is a URI identifying a concrete, documented verification
+  or exchange profile supported by both parties, not an endpoint to fetch or send
+  credentials to automatically. The profile MUST define credential format,
+  verification or exchange, trust establishment, audience binding, and any server
+  advertisement mechanism. A server MAY advertise workload requirements only
+  through that defined mechanism. The client controls platform, identity, and
+  trust configuration; validate issuer proof, signature, audience, validity, and
+  authorization. A generic workload label is not an interoperable protocol.
+  This draft standardizes no workload profile or workload discovery wire format.
+  A missing or unsupported profile MUST fail before credential acquisition or
+  transmission; deployment-specific profiles MUST be reported as such.
 
-These mechanisms MAY compose at the transport layer (for example workload-to-OAuth
-exchange or certificate-bound tokens). The current registration grammar selects
-one mechanism per endpoint; composite configuration is not yet defined and MUST
-NOT be claimed as portable support.
+Event and upload endpoints apply these rules independently, including discovery,
+explicit binding precedence, and token/cache resource boundaries. An absent upload
+binding MUST NOT inherit event credentials. Reuse requires explicit client policy
+and independently validated resource and permission coverage for both endpoints.
+
+### Failure and timing
+
+Authentication resolution, discovery, acquisition, refresh, and validation failures
+are operational failures. The configured interception failure policy determines
+whether the underlying harness operation continues or is denied; it does not permit
+unauthenticated delivery or change the underlying operation. Observations remain
+best effort. Unsupported authentication MUST prevent authenticated retries and
+further delivery; an initial credential-free request is not a failure fallback.
+Protected servers MUST reject unauthorized requests before processing the event or
+storing uploaded bytes. Authentication retries MUST be bounded, occur only after
+an authentication rejection (not an ambiguous successful delivery), and respect
+cancellation.
+
+The interception deadline starts at dispatch and includes any authentication work
+needed for that dispatch, including discovery, acquisition, refresh, interaction,
+and retries. No authentication step resets or extends the deadline. Cancellation
+MUST cancel pending authentication and prevent late delivery. Authorization MAY be
+prepared before dispatch under a separate bounded, cancellable preparation budget;
+content upload authentication and transfer use the independent upload budget.
+Pre-dispatch preparation MUST NOT become an unbounded wait hidden from policy.
+See [failure semantics](base/failure.md) and [uploads](content-upload.md).
 
 Authentication establishes the verified workload/client principal, not a human
 operator, organization, role, or delegation. Additional claims require trusted
-proof. Payload fields and correlation identifiers MUST NOT grant permissions.
-Credential rotation and acquisition MUST NOT create hook lifecycle events.
+proof. Credential rotation and acquisition MUST NOT create hook lifecycle events.
 
 ## Extension policy
 

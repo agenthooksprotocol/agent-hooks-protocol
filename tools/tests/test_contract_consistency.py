@@ -34,7 +34,7 @@ class ContractConsistencyTests(unittest.TestCase):
             subscription['content'] = {'default': 'omit', 'categories': {'images': 'body'}}
             self.assertTrue(self.errors(subscription, 'registration', definition))
 
-    def test_upload_has_independent_bearer_environment_auth(self):
+    def test_upload_accepts_independent_explicit_auth_bindings(self):
         upload = {'endpoint': 'https://upload.example/path?scope=test',
                   'timeoutMs': 100, 'maxBytes': 1000}
         self.assertFalse(self.errors(upload, 'content-upload'))
@@ -43,7 +43,7 @@ class ContractConsistencyTests(unittest.TestCase):
         for auth in [{'type': 'bearer', 'tokenRef': 'secret'},
                      {'type': 'oauth', 'resource': 'upload', 'issuer': 'https://issuer.example',
                       'clientId': 'test', 'flow': 'client_credentials'}]:
-            self.assertTrue(self.errors({**upload, 'auth': auth}, 'content-upload'))
+            self.assertFalse(self.errors({**upload, 'auth': auth}, 'content-upload'))
 
     def test_upload_remote_requires_https(self):
         upload = {'timeoutMs': 100, 'maxBytes': 1000}

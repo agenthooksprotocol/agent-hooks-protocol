@@ -146,3 +146,36 @@ Subscriptions and subscription identifiers are harness-local configuration, not
 wire identity. Receivers MUST ignore unknown registration/configuration fields,
 MUST validate recognized fields, and MAY warn about ignored fields. Unknown fields
 do not change dispatch, authorization, or supported effect/operation semantics.
+
+### Endpoint discovery example
+
+This HTTP backend deliberately omits an explicit identity binding. The client
+attempts the endpoint and, if challenged, uses standard OAuth protected-resource
+discovery subject to its own trust and identity policy. The upload endpoint does
+so independently. Neither absence authorizes credential inheritance.
+
+```json
+{
+  "protocolVersion": "draft",
+  "hooks": [{
+    "id": "org.example.policy",
+    "transport": {"type": "http", "url": "https://hooks.example/events"},
+    "subscriptions": [{
+      "id": "tool-policy",
+      "events": ["tool.before"],
+      "mode": "intercept",
+      "timeoutMs": 1000,
+      "failurePolicy": "fail-closed",
+      "content": {"default": "metadata"},
+      "upload": {"endpoint": "https://uploads.example/bytes", "timeoutMs": 5000, "maxBytes": 1048576}
+    }]
+  }]
+}
+```
+
+For a static upload secret, explicitly set `upload.auth` to
+`{"type": "bearer", "tokenRef": "secrets/policy-upload"}`. This deployment-managed
+reference is not a URL or a secret value. Resolution failure MUST NOT switch to
+OAuth; an event secret is not a substitute. An explicit OAuth preset can constrain
+issuer, resource, client, flow, and scopes without requiring every registration to
+predeclare OAuth before encountering an endpoint challenge.

@@ -201,7 +201,8 @@
             "type",
             "credentialRef",
             "issuer",
-            "audience"
+            "audience",
+            "profile"
           ],
           "properties": {
             "type": {
@@ -218,10 +219,17 @@
             "audience": {
               "type": "string",
               "minLength": 1
+            },
+            "profile": {
+              "type": "string",
+              "format": "uri",
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:",
+              "description": "Identifier of a concrete supported verification/exchange profile, not an automatically fetched URL. This draft standardizes no workload profile."
             }
           }
         }
-      ]
+      ],
+      "description": "Explicit endpoint-bound client identity preset. Omission on HTTP enables standard OAuth protected-resource discovery, not anonymous-only delivery. Runtime trust policy and discovery are defined in spec/draft/capability-auth.md."
     },
     "interceptSubscription": {
       "type": "object",

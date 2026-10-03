@@ -13,12 +13,16 @@ redirects. HTTPS with receiver validation is required except for explicitly
 configured loopback tests. HTTP upload is independent of event transport, including
 stdio. `maxBytes` is a transfer limit, not permission to truncate content.
 
-`auth`, when configured, is `{type: "bearer", tokenEnv: "ENV_NAME"}`. The sender
-MUST resolve this token independently from event authentication and send it as
-`Authorization: Bearer <token>`. Absence of `upload.auth` MUST NOT inherit event
-credentials. The receiver MUST derive the authorization scope from the authenticated
+`auth`, when configured, uses the same explicit endpoint bindings as event delivery:
+`bearer` (exactly one of `tokenEnv` or `tokenRef`), `oauth`, `mtls`, or a concrete
+`workload` profile. See [authentication bindings](capability-auth.md#authentication-bindings).
+The sender MUST resolve upload credentials independently. Absence of `upload.auth`
+uses standard OAuth protected-resource discovery on this endpoint, not event
+credentials or an anonymous-only assumption. Upload authentication, discovery,
+acquisition, refresh, and retries count against the upload budget, not a fresh
+budget per attempt. The receiver MUST derive authorization scope from verified
 credentials and authorize uploads within that scope; merely accepting a valid
-token is insufficient. Subscriptions are harness-local configuration, not wire
+token is insufficient. Event IDs, subscription IDs, and opaque refs are not
 identity or authorization claims. Anonymous uploads require explicit receiver
 authorization and a receiver-defined scope. Secrets MUST NOT appear in descriptor metadata.
 
