@@ -3,12 +3,12 @@
   "sdks": {
     "python": {
       "repository": "agenthooksprotocol/python-sdk",
-      "revision": "7e95a037d1ebf7f6ba1c8f58f8d4e4b9e54efe43",
+      "revision": "13bffb50c736c96220a45ef18ccc280135782782",
       "path": "python-sdk"
     },
     "typescript": {
       "repository": "agenthooksprotocol/typescript-sdk",
-      "revision": "91127634895eb1ecfe61342cb35af70e3a9aaa40",
+      "revision": "ef80557892fdbf1a1376aa841e9303dba9c5296b",
       "path": "typescript-sdk"
     },
     "go": {
