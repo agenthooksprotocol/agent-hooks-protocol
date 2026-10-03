@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 repository = Path(__file__).resolve().parents[1]
@@ -29,6 +30,11 @@ if args.all or args.output_dir:
     ]
 if args.output_dir:
     targets = [(language, args.output_dir / language, filename) for language, _, filename in targets]
+# Refuse a different Python formatter rather than silently changing committed bytes.
+if any(language == 'python' for language, _, _ in targets):
+    version = subprocess.check_output([sys.executable, '-m', 'ruff', '--version'], text=True).strip()
+    if version != 'ruff 0.12.12':
+        raise SystemExit('Install the pinned formatter: python3 -m pip install ruff==0.12.12')
 # Build once, then invoke the same compiled generator for every language.
 subprocess.run(['cargo', 'build', '--quiet', '--locked', '--manifest-path', str(repository / 'tools/sdk-codegen/Cargo.toml')], check=True)
 metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1', '--manifest-path', str(repository / 'tools/sdk-codegen/Cargo.toml')]))
@@ -45,6 +51,11 @@ for language, destination, filename in targets:
             (output / 'schemas.ts').write_text('// Generated canonical schema bundle. DO NOT EDIT.\nexport const schemas = ' + json.dumps(schemas, indent=2) + ';\n')
         else:
             (output / 'schemas.json').write_text(json.dumps(schemas, indent=2) + '\n')
+        if language == 'typescript':
+            for source in ('generated.ts', 'schemas.ts'):
+                subprocess.run(['npx', '--yes', 'prettier@3.6.2', '--no-config', '--no-editorconfig', '--write', str(output / source)], check=True)
+        elif language == 'python':
+            subprocess.run([sys.executable, '-m', 'ruff', 'format', '--isolated', '--target-version', 'py311', str(output / filename)], check=True)
         lock = {'schemaRevision': 'draft', 'protocolVersion': 'draft', 'generatorVersion': '0.1.0', 'language': language, 'schemaManifestSha256': manifest_hash, 'documents': manifest['documents']}
         (output / 'ahp-codegen.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
         for artifact in output.iterdir():

@@ -96,8 +96,18 @@ without writing SDK artifacts. See [boundary APIs and runtime scope](../docs/acc
 `python3 tools/generate_sdk.py --all` regenerates TypeScript plus the sibling
 Python, Go and Rust codecs, canonical schema bundles and source locks. Use
 `--all --check` to compare every output without modifying SDK artifacts.
-Go output is normalized with `gofmt`; Rust output uses `rustfmt +1.88.0`
-(the same toolchain as CI). Install these tools before generating or checking.
+TypeScript codecs and schema bundles use Prettier **3.6.2** via pinned `npx`,
+with configuration discovery disabled. Python codecs use Ruff **0.12.12** with
+isolated defaults and target Python 3.11; the generator rejects other versions.
+Install it into the Python interpreter used for generation:
+`python3 -m pip install ruff==0.12.12`. Node.js 20 with npm is also required;
+`npx` downloads the pinned Prettier on first use (or uses its local cache).
+Go output is normalized with `gofmt` (CI uses Go 1.24); Rust output uses
+`rustfmt +1.88.0 --edition 2024`. Install these toolchains before generating or
+checking. Both integration and synchronization CI install formatter dependencies.
+These same formatter versions/options apply to handwritten SDK sources; do not
+hand-format generated code. Run regeneration followed by `--all --check` to
+verify that the committed output is reproducible.
 CI uses `--output-dir generated` to stage the same codecs, canonical bundles,
 and content-derived locks per language, then installs them at the local-script
 paths. Source commit provenance remains in the synchronization PR, not in the

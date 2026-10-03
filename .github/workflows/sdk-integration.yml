@@ -90,12 +90,14 @@ jobs:
           components: rustfmt
       - name: Install harness dependencies and pnpm
         run: |
-          python3 -m pip install 'jsonschema[format]>=4.23,<5'
+          python3 -m pip install 'jsonschema[format]>=4.23,<5' 'ruff==0.12.12'
           corepack enable
           corepack prepare pnpm@10.18.3 --activate
       - name: Regenerate SDKs from proposed protocol
         timeout-minutes: 15
         run: python3 tools/generate_sdk.py --all 2>&1 | tee "$GITHUB_WORKSPACE/reports/generation.log"
+      - name: Check generated artifact reproducibility
+        run: python3 tools/generate_sdk.py --all --check
       # Each language and the harness still run after another suite fails.
       # Explicit bash enables pipefail; tee must never mask a failing command.
       - name: Install and test Python SDK

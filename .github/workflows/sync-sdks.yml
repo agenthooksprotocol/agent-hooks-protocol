@@ -28,6 +28,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
         with:
           components: rustfmt
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          package-manager-cache: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Install Python formatter
+        run: python3 -m pip install 'ruff==0.12.12'
       - name: Verify schemas and generator
         run: |
           PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
