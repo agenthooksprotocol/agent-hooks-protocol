@@ -18,7 +18,7 @@
     },
     "rust": {
       "repository": "agenthooksprotocol/rust-sdk",
-      "revision": "2e7bdd0101eb7a1e9968dcd01506f088100271fa",
+      "revision": "8dd89589c5a14125dfde5624a5d86c9ddec46c9f",
       "path": "rust-sdk"
     }
   }
