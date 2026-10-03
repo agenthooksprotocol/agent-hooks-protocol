@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/content-item.schema.json",
+  "title": "AHP content-item (Draft)",
+  "$comment": "Mutable AHP draft. ",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "selection",
+        "body"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "const": "body"
+        },
+        "body": {
+          "$ref": "content-reference.schema.json"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentItemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "selection",
+        "gap"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "const": "body"
+        },
+        "gap": {
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentItemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "selection"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "const": "metadata"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentItemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "mediaType",
+        "selection"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mediaType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "const": "omit"
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parentItemId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "minLength": 64,
+          "maxLength": 64
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    }
+  ],
+  "description": "Normalized model-content descriptor. id is durable within event source. kind is semantic (including skill and reasoning); category is the subscription selector, independent of role. Bodies occur only as immutable uploaded references. parentItemId associates a block with its owning message. Native opaque payloads are not normalized descriptors.",
+  "$defs": {
+    "modelVisibleItem": {
+      "allOf": [
+        {
+          "$ref": "content-item.schema.json"
+        },
+        {
+          "type": "object",
+          "required": [
+            "role"
+          ],
+          "properties": {
+            "role": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ],
+      "description": "Model-visible item or block. Explicit role is required even for metadata/omit views and child blocks; parentItemId does not prove an owner role."
+    }
+  }
+}

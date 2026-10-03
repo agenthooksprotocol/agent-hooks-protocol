@@ -2,32 +2,274 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agenthooksprotocol.org/schemas/draft/tool-after.schema.json",
   "title": "AHP tool.after Event (Draft)",
-  "$comment": "Mutable AHP draft. output is optional because the specification permits omission after redaction or truncation.",
-  "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
+  "$comment": "Mutable AHP draft. Every resolved call uses one completion; outcome and execution provenance are independent.",
+  "x-requirements": [
+    "AHP-CORE-003",
+    "AHP-CORE-004"
+  ],
   "type": "object",
-  "required": ["id", "source", "type", "time", "session", "tool"],
+  "required": [
+    "id",
+    "source",
+    "type",
+    "time",
+    "outcome",
+    "execution",
+    "call",
+    "tool",
+    "path",
+    "items"
+  ],
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "source": {"type": "string", "format": "uri"},
-    "type": {"const": "tool.after"},
-    "time": {"type": "string", "format": "date-time"},
-    "session": {"$ref": "common.schema.json#/$defs/session"},
-    "tool": {
-      "type": "object",
-      "required": ["callId", "name", "kind", "input"],
-      "properties": {
-        "callId": {"type": "string", "minLength": 1},
-        "name": {"type": "string", "minLength": 1},
-        "kind": {
-          "enum": ["shell", "file_read", "file_write", "file_edit", "search", "fetch", "task", "mcp", "other"]
-        },
-        "input": {"type": "object"},
-        "output": {},
-        "mcp": {"type": "object"}
-      },
-      "not": {"required": ["error"]}
+    "id": {
+      "type": "string",
+      "minLength": 1
     },
-    "native": {"$ref": "common.schema.json#/$defs/native"},
-    "extensions": {"$ref": "extensions.schema.json"}
-  }
+    "source": {
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "const": "tool.after"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session": {
+      "$ref": "common.schema.json#/$defs/session"
+    },
+    "tool": {
+      "$ref": "execution-event.schema.json#/$defs/tool"
+    },
+    "native": {
+      "$ref": "common.schema.json#/$defs/native"
+    },
+    "extensions": {
+      "$ref": "extensions.schema.json"
+    },
+    "parentEventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+    },
+    "turn": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "content-item.schema.json#/$defs/modelVisibleItem"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "outcome": {
+      "enum": [
+        "ok",
+        "error",
+        "denied",
+        "cancelled",
+        "timeout"
+      ]
+    },
+    "execution": {
+      "$ref": "execution-event.schema.json#/$defs/execution"
+    },
+    "call": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      },
+      "additionalProperties": false
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "batch": {
+      "$ref": "execution-event.schema.json#/$defs/batch"
+    },
+    "error": {
+      "$ref": "execution-event.schema.json#/$defs/error"
+    },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0
+    },
+    "fileChanges": {
+      "type": "array",
+      "items": {
+        "$ref": "execution-event.schema.json#/$defs/fileChange"
+      },
+      "minItems": 0
+    },
+    "synthesized": {
+      "type": "boolean",
+      "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "const": "error"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "error"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "error"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "const": "denied"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "execution": {
+            "properties": {
+              "status": {
+                "const": "skipped"
+              },
+              "reason": {
+                "const": "policy"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "enum": [
+              "denied",
+              "cancelled",
+              "timeout"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "tool": {
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "output"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "execution"
+        ],
+        "properties": {
+          "execution": {
+            "properties": {
+              "status": {
+                "const": "skipped"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "durationMs"
+              ]
+            },
+            {
+              "required": [
+                "fileChanges"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
 }

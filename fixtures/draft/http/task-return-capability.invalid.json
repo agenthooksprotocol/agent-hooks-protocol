@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "method": "hooks/intercept",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "task.change.before",
+      "task": {
+        "id": "task1",
+        "operation": "create",
+        "change": {
+          "status": "open"
+        }
+      }
+    },
+    "capabilities": {
+      "effects": [
+        "return"
+      ]
+    }
+  }
+}

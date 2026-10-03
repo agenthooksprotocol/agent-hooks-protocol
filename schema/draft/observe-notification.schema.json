@@ -3,25 +3,129 @@
   "$id": "https://agenthooksprotocol.org/schemas/draft/observe-notification.schema.json",
   "title": "AHP hooks/observe Notification (Draft)",
   "$comment": "Mutable AHP draft. Observation is a JSON-RPC notification and therefore has no id.",
-  "x-requirements": ["AHP-RPC-001", "AHP-RPC-002", "AHP-VER-001"],
+  "x-requirements": [
+    "AHP-RPC-001",
+    "AHP-RPC-002",
+    "AHP-VER-001"
+  ],
   "allOf": [
-    {"$ref": "common.schema.json#/$defs/notification"},
+    {
+      "$ref": "common.schema.json#/$defs/notification"
+    },
     {
       "type": "object",
       "properties": {
-        "method": {"const": "hooks/observe"},
+        "method": {
+          "const": "hooks/observe"
+        },
         "params": {
           "type": "object",
-          "required": ["protocolVersion", "event"],
+          "required": [
+            "protocolVersion",
+            "event"
+          ],
           "properties": {
-            "protocolVersion": {"$ref": "common.schema.json#/$defs/protocolVersion"},
+            "protocolVersion": {
+              "$ref": "common.schema.json#/$defs/protocolVersion"
+            },
             "event": {
               "oneOf": [
-                {"$ref": "tool-before.schema.json"},
-                {"$ref": "tool-after.schema.json"},
-                {"$ref": "tool-error.schema.json"},
-                {"$ref": "session-start.schema.json"},
-                {"$ref": "session-end.schema.json"}
+                {
+                  "$ref": "tool-before.schema.json"
+                },
+                {
+                  "$ref": "tool-after.schema.json"
+                },
+                {
+                  "$ref": "session-start.schema.json"
+                },
+                {
+                  "$ref": "session-end.schema.json"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/config.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/config.change.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.start"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.finish.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.end"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/turn.progress"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.request.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.response.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.error"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.switch.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/model.switch.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.permission.request"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.permission.resolved"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.progress"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/tool.batch.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/context.compact.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/context.compact.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/task.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/task.change.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.attention"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.elicitation.request"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.elicitation.result"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.message.inbound"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/user.message.outbound"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/workspace.change.before"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/workspace.change.after"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/file.changed"
+                },
+                {
+                  "$ref": "catalogue-event.schema.json#/$defs/hook.failure"
+                }
               ]
             }
           }

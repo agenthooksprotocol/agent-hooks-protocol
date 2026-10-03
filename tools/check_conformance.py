@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import hashlib
+import ipaddress
+import math
 import json
 import os
 import re
@@ -12,7 +15,7 @@ import stat
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import unquote, urlparse
@@ -192,9 +195,74 @@ def type_matches(instance: Any, expected: str) -> bool:
         "object": isinstance(instance, dict),
         "array": isinstance(instance, list),
         "string": isinstance(instance, str),
-        "integer": isinstance(instance, int) and not isinstance(instance, bool),
+        "integer": (isinstance(instance, int) and not isinstance(instance, bool))
+        or (isinstance(instance, float) and math.isfinite(instance) and instance.is_integer()),
         "number": isinstance(instance, (int, float)) and not isinstance(instance, bool),
     }.get(expected, False)
+
+
+def valid_uri(value: str) -> bool:
+    """RFC 3986 absolute URI grammar, without network or scheme-specific policy."""
+    unreserved = r"[A-Za-z0-9._~-]"
+    pct = r"%[0-9A-Fa-f]{2}"
+    subdelim = r"[!$&'()*+,;=]"
+    atom = rf"(?:{unreserved}|{pct}|{subdelim})"
+    pchar = rf"(?:{atom}|[:@])"
+    # IPv6 and IPvFuture literals are checked separately after the generic grammar.
+    host = rf"(?:{atom}*|\[[A-Za-z0-9:._~!$&'()*+,;=-]+\])"
+    authority = rf"(?:{atom}|:)*@{host}(?::[0-9]*)?|{host}(?::[0-9]*)?"
+    path_abempty = rf"(?:/{pchar}*)*"
+    path_absolute = rf"/(?:{pchar}+(?:/{pchar}*)*)?"
+    path_rootless = rf"{pchar}+(?:/{pchar}*)*"
+    query = rf"(?:{pchar}|[/?])*"
+    pattern = rf"[A-Za-z][A-Za-z0-9+.-]*:(?://(?:{authority}){path_abempty}|{path_absolute}|{path_rootless}|)(?:\?{query})?(?:#{query})?"
+    if re.fullmatch(pattern, value) is None:
+        return False
+    # Only authority brackets denote IP literals; square brackets cannot occur in
+    # unescaped paths under the grammar above. Do not impose HTTP port ranges on URI.
+    remainder = value.split(":", 1)[1]
+    if remainder.startswith("//"):
+        authority_text = re.split(r"[/?#]", remainder[2:], maxsplit=1)[0]
+        hostname = authority_text.rsplit("@", 1)[-1]
+        if hostname.startswith("["):
+            literal = hostname[1:hostname.index("]")]
+            if re.fullmatch(r"[vV][0-9A-Fa-f]+\.[A-Za-z0-9._~!$&'()*+,;=:-]+", literal):
+                return True
+            try:
+                ipaddress.IPv6Address(literal)
+            except ValueError:
+                return False
+    return True
+
+
+def valid_datetime(value: str) -> bool:
+    """Validate RFC 3339 dates and potential leap seconds without an IERS table."""
+    if re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:(?:[0-5][0-9]|60)"
+        r"(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})", value
+    ) is None:
+        return False
+    try:
+        # fromisoformat tolerates offsets with overflowing minute components.
+        if value[-1] not in "Zz" and (int(value[-5:-3]) > 23 or int(value[-2:]) > 59):
+            return False
+        leap_second = value[17:19] == "60"
+        # Python cannot represent :60. Parse :59 to validate the surrounding
+        # calendar fields and find the corresponding UTC minute.
+        parseable = value[:17] + "59" + value[19:] if leap_second else value
+        # Fractions do not affect calendar/minute validation. Older Python
+        # parsers accept only certain precisions; RFC 3339 permits any length.
+        parseable = re.sub(r"\.[0-9]+", "", parseable)
+        parsed = datetime.fromisoformat(parseable.upper().replace("Z", "+00:00"))
+        if leap_second:
+            utc = parsed.astimezone(timezone.utc)
+            return (
+                utc.hour == 23 and utc.minute == 59
+                and utc.day == calendar.monthrange(utc.year, utc.month)[1]
+            )
+    except (ValueError, OverflowError):
+        return False
+    return True
 
 
 class SchemaStore:
@@ -347,15 +415,10 @@ class SubsetValidator:
                 errors.append(f"{at}: string is too long")
             if "pattern" in schema and re.search(schema["pattern"], instance) is None:
                 errors.append(f"{at}: string does not match pattern")
-            if schema.get("format") == "uri" and not urlparse(instance).scheme:
-                errors.append(f"{at}: string is not an absolute URI")
-            if schema.get("format") == "date-time":
-                try:
-                    parsed = datetime.fromisoformat(instance.replace("Z", "+00:00"))
-                    if parsed.tzinfo is None:
-                        raise ValueError("timezone required")
-                except ValueError:
-                    errors.append(f"{at}: string is not an RFC 3339 date-time")
+            if schema.get("format") == "uri" and not valid_uri(instance):
+                errors.append(f"{at}: string is not an absolute RFC 3986 URI")
+            if schema.get("format") == "date-time" and not valid_datetime(instance):
+                errors.append(f"{at}: string is not an RFC 3339 date-time")
 
         if isinstance(instance, (int, float)) and not isinstance(instance, bool):
             if "minimum" in schema and instance < schema["minimum"]:
@@ -369,13 +432,21 @@ class SubsetValidator:
 
 
 def iter_schema_nodes(node: Any):
+    """Visit schemas, not property-name maps or arbitrary annotation values."""
     if isinstance(node, dict):
         yield node
-        for value in node.values():
-            yield from iter_schema_nodes(value)
-    elif isinstance(node, list):
-        for value in node:
-            yield from iter_schema_nodes(value)
+        for keyword in ("properties", "patternProperties", "$defs", "dependentSchemas"):
+            mapping = node.get(keyword, {})
+            if isinstance(mapping, dict):
+                for value in mapping.values():
+                    yield from iter_schema_nodes(value)
+        for keyword in ("items", "additionalProperties", "unevaluatedProperties", "propertyNames", "contains", "not", "if", "then", "else"):
+            yield from iter_schema_nodes(node.get(keyword))
+        for keyword in ("allOf", "anyOf", "oneOf", "prefixItems"):
+            values = node.get(keyword, [])
+            if isinstance(values, list):
+                for value in values:
+                    yield from iter_schema_nodes(value)
 
 
 def snapshot_schema_files(snapshot: Snapshot) -> list[Path]:

@@ -10,7 +10,9 @@
       },
       "subscriptions": [
         {
-          "events": ["tool.after"],
+          "events": [
+            "turn.end"
+          ],
           "mode": "intercept",
           "timeoutMs": 500,
           "failurePolicy": "fail-closed"

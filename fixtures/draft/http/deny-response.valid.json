@@ -8,7 +8,11 @@
         "type": "deny",
         "reason": "Writes to this path require a separate approval.",
         "code": "com.example.policy.protected_path",
-        "extensions": {"com.example.policy": {"ruleId": "paths-17"}}
+        "extensions": {
+          "com.example.policy": {
+            "ruleId": "paths-17"
+          }
+        }
       }
     ]
   }

@@ -31,7 +31,7 @@ The Base Protocol is divided across:
 </tr>
 <tr>
 <td>**Subscription**</td>
-<td>An entry in a backend's registration that selects exact event names and a delivery mode, together with any mode-specific timeout and failure behavior.</td>
+<td>An entry in a backend's registration that selects event names (exactly or through supported wildcards) and a delivery mode, together with any mode-specific timeout and failure behavior.</td>
 </tr>
 <tr>
 <td>**Interceptor**</td>
@@ -100,8 +100,8 @@ Given a valid configuration containing one or more intercept subscriptions for `
 - Preserve event, session, and call identifiers across retries.
 - Stop tool execution after an explicit denial or fail-closed operational failure.
 - Continue to apply its own permissions, sandboxing, and approval flow if the chain completes without denial.
-The harness MUST send an event to a backend only when that backend's registration contains a subscription whose `events` array includes the exact event name and whose `mode` matches the delivery method. If no intercept subscription matches `tool.before`, AHP adds no decision step and the harness continues its normal authorization flow.
-To claim this profile as a backend, given a syntactically valid `hooks/intercept` request with protocol version `draft` and event type `tool.before`, an implementation MUST return either an empty effect list or one valid `deny` effect.
+The harness MUST send an event to a backend only when that backend's registration contains a subscription whose `events` array matches the event name exactly or through a supported wildcard and whose `mode` matches the delivery method, except for [short-circuit observations](../observation-disposition.md) to remaining uncalled intercept subscriptions. If no intercept subscription matches `tool.before`, AHP adds no decision step and the harness continues its normal authorization flow.
+To claim this profile as a backend, given a syntactically valid `hooks/intercept` request with protocol version `draft` and event type `tool.before`, an implementation MUST return a valid ordered effect list containing only effects advertised by the request; an empty list and `deny` are the minimum supported outcomes.
 ### Lifecycle Observation profile
 The Lifecycle Observation profile is OPTIONAL. A conforming implementation of this profile supports `hooks/observe` and one or more events defined in the [event model](events.md#event-model).
 Observation is non-blocking and best effort. It is intended for control-adjacent audit, compatibility, and correlation. It is not a replacement for OpenTelemetry or a durable event pipeline.
@@ -130,7 +130,7 @@ The project should publish JSON Schemas, fixtures, and a conformance runner. Tes
 ### Base Protocol tests
 Every conforming implementation test suite should verify, as applicable to its role:
 - Correct JSON-RPC envelope and version handling
-- Unknown object fields are ignored
+- Unknown configuration and envelope fields are ignored; recognized fields are validated and unknown effect fields reject the whole response
 - Unsupported versions, methods, and events produce defined errors
 - stdio framing and stdout discipline for the stdio binding
 - HTTP status and content-type handling for the HTTP binding

@@ -1,1 +1,11 @@
 /tools/sdk-codegen/target/
+
+# Local interoperability run reports
+/interop/*-results.json
+/interop/auth-test-report.json
+/interop/accepted-migrations-evidence.json
+/interop/final-integration-evidence.json
+
+# Python tooling caches
+__pycache__/
+*.py[cod]

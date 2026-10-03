@@ -1,0 +1,39 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "model.request.before",
+      "model": {
+        "id": "example",
+        "provider": "example"
+      },
+      "attempt": {
+        "id": "example",
+        "number": 1
+      },
+      "params": {},
+      "items": [
+        {
+          "id": "assistant",
+          "kind": "message",
+          "role": "assistant",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        },
+        {
+          "id": "reasoning",
+          "kind": "reasoning",
+          "parentItemId": "assistant",
+          "role": "assistant",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        }
+      ]
+    }
+  }
+}

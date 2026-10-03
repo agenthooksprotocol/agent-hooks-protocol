@@ -1,0 +1,24 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "tool.permission.request",
+      "tool": {
+        "name": "run",
+        "origin": "native",
+        "input": {}
+      },
+      "call": {
+        "id": "call1"
+      },
+      "path": "example",
+      "suggestions": [],
+      "sandboxBypass": false
+    }
+  }
+}

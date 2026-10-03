@@ -8,13 +8,75 @@
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
       "type": "session.start",
       "time": "2026-08-24T08:50:00Z",
-      "session": {"id": "sess_observe_123"},
+      "session": {
+        "id": "sess_observe_123"
+      },
       "tool": {
         "callId": "call_observe_000",
         "name": "unknown",
         "kind": "other",
         "input": {}
-      }
+      },
+      "trigger": "startup",
+      "harness": {
+        "name": "example",
+        "version": "example"
+      },
+      "permissionMode": "example",
+      "manifest": {
+        "events": [
+          {
+            "event": "task.change.after",
+            "modes": [
+              "observe"
+            ],
+            "capabilities": {
+              "effects": []
+            }
+          }
+        ],
+        "gaps": [
+          {
+            "path": "model.reasoning",
+            "reason": "not exposed"
+          }
+        ],
+        "transports": [
+          "http",
+          "stdio"
+        ],
+        "authentication": [
+          "bearer"
+        ],
+        "toolPaths": [
+          "native"
+        ],
+        "contentCategories": [
+          "text"
+        ],
+        "limits": {
+          "maxUploadBytes": 1048576,
+          "maxContinuations": 4,
+          "minTimeoutMs": 1,
+          "maxTimeoutMs": 30000
+        },
+        "managedPolicy": {
+          "scopes": [
+            "user"
+          ],
+          "disableable": true
+        },
+        "correlationIdentityFields": [
+          "id",
+          "source",
+          "parentEventId",
+          "session.id",
+          "turn.id",
+          "call.id",
+          "items.id"
+        ]
+      },
+      "items": []
     }
   }
 }

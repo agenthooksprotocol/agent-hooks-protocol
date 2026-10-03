@@ -1,0 +1,893 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/catalogue-event.schema.json",
+  "title": "AHP catalogue-event (Draft)",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/config.change.before"
+    },
+    {
+      "$ref": "#/$defs/config.change.after"
+    },
+    {
+      "$ref": "#/$defs/turn.start"
+    },
+    {
+      "$ref": "#/$defs/turn.finish.before"
+    },
+    {
+      "$ref": "#/$defs/turn.end"
+    },
+    {
+      "$ref": "#/$defs/turn.progress"
+    },
+    {
+      "$ref": "#/$defs/model.request.before"
+    },
+    {
+      "$ref": "#/$defs/model.response.after"
+    },
+    {
+      "$ref": "#/$defs/model.error"
+    },
+    {
+      "$ref": "#/$defs/model.switch.before"
+    },
+    {
+      "$ref": "#/$defs/model.switch.after"
+    },
+    {
+      "$ref": "#/$defs/tool.permission.request"
+    },
+    {
+      "$ref": "#/$defs/tool.permission.resolved"
+    },
+    {
+      "$ref": "#/$defs/tool.progress"
+    },
+    {
+      "$ref": "#/$defs/tool.batch.after"
+    },
+    {
+      "$ref": "#/$defs/context.compact.before"
+    },
+    {
+      "$ref": "#/$defs/context.compact.after"
+    },
+    {
+      "$ref": "#/$defs/task.change.before"
+    },
+    {
+      "$ref": "#/$defs/task.change.after"
+    },
+    {
+      "$ref": "#/$defs/user.attention"
+    },
+    {
+      "$ref": "#/$defs/user.elicitation.request"
+    },
+    {
+      "$ref": "#/$defs/user.elicitation.result"
+    },
+    {
+      "$ref": "#/$defs/user.message.inbound"
+    },
+    {
+      "$ref": "#/$defs/user.message.outbound"
+    },
+    {
+      "$ref": "#/$defs/workspace.change.before"
+    },
+    {
+      "$ref": "#/$defs/workspace.change.after"
+    },
+    {
+      "$ref": "#/$defs/file.changed"
+    },
+    {
+      "$ref": "#/$defs/hook.failure"
+    }
+  ],
+  "$comment": "Mutable AHP draft. Open event-specific payloads preserve native facts without inventing lifecycle success. Presence does not imply interception or coverage.",
+  "$defs": {
+    "config.change.before": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "config.change.before"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/config.change.before"
+        }
+      ]
+    },
+    "config.change.after": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "config.change.after"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/config.change.after"
+        }
+      ]
+    },
+    "turn.start": {
+      "$ref": "execution-event.schema.json#/$defs/turn.start"
+    },
+    "turn.finish.before": {
+      "$ref": "execution-event.schema.json#/$defs/turn.finish.before"
+    },
+    "turn.end": {
+      "$ref": "execution-event.schema.json#/$defs/turn.end"
+    },
+    "turn.progress": {
+      "$ref": "execution-event.schema.json#/$defs/turn.progress"
+    },
+    "model.request.before": {
+      "$ref": "execution-event.schema.json#/$defs/model.request.before"
+    },
+    "model.response.after": {
+      "$ref": "execution-event.schema.json#/$defs/model.response.after"
+    },
+    "model.error": {
+      "$ref": "execution-event.schema.json#/$defs/model.error"
+    },
+    "model.switch.before": {
+      "$ref": "execution-event.schema.json#/$defs/model.switch.before"
+    },
+    "model.switch.after": {
+      "$ref": "execution-event.schema.json#/$defs/model.switch.after"
+    },
+    "tool.permission.request": {
+      "$ref": "execution-event.schema.json#/$defs/tool.permission.request"
+    },
+    "tool.permission.resolved": {
+      "$ref": "execution-event.schema.json#/$defs/tool.permission.resolved"
+    },
+    "tool.progress": {
+      "$ref": "execution-event.schema.json#/$defs/tool.progress"
+    },
+    "tool.batch.after": {
+      "$ref": "execution-event.schema.json#/$defs/tool.batch.after"
+    },
+    "context.compact.before": {
+      "$ref": "execution-event.schema.json#/$defs/context.compact.before"
+    },
+    "context.compact.after": {
+      "$ref": "execution-event.schema.json#/$defs/context.compact.after"
+    },
+    "task.change.before": {
+      "$ref": "task-workspace-event.schema.json#/$defs/task.change.before"
+    },
+    "task.change.after": {
+      "$ref": "task-workspace-event.schema.json#/$defs/task.change.after"
+    },
+    "user.attention": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "user.attention"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/user.attention"
+        }
+      ]
+    },
+    "user.elicitation.request": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "user.elicitation.request"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/user.elicitation.request"
+        }
+      ]
+    },
+    "user.elicitation.result": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "user.elicitation.result"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/user.elicitation.result"
+        }
+      ]
+    },
+    "user.message.inbound": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "user.message.inbound"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/user.message.inbound"
+        }
+      ]
+    },
+    "user.message.outbound": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "parentEventId": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "user.message.outbound"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/user.message.outbound"
+        }
+      ]
+    },
+    "workspace.change.before": {
+      "$ref": "task-workspace-event.schema.json#/$defs/workspace.change.before"
+    },
+    "workspace.change.after": {
+      "$ref": "task-workspace-event.schema.json#/$defs/workspace.change.after"
+    },
+    "file.changed": {
+      "$ref": "task-workspace-event.schema.json#/$defs/file.changed"
+    },
+    "hook.failure": {
+      "allOf": [
+        {
+          "type": "object",
+          "required": [
+            "id",
+            "source",
+            "time",
+            "type"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "source": {
+              "type": "string",
+              "format": "uri"
+            },
+            "time": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "session": {
+              "$ref": "common.schema.json#/$defs/session"
+            },
+            "turn": {
+              "type": "object",
+              "required": [
+                "id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "synthesized": {
+                  "type": "boolean",
+                  "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              }
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "reason"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "native": {
+              "$ref": "common.schema.json#/$defs/native"
+            },
+            "extensions": {
+              "$ref": "extensions.schema.json"
+            },
+            "type": {
+              "const": "hook.failure"
+            },
+            "synthesized": {
+              "type": "boolean",
+              "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+            }
+          }
+        },
+        {
+          "$ref": "interaction-event.schema.json#/$defs/hook.failure"
+        }
+      ]
+    }
+  }
+}

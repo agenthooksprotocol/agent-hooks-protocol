@@ -3,7 +3,7 @@
 ## Common message envelope
 ### Intercept request
 ```json
-               {
+{
   "jsonrpc": "2.0",
   "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
   "method": "hooks/intercept",
@@ -17,24 +17,35 @@
       "session": {
         "id": "sess_123",
         "cwd": "/repo",
-        "workspaceRoots": ["/repo"]
+        "workspaceRoots": [
+          "/repo"
+        ]
       },
       "tool": {
-        "callId": "call_456",
         "name": "Bash",
         "kind": "shell",
         "input": {
           "command": "git push --force"
-        }
-      }
+        },
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_456"
+      },
+      "path": "native"
     },
     "capabilities": {
-      "effects": ["deny"]
+      "effects": [
+        "deny"
+      ]
     }
   }
 }
 ```
-The JSON-RPC request `id` MUST equal `params.event.id`. A retry of the same event MUST reuse both values.
+Subscriptions are harness-local configuration and are not transmitted as wire
+identity. JSON-RPC request IDs correlate responses with pending requests; they
+are not authorization claims. The JSON-RPC request `id` MUST equal
+`params.event.id`. A retry of the same event MUST reuse both values.
 ### Intercept response with no effect
 ```json
 {
@@ -80,17 +91,21 @@ An empty effect list means only that this interceptor requests no change. It doe
         "id": "sess_123"
       },
       "tool": {
-        "callId": "call_456",
         "name": "Bash",
         "kind": "shell",
         "input": {
           "command": "git status"
         },
-        "output": {
-          "exitCode": 0,
-          "stdout": "On branch main\n",
-          "stderr": ""
-        }
+        "origin": "native"
+      },
+      "call": {
+        "id": "call_789"
+      },
+      "path": "native",
+      "items": [],
+      "outcome": "ok",
+      "execution": {
+        "status": "executed"
       }
     }
   }
@@ -133,8 +148,8 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 <tr>
 <td>`session`</td>
 <td>object</td>
-<td>REQUIRED</td>
-<td>Session identity and optional execution context.</td>
+<td>Event-specific</td>
+<td>Session identity and optional execution context; required by session events.</td>
 </tr>
 <tr>
 <td>`tool`</td>
@@ -198,70 +213,28 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 </table>
 Paths and model identifiers may be sensitive. A harness MUST permit implementations or administrators to omit optional session fields.
 If present, `agent` has a required `id` and an optional provider-defined `type`.
-### Tool object
-<table>
-<tr>
-<td>Field</td>
-<td>Type</td>
-<td>Requirement</td>
-<td>Semantics</td>
-</tr>
-<tr>
-<td>`callId`</td>
-<td>string</td>
-<td>REQUIRED</td>
-<td>Stable identifier for this invocation within the session.</td>
-</tr>
-<tr>
-<td>`name`</td>
-<td>string</td>
-<td>REQUIRED</td>
-<td>Tool name as exposed by the harness, preserved verbatim.</td>
-</tr>
-<tr>
-<td>`kind`</td>
-<td>string</td>
-<td>REQUIRED</td>
-<td>Coarse portable classification defined below.</td>
-</tr>
-<tr>
-<td>`input`</td>
-<td>object</td>
-<td>`tool.before`, `tool.after`, `tool.error`</td>
-<td>Parsed tool input. MUST be a JSON object.</td>
-</tr>
-<tr>
-<td>`output`</td>
-<td>any JSON value</td>
-<td>`tool.after` only</td>
-<td>Successful tool output, subject to redaction and size limits.</td>
-</tr>
-<tr>
-<td>`error`</td>
-<td>object</td>
-<td>`tool.error` only</td>
-<td>Tool failure information.</td>
-</tr>
-<tr>
-<td>`mcp`</td>
-<td>object</td>
-<td>OPTIONAL</td>
-<td>MCP server and tool identity when known.</td>
-</tr>
-</table>
-`callId` MUST remain identical across the `tool.before`, `tool.after`, and `tool.error` events for one tool invocation. If a native harness does not supply an ID, an adapter MUST synthesize a stable ID. A deterministic hash of session identity, turn identity, tool name, and input is one acceptable strategy.
-This protocol revision defines these `kind` values:
-- `shell`
-- `file_read`
-- `file_write`
-- `file_edit`
-- `search`
-- `fetch`
-- `task`
-- `mcp`
-- `other`
-`kind` is deliberately coarse. It supports portable broad policy, such as denying all shell execution, without claiming that arbitrary tool input schemas are portable. `name` and `input` retain the harness representation. A future tool-projection profile may standardize selected inputs, but that work is out of scope here.
-If present, `mcp` MAY contain `server`, `tool`, and transport metadata. Only `server` and `tool` are candidates for future portable semantics; transport metadata is informational.
+### Tool invocation and completion
+
+Tool events use `call: {"id": "…"}` for invocation identity, separate from the
+`tool` descriptor. The call identity stays stable across the invocation's
+boundaries; adapters synthesize stable identity when native identity is absent.
+Identical tool names and inputs alone do not distinguish repeated invocations.
+`path` identifies the covered tool path.
+
+The `tool` object requires `name` (preserved verbatim), parsed object `input`, and
+`origin` (`native` or `mcp`). `kind` is an optional behavioral classification.
+MCP origin requires a self-contained `mcp` descriptor; native origin forbids it.
+See [Execution payloads](../execution-payloads.md) for MCP connection metadata,
+explicit gaps, and credential restrictions.
+
+`tool.after` requires `outcome`, `execution`, and `items`, in addition to `call`,
+`tool`, and `path`. Result content uses content items rather than `tool.output`.
+Failures use event-level `error` with required `class` and `message` when
+`outcome` is `error`; there is no standard `tool.error` event. Other outcomes
+forbid `error`. Denial uses `outcome: "denied"` and skipped/policy execution.
+See [Execution payloads](../execution-payloads.md) for the complete event-specific
+requirements and [Content uploads](../content-upload.md) for selected bodies.
+
 ### Native payload
 The optional `native` object has this shape:
 ```json

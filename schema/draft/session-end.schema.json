@@ -3,18 +3,119 @@
   "$id": "https://agenthooksprotocol.org/schemas/draft/session-end.schema.json",
   "title": "AHP session.end Event (Draft)",
   "$comment": "Mutable AHP draft. Tool fields apply only to tool events.",
-  "x-requirements": ["AHP-CORE-003", "AHP-CORE-004"],
+  "x-requirements": [
+    "AHP-CORE-003",
+    "AHP-CORE-004"
+  ],
   "type": "object",
-  "required": ["id", "source", "type", "time", "session"],
+  "required": [
+    "id",
+    "source",
+    "type",
+    "time",
+    "session",
+    "outcome",
+    "reason"
+  ],
   "properties": {
-    "id": {"type": "string", "minLength": 1},
-    "source": {"type": "string", "format": "uri"},
-    "type": {"const": "session.end"},
-    "time": {"type": "string", "format": "date-time"},
-    "session": {"$ref": "common.schema.json#/$defs/session"},
-    "outcome": {"enum": ["completed", "cancelled", "error", "unknown"]},
-    "native": {"$ref": "common.schema.json#/$defs/native"},
-    "extensions": {"$ref": "extensions.schema.json"}
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source": {
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "const": "session.end"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session": {
+      "$ref": "common.schema.json#/$defs/session"
+    },
+    "outcome": {
+      "enum": [
+        "completed",
+        "cancelled",
+        "error",
+        "unknown"
+      ]
+    },
+    "native": {
+      "$ref": "common.schema.json#/$defs/native"
+    },
+    "extensions": {
+      "$ref": "extensions.schema.json"
+    },
+    "parentEventId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional event ID scoped to this event source; acyclic known parent, never a call ID."
+    },
+    "turn": {
+      "type": "object",
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthesized": {
+          "type": "boolean",
+          "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "content-item.schema.json"
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "reason"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "counters": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "synthesized": {
+      "type": "boolean",
+      "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+    }
   },
-  "not": {"required": ["tool"]}
+  "not": {
+    "required": [
+      "tool"
+    ]
+  }
 }

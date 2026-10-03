@@ -1,0 +1,393 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/interaction-event.schema.json",
+  "title": "Interaction and configuration payload overlays (Draft)",
+  "$comment": "Mutable AHP draft. Compose each named definition with its canonical catalogue envelope. Nested protocol payloads are closed; envelope closure belongs to the catalogue. See spec/draft/interaction-payloads.md.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/config.change.before"
+    },
+    {
+      "$ref": "#/$defs/config.change.after"
+    },
+    {
+      "$ref": "#/$defs/user.attention"
+    },
+    {
+      "$ref": "#/$defs/user.elicitation.request"
+    },
+    {
+      "$ref": "#/$defs/user.elicitation.result"
+    },
+    {
+      "$ref": "#/$defs/user.message.inbound"
+    },
+    {
+      "$ref": "#/$defs/user.message.outbound"
+    },
+    {
+      "$ref": "#/$defs/hook.failure"
+    }
+  ],
+  "$defs": {
+    "config.change.before": {
+      "type": "object",
+      "required": [
+        "type",
+        "change"
+      ],
+      "properties": {
+        "type": {
+          "const": "config.change.before"
+        },
+        "change": {
+          "type": "object",
+          "required": [
+            "source",
+            "scope",
+            "settings",
+            "summary"
+          ],
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1
+            },
+            "settings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "config.change.after": {
+      "type": "object",
+      "required": [
+        "type",
+        "change"
+      ],
+      "properties": {
+        "type": {
+          "const": "config.change.after"
+        },
+        "change": {
+          "type": "object",
+          "required": [
+            "source",
+            "scope",
+            "settings",
+            "summary"
+          ],
+          "properties": {
+            "source": {
+              "type": "string",
+              "minLength": 1
+            },
+            "scope": {
+              "type": "string",
+              "minLength": 1
+            },
+            "settings": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "summary": {
+              "type": "string",
+              "minLength": 1
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mcpServers": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "Optional native discovery descriptors, open by design; not tool invocation identity."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "user.attention": {
+      "type": "object",
+      "required": [
+        "type",
+        "attention"
+      ],
+      "properties": {
+        "type": {
+          "const": "user.attention"
+        },
+        "attention": {
+          "type": "object",
+          "required": [
+            "kind",
+            "message",
+            "title"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              },
+              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+            },
+            "title": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              },
+              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "user.elicitation.request": {
+      "type": "object",
+      "required": [
+        "type",
+        "elicitation"
+      ],
+      "properties": {
+        "type": {
+          "const": "user.elicitation.request"
+        },
+        "elicitation": {
+          "type": "object",
+          "required": [
+            "server",
+            "mode"
+          ],
+          "properties": {
+            "server": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mode": {
+              "enum": [
+                "form",
+                "url"
+              ]
+            },
+            "request": {
+              "description": "Optional singular selection-aware descriptor. Omit when not selected; metadata/omit descriptors contain no body. Selected body bytes are complete unchanged MCP elicitation/create params JSON, validated against mcp-elicitation.schema.json#/$defs/request. Missing requested bytes use an explicit content gap, never inline content.",
+              "allOf": [
+                {
+                  "$ref": "content-item.schema.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mediaType": {
+                      "const": "application/json"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "user.elicitation.result": {
+      "type": "object",
+      "required": [
+        "type",
+        "elicitation"
+      ],
+      "properties": {
+        "type": {
+          "const": "user.elicitation.result"
+        },
+        "elicitation": {
+          "type": "object",
+          "required": [
+            "server",
+            "mode",
+            "action"
+          ],
+          "properties": {
+            "server": {
+              "type": "string",
+              "minLength": 1
+            },
+            "mode": {
+              "enum": [
+                "form",
+                "url"
+              ]
+            },
+            "result": {
+              "description": "Optional singular selection-aware descriptor. Omit when not selected; metadata/omit descriptors contain no body. Selected body bytes are complete unchanged MCP ElicitResult JSON, validated against mcp-elicitation.schema.json#/$defs/result. Missing requested bytes use an explicit content gap, never inline content.",
+              "allOf": [
+                {
+                  "$ref": "content-item.schema.json"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "mediaType": {
+                      "const": "application/json"
+                    }
+                  }
+                }
+              ]
+            },
+            "action": {
+              "enum": [
+                "accept",
+                "decline",
+                "cancel"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "user.message.inbound": {
+      "type": "object",
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "user.message.inbound"
+        },
+        "message": {
+          "type": "object",
+          "required": [
+            "channel",
+            "sender",
+            "text"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sender": {
+              "type": "string",
+              "minLength": 1
+            },
+            "text": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              },
+              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "user.message.outbound": {
+      "type": "object",
+      "required": [
+        "type",
+        "message"
+      ],
+      "properties": {
+        "type": {
+          "const": "user.message.outbound"
+        },
+        "message": {
+          "type": "object",
+          "required": [
+            "channel",
+            "payload"
+          ],
+          "properties": {
+            "channel": {
+              "type": "string",
+              "minLength": 1
+            },
+            "payload": {
+              "type": "array",
+              "items": {
+                "$ref": "content-item.schema.json"
+              },
+              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+            }
+          },
+          "additionalProperties": false
+        }
+      }
+    },
+    "hook.failure": {
+      "type": "object",
+      "required": [
+        "type",
+        "failure",
+        "parentEventId"
+      ],
+      "properties": {
+        "type": {
+          "const": "hook.failure"
+        },
+        "failure": {
+          "type": "object",
+          "required": [
+            "backendId",
+            "reason",
+            "policy"
+          ],
+          "properties": {
+            "backendId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "policy": {
+              "enum": [
+                "fail-open",
+                "fail-closed"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "parentEventId": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "protocolVersion": "draft",
+    "effects": [
+      {
+        "type": "flow",
+        "operation": "continue",
+        "instruction": "Check tests."
+      },
+      {
+        "type": "inject",
+        "target": "context",
+        "operation": "append",
+        "deliverAt": "next_turn",
+        "value": "test feedback"
+      },
+      {
+        "type": "flow",
+        "operation": "stop",
+        "reason": "Budget reached."
+      }
+    ]
+  }
+}

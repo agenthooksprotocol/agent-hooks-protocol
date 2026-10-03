@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "discovery",
+  "method": "hooks/capabilities",
+  "params": {
+    "protocolVersion": "draft"
+  }
+}

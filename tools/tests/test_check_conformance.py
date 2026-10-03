@@ -16,6 +16,45 @@ import check_conformance as checker
 import freeze_snapshot
 
 
+class DatetimeValidationTests(unittest.TestCase):
+    def test_accepts_rfc3339_leap_seconds_and_offset_equivalents(self):
+        for value in (
+            "1990-12-31T23:59:60Z",
+            "1990-12-31T15:59:60-08:00",
+            "2017-01-01T00:59:60+01:00",
+            "2016-12-31t23:59:60.123456789z",
+            "2016-12-31T23:59:60-00:00",
+            # Validate potential placement rather than an historical event list.
+            "2030-04-30T23:59:60Z",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(checker.valid_datetime(value))
+
+    def test_rejects_invalid_dates_offsets_and_leap_second_positions(self):
+        for value in (
+            "2016-12-31T23:59:61Z",
+            "2016-12-31T22:59:60Z",
+            "2016-12-30T23:59:60Z",
+            "2016-12-31T23:58:60Z",
+            "2017-01-01T00:59:60Z",
+            "2016-02-30T23:59:60Z",
+            "2016-12-31T24:00:00Z",
+            "2016-12-31T23:59:60+00:60",
+            "2016-12-31T23:59:60+24:00",
+            "2016-12-31 23:59:60Z",
+            "2016-12-31T23:59:60",
+            "0001-01-01T00:59:60+01:00",
+        ):
+            with self.subTest(value=value):
+                self.assertFalse(checker.valid_datetime(value))
+
+    def test_preserves_ordinary_timestamp_validation(self):
+        for value in ("2024-02-29T12:34:56Z", "2024-01-01t00:00:00.5+05:30"):
+            with self.subTest(value=value):
+                self.assertTrue(checker.valid_datetime(value))
+        self.assertFalse(checker.valid_datetime("2023-02-29T12:34:56Z"))
+
+
 class SnapshotCheckerTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary_directory = tempfile.TemporaryDirectory()
@@ -33,6 +72,10 @@ class SnapshotCheckerTests(unittest.TestCase):
             destination = self.root / name
             if source.is_dir():
                 shutil.copytree(source, destination)
+        # Include linked harness documentation without copying generated reports.
+        (self.root / "interop").mkdir()
+        for source in (REPOSITORY_ROOT / "interop").glob("*.md"):
+            shutil.copy2(source, self.root / "interop" / source.name)
         for source in REPOSITORY_ROOT.glob("*.md"):
             shutil.copy2(source, self.root / source.name)
         shutil.copy2(REPOSITORY_ROOT / "LICENSE", self.root / "LICENSE")
@@ -60,7 +103,7 @@ class SnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual([], result.errors)
         self.assertEqual(
-            (16, 31, 22, 5),
+            (28, 105, 22, 5),
             (
                 result.schema_count,
                 result.fixture_count,
@@ -83,16 +126,17 @@ class SnapshotCheckerTests(unittest.TestCase):
         )
         self.assertEqual(
             "A harness sends an event to a backend only when that backend has "
-            "a subscription whose `events` array includes the exact event name "
-            "and whose `mode` matches the delivery method.",
+            "a subscription whose `events` array matches the event name exactly or through a supported wildcard "
+            "and whose `mode` matches the delivery method, except for best-effort "
+            "observation of uncalled intercept subscriptions after short-circuit settlement.",
             by_id["AHP-REG-002"]["text"],
         )
 
         registration = self.read_json("schema/draft/registration.schema.json")
         intercept_subscription = registration["$defs"]["interceptSubscription"]
-        self.assertEqual(
+        self.assertIn(
             "tool.before",
-            intercept_subscription["properties"]["events"]["items"]["const"],
+            intercept_subscription["properties"]["events"]["items"]["anyOf"][0]["enum"],
         )
         self.assertEqual(
             "intercept",
@@ -102,10 +146,8 @@ class SnapshotCheckerTests(unittest.TestCase):
         params = request["allOf"][1]["properties"]["params"]
         self.assertIn("capabilities", params["required"])
         self.assertEqual(
-            "deny",
-            params["properties"]["capabilities"]["allOf"][1]["properties"][
-                "effects"
-            ]["contains"]["const"],
+            "capabilities.schema.json",
+            params["properties"]["capabilities"]["allOf"][0]["$ref"],
         )
 
         fixture_manifest = self.read_json("fixtures/draft/manifest.json")
@@ -185,6 +227,32 @@ class SnapshotCheckerTests(unittest.TestCase):
         self.assertEqual([], validator.validate(fixture, aggregate, aggregate_path))
         fixture["params"]["protocolVersion"] = "1.2.3"
         self.assertNotEqual([], validator.validate(fixture, aggregate, aggregate_path))
+
+    def test_full_draft_catalogue_and_compound_effects(self) -> None:
+        snapshot = checker.Snapshot.resolve(self.root)
+        store = checker.SchemaStore(snapshot)
+        validator = checker.SubsetValidator(store)
+        path = snapshot.schema_dir / "schema.json"
+        schema = store.load(path)
+        response = {"jsonrpc": "2.0", "id": "request-1", "result": {
+            "protocolVersion": "draft", "effects": [
+                {"type": "allow"}, {"type": "ask"},
+                {"type": "modify", "target": "input", "operation": "merge", "value": {"nested": None}},
+                {"type": "message", "text": "hello"}, {"type": "return", "value": None},
+                {"type": "deny", "reason": "policy"}]}}
+        self.assertEqual([], validator.validate(response, schema, path))
+        for invalid in ({"type": "unknown"}, {"type": "deny", "reason": ""},
+                        {"type": "modify", "target": "unknown", "operation": "merge", "value": {}}):
+            response["result"]["effects"].append(invalid)
+            self.assertNotEqual([], validator.validate(response, schema, path))
+            response["result"]["effects"].pop()
+        del response["result"]["protocolVersion"]
+        self.assertNotEqual([], validator.validate(response, schema, path))
+        manifest = self.read_json("schema/draft/manifest.json")
+        names = set(manifest["sdkGeneration"]["stableNames"].values())
+        self.assertTrue({"Registration", "SessionStartEvent", "SessionEndEvent", "ToolBeforeEvent",
+                         "ToolAfterEvent", "CatalogueEvent", "ObserveNotification", "JsonRpcMessage",
+                         "Effect", "InterceptResponse"}.issubset(names))
 
     def test_rejects_protocol_version_constant_different_from_snapshot(self) -> None:
         common = self.read_json("schema/draft/common.schema.json")
@@ -362,6 +430,30 @@ class SnapshotCheckerTests(unittest.TestCase):
             if path.name != "manifest.json":
                 self.assertNotIn('"draft"', path.read_text(encoding="utf-8"))
 
+    def test_release_freeze_preserves_editorial_prose(self) -> None:
+        index = self.root / "spec/draft/index.md"
+        text = index.read_text(encoding="utf-8")
+        intro = "Editorial introduction independent of release metadata."
+        paragraphs = text.split("\n\n")
+        paragraphs[2] = intro
+        index.write_text("\n\n".join(paragraphs), encoding="utf-8")
+        changelog = self.root / "spec/draft/changelog.md"
+        changelog_text = "# Changelog\n\nRelease notes maintained by editors.\n"
+        changelog.write_text(changelog_text, encoding="utf-8")
+
+        version = "2026-08-27"
+        freeze_snapshot.freeze_snapshot(self.root, version)
+
+        published = (self.root / f"spec/{version}/index.md").read_text()
+        self.assertIn(intro, published)
+        self.assertIn(f"**Status:** Published Protocol (`{version}`)", published)
+        self.assertIn(f"**Protocol version:** `{version}`", published)
+        self.assertEqual(
+            changelog_text,
+            (self.root / f"spec/{version}/changelog.md").read_text(),
+        )
+        self.assertEqual([], checker.run_checks(self.root, version).errors)
+
     def test_release_freeze_rejects_invalid_date_and_existing_destination(self) -> None:
         with self.assertRaisesRegex(
             freeze_snapshot.FreezeFailure,
@@ -519,6 +611,11 @@ class AllSnapshotsCheckerTests(unittest.TestCase):
             ("2024-11-05", "2026-08-27"),
             checker.discover_frozen_snapshots(self.root),
         )
+
+    def test_candidate_schema_is_not_a_second_active_draft(self) -> None:
+        (self.root / "schema" / "v1-candidate").mkdir(exist_ok=True)
+        with self.assertRaisesRegex(checker.FrozenSnapshotFailure, "valid YYYY-MM-DD"):
+            checker.discover_frozen_snapshots(self.root)
 
     def test_rejects_non_date_and_impossible_date_snapshot_directories(self) -> None:
         invalid_names = (

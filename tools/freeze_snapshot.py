@@ -77,6 +77,11 @@ def retarget_spec(staging: Path, version: str) -> None:
         text = text.replace(
             "protocol version `draft`", f"protocol version `{version}`"
         )
+        # Cross-tree links must point at the same frozen snapshot.
+        for root_name in SNAPSHOT_ROOTS:
+            text = text.replace(
+                f"../../{root_name}/draft/", f"../../{root_name}/{version}/"
+            )
         if path == spec_dir / "index.md":
             text = replace_required(
                 text,
@@ -86,36 +91,8 @@ def retarget_spec(staging: Path, version: str) -> None:
             )
             text = replace_required(
                 text,
-                "**Canonical draft:** This document",
-                "**Canonical version:** This document",
-                path,
-            )
-            text = replace_required(
-                text,
-                "This is the canonical, language-neutral Working Draft specification. "
-                "It is not a final standard and must not be represented as stable.",
-                "This is the canonical, language-neutral published protocol "
-                f"specification for version `{version}`.",
-                path,
-            )
-            text = replace_required(
-                text,
                 "**Protocol version:** `draft`",
                 f"**Protocol version:** `{version}`",
-                path,
-            )
-            text = replace_required(
-                text,
-                "This document is a Working Draft specification, not a final standard.",
-                "This document is the published AHP protocol specification for "
-                f"version `{version}`.",
-                path,
-            )
-        if path == spec_dir / "changelog.md":
-            text = replace_required(
-                text,
-                "No published snapshots exist yet.",
-                f"This changelog accompanies published protocol version `{version}`.",
                 path,
             )
         path.write_text(text, encoding="utf-8")

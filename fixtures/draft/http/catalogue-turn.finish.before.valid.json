@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "turn.finish.before",
+      "turn": {
+        "id": "turn1"
+      },
+      "outcome": "completed",
+      "continuationCount": 0,
+      "items": []
+    }
+  }
+}

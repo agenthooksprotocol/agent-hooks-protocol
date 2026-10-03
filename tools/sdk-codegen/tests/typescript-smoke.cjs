@@ -38,7 +38,7 @@ if (Object.prototype.hasOwnProperty.call(encoded.hooks[1].subscriptions[1], "inc
 const request = fixture("fixtures/draft/http/intercept-request.valid.json");
 result = sdk.parseJsonRpcMessage(request);
 if (!result.ok) throw new Error(`request envelope did not select exactly one branch: ${JSON.stringify(result.diagnostics)}`);
-request.params.event.tool.kind = "future_tool";
+request.params.event.tool.origin = "future_origin";
 result = sdk.parseInterceptRequest(request);
 if (!result.ok || !result.diagnostics.some((item) => item.code === "unknown_enum")) {
   throw new Error(`unknown enum value was not preserved: ${JSON.stringify(result.diagnostics)}`);
@@ -62,6 +62,29 @@ malformed.hooks[0].transport = { type: "http" };
 result = sdk.parseRegistration(malformed);
 if (result.ok || !result.diagnostics.some((item) => item.code === "invalid_known_variant")) {
   throw new Error("malformed known variant fell back instead of failing");
+}
+
+for (const entry of fixture("fixtures/draft/manifest.json").cases) {
+  if (!entry.expectedValid || !["http-json", "registration-json"].includes(entry.binding)) continue;
+  const original = fixture(entry.path);
+  const parsed = (entry.binding === "registration-json" ? sdk.parseRegistration : sdk.parseWireMessage)(original);
+  if (!parsed.ok) throw new Error(`canonical fixture ${entry.id}: ${JSON.stringify(parsed.diagnostics)}`);
+  const encoded = (entry.binding === "registration-json" ? sdk.encodeRegistration : sdk.encodeWireMessage)(parsed.value);
+  require("node:assert/strict").deepEqual(JSON.parse(encoded), original);
+}
+const supplied = fixture("fixtures/draft/http/model-response-intercept-supplied-stop.valid.json").params.event;
+require("node:assert/strict").deepEqual(supplied.execution, { status: "skipped", reason: "supplied_result" });
+const execution = sdk.parseExecutionEvent(supplied);
+if (!execution.ok) throw new Error(`supplied execution: ${JSON.stringify(execution.diagnostics)}`);
+require("node:assert/strict").deepEqual(JSON.parse(sdk.encodeExecutionEvent(execution.value)), supplied);
+delete supplied.execution.reason;
+if (sdk.parseExecutionEvent(supplied).ok) throw new Error("missing skipped reason selected another execution branch");
+supplied.execution.reason = null;
+if (sdk.parseExecutionEvent(supplied).ok) throw new Error("null skipped reason passed parsing");
+
+for (const transport of ["http", "stdio"]) {
+  const missing = fixture(`fixtures/draft/http/mcp-${transport}-location-missing.invalid.json`).params.event;
+  if (sdk.parseToolBeforeEvent(missing).ok) throw new Error(`required-only ${transport} location predicate was lost`);
 }
 
 console.log("generated TypeScript codec smoke tests passed");
