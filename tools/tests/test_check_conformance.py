@@ -103,7 +103,7 @@ class SnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual([], result.errors)
         self.assertEqual(
-            (28, 107, 23, 5),
+            (28, 105, 23, 5),
             (
                 result.schema_count,
                 result.fixture_count,

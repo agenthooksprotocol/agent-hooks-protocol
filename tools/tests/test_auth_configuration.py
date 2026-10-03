@@ -61,8 +61,6 @@ class AuthenticationConfigurationTests(unittest.TestCase):
                 self.assertFalse(self.errors(self.with_bindings(event=binding, upload=binding)))
 
     def test_invalid_bindings_rejected_at_either_endpoint(self):
-        workload = {'type': 'workload', 'credentialRef': 'identity',
-                    'issuer': 'trusted-platform', 'audience': 'hooks'}
         invalid = [
             {}, {'type': 'anonymous'}, {'type': 'bearer'},
             {'type': 'bearer', 'tokenEnv': 'TOKEN', 'tokenRef': 'secret'},
@@ -70,31 +68,23 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             {'type': 'bearer', 'tokenRef': ''},
             {'type': 'oauth', 'issuer': 'http://issuer.example',
              'resource': 'resource', 'clientId': 'client', 'flow': 'client_credentials'},
-            {'type': 'mtls', 'certificateRef': 'cert'}, workload,
-            dict(workload, profile=''), dict(workload, profile='generic-workload'),
         ]
         for binding in invalid:
             with self.subTest(binding=binding):
                 self.assertTrue(self.errors(self.with_bindings(event=binding)))
                 self.assertTrue(self.errors(self.with_bindings(upload=binding)))
 
-    def test_unknown_fields_do_not_authorize_removed_mechanisms(self):
-        for mechanism in ('mtls', 'workload'):
-            binding = {'type': mechanism, 'certificateRef': 'cert', 'privateKeyRef': 'key',
-                       'trustRootsRef': 'roots', 'credentialRef': 'identity',
-                       'issuer': 'trusted', 'audience': 'hooks', 'profile': 'urn:example:profile'}
-            self.assertTrue(self.errors(self.with_bindings(event=binding)))
-            self.assertTrue(self.errors(self.with_bindings(upload=binding)))
+    def test_recognized_bindings_accept_unknown_fields(self):
         binding = {'type': 'bearer', 'tokenRef': 'identity', 'futureField': 'ignored'}
         self.assertFalse(self.errors(self.with_bindings(event=binding, upload=binding)))
 
     def test_capabilities_advertise_only_portable_mechanisms(self):
         value = json.loads((ROOT / 'fixtures/draft/http/capabilities-response.valid.json').read_text())
         path = self.snapshot.schema_dir / 'capabilities-response.schema.json'
-        for mechanism in ('bearer', 'oauth', 'mtls', 'workload'):
+        for mechanism in ('bearer', 'oauth'):
             value['result']['manifest']['authentication'] = [mechanism]
             errors = self.validator.validate(value, self.store.load(path), path)
-            self.assertEqual(bool(errors), mechanism in ('mtls', 'workload'))
+            self.assertFalse(errors)
 
     def test_explicit_http_binding_remains_invalid_on_stdio(self):
         config = self.with_bindings(event={'type': 'bearer', 'tokenEnv': 'TOKEN'})

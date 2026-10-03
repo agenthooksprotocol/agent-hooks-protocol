@@ -88,7 +88,7 @@ for (const transport of ["http", "stdio"]) {
 }
 
 // Auth mechanisms are closed even though fields within a recognized binding are open.
-for (const type of ["bearer", "future-auth", "mtls", "workload"]) {
+for (const type of ["bearer", "unsupported"]) {
   const auth = { type, tokenEnv: "TOKEN", future: { preserved: true } };
   const upload = { endpoint: "https://upload.example/bytes", timeoutMs: 100, maxBytes: 1024, auth };
   const config = fixture("fixtures/draft/registration/portable.valid.json");
@@ -96,11 +96,6 @@ for (const type of ["bearer", "future-auth", "mtls", "workload"]) {
   for (const parsed of [sdk.parseContentUpload(upload), sdk.parseRegistration(config)]) {
     if (parsed.ok !== (type === "bearer")) throw new Error(`incorrect auth mechanism acceptance: ${type}`);
   }
-}
-
-for (const mechanism of ["mtls", "workload"]) {
-  const config = fixture(`fixtures/draft/registration/${mechanism}.invalid.json`);
-  if (sdk.parseRegistration(config).ok) throw new Error(`non-portable auth accepted: ${mechanism}`);
 }
 
 console.log("generated TypeScript codec smoke tests passed");

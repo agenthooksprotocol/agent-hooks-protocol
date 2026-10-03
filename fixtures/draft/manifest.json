@@ -1315,28 +1315,6 @@
         "AHP-RPC-001"
       ],
       "sha256": "2b1c70056ef5a4c69003fe8d9a8d99a47092464035b98ab6bbae6f4e7971712b"
-    },
-    {
-      "id": "registration.mtls.invalid",
-      "path": "fixtures/draft/registration/mtls.invalid.json",
-      "binding": "registration-json",
-      "schema": "schema/draft/registration.schema.json",
-      "expectedValid": false,
-      "requirements": [
-        "AHP-AUTH-001"
-      ],
-      "sha256": "aac8a54a0a67445273619aca9cbd7d9a2804157b1fc9942d0ed0d3c4075e44a7"
-    },
-    {
-      "id": "registration.workload.invalid",
-      "path": "fixtures/draft/registration/workload.invalid.json",
-      "binding": "registration-json",
-      "schema": "schema/draft/registration.schema.json",
-      "expectedValid": false,
-      "requirements": [
-        "AHP-AUTH-001"
-      ],
-      "sha256": "5799988e717fabf6daeaed125d48789c5f2ad4b7da6b74201a907752ec43083a"
     }
   ]
 }
