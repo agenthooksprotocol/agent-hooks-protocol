@@ -1,4 +1,8 @@
-"""TEST ONLY synthetic local trust; no production federation or credentials."""
+"""TEST ONLY deployment HTTP/TLS/credential-provider trust, not portable AHP auth.
+
+Workload assertions travel as HTTP bearer tokens; mTLS is out-of-band TLS.
+No production federation or credentials.
+"""
 import base64
 import hashlib
 import hmac

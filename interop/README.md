@@ -202,7 +202,13 @@ $PY "$I/compaction_wire_matrix.py"
 Use fresh reports for executed coverage; grid dimensions and checked-in artifacts
 are not independent proof of current conformance. Elicitation-specific wire tests
 cover HTTP bearer; compaction and observation chains cover HTTP/stdio. Separate
-core/lifecycle/catalogue/auth suites exercise configured authentication modes.
+core/lifecycle/catalogue/auth suites exercise configured deployment
+HTTP/TLS/credential-provider modes, not five portable AHP authentication
+mechanisms. Portable registration and capability authentication use bearer/OAuth;
+absent registration authentication permits discovery. Workload/federation
+tokens use bearer references; mTLS remains out-of-band TLS (with absent HTTP
+authentication for TLS-only deployments). The signed-token and real TLS
+security tests remain deployment coverage, not production federation proof.
 Tests use synthetic local trust and deterministic compaction, without an LLM or
 mutable network dependency. They do not prove production harness event occurrence,
 browser flow completion, production identity federation, or durable storage.

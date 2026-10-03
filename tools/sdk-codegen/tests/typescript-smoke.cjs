@@ -87,4 +87,15 @@ for (const transport of ["http", "stdio"]) {
   if (sdk.parseToolBeforeEvent(missing).ok) throw new Error(`required-only ${transport} location predicate was lost`);
 }
 
+// Auth mechanisms are closed even though fields within a recognized binding are open.
+for (const type of ["bearer", "unsupported"]) {
+  const auth = { type, tokenEnv: "TOKEN", future: { preserved: true } };
+  const upload = { endpoint: "https://upload.example/bytes", timeoutMs: 100, maxBytes: 1024, auth };
+  const config = fixture("fixtures/draft/registration/portable.valid.json");
+  config.hooks[0].authentication = auth;
+  for (const parsed of [sdk.parseContentUpload(upload), sdk.parseRegistration(config)]) {
+    if (parsed.ok !== (type === "bearer")) throw new Error(`incorrect auth mechanism acceptance: ${type}`);
+  }
+}
+
 console.log("generated TypeScript codec smoke tests passed");

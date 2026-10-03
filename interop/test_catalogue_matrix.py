@@ -9,7 +9,7 @@ from generate_scenarios import CAPS
 def evidence(scenarios):
     manifest={'events':[{'event':kind,'modes':['observe']} for kind in EXECUTION+LINEAGE],
               'gaps':[{'path':'events.hook.failure','reason':'Not supported by the synthetic test host'}],
-              'transports':['http','stdio'],'authentication':['bearer','oauth','mtls','workload'],
+              'transports':['http','stdio'],'authentication':['bearer','oauth'],
               'toolPaths':['native'],'contentCategories':[], 'limits':{},
               'managedPolicy':{'scopes':['user','project'],'disableable':True},
               'correlationIdentityFields':['event.id','event.source','call.id']}

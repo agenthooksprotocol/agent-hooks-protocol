@@ -244,6 +244,17 @@
       "profile": "base",
       "text": "AHP does not weaken host authorization, permissions, approval, or sandbox controls; successful no-effect processing only means no AHP denial occurred.",
       "textSha256": "6fc2a9742a1d78b50b624b304febc588f284dbb50f354d022fbfa6d1dfc9d745"
+    },
+    {
+      "id": "AHP-AUTH-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/capability-auth.md",
+      "anchor": "AHP-AUTH-001",
+      "section": "Deployment-specific authentication",
+      "profile": "http",
+      "text": "Portable endpoint authentication bindings MUST use `bearer` or `oauth`; workload identity, federation, and client-certificate configuration are deployment-specific, not portable AHP authentication variants.",
+      "textSha256": "0ad14ee3e6886ea960de0e7b904de853ce16cc257262197de6b09bc837b81b65"
     }
   ]
 }

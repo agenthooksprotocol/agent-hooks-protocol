@@ -73,13 +73,14 @@
     {
       "id": "http",
       "path": "conformance/draft/profiles/http-binding.md",
-      "sha256": "b2c6ea6ee9b5ed668ad72088fe0ecf557378211f16c3820fb850eb0824943462",
+      "sha256": "e534c02804b6cecdf6ba819835bd8255de0a0a4b3155241604e43582925228f2",
       "roles": [
         "harness",
         "backend"
       ],
       "requirements": [
-        "AHP-HTTP-001"
+        "AHP-HTTP-001",
+        "AHP-AUTH-001"
       ]
     }
   ]
