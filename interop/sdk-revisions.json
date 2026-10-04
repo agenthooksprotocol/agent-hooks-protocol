@@ -8,7 +8,7 @@
     },
     "typescript": {
       "repository": "agenthooksprotocol/typescript-sdk",
-      "revision": "ec1e2411390287a206d88031dee1dc355baf34d6",
+      "revision": "0030c53290a079f10769d61a7db2293f7d2b505e",
       "path": "typescript-sdk"
     },
     "go": {
