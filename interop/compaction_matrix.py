@@ -38,10 +38,10 @@ def stderr_tail(stream):
     return stream.read(1500).decode('utf-8', errors='replace')
 
 
-def commands():
+def commands(languages=LANGUAGES):
     return {'typescript': ['node', str(ROOT/'typescript-sdk/interop/compaction.mjs')],
             'python': [str(ROOT/'python-sdk/.venv/bin/python'), str(ROOT/'python-sdk/interop/compaction.py')],
-            'go': go_command('compaction'),
+            'go': go_command('compaction') if 'go' in languages else None,
             'rust': [str(ROOT/'rust-sdk/target/debug/compaction')]}
 
 
@@ -138,7 +138,7 @@ def check(row, response):
 
 def run_pair(pair):
     sender,receiver,transport=pair
-    cmd=commands(); rows=cases(); proc=None
+    cmd=commands(pair); rows=cases(); proc=None
     env=os.environ.copy();env['PYTHONPATH']=str(ROOT/'python-sdk/src');token=secrets.token_urlsafe(24);env['AHP_COMPACTION_TOKEN']=token
     stderr = tempfile.TemporaryFile()
     try:

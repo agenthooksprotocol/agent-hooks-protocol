@@ -13,3 +13,14 @@ The `auth.mode` values above are deployment test-control labels, not portable AH
 Deployment HTTP/TLS/credential-provider tests retain all five modes. HTTP bearer auth.token. OAuth auth.tokenEndpoint/clientId/clientSecret/audience acquires actual token from synthetic local issuer. mTLS auth.caFile/certFile/keyFile uses real TLS handshake. Workload auth.assertion is signed local JWT checked signature/issuer/audience/purpose/expiry using shared public test-only fixture. Unsupported auth explicitly unsupported, never passed. Stdio process trust only; HTTP auth combinations inapplicable. Endpoint auth and content authorization separate. Reject duplicate Authorization fields before dispatch. Disable redirects for credential-bearing requests and token acquisition: credentials must not transfer to another resource. Signed-token purposes use distinct test-only signing keys, issuer/audience/purpose validation, and a fixed fixture clock.
 
 Explicit control barriers, no sleeps for race ordering. Bounded wall-clock watchdogs and strict process cleanup. Capability discovery independent of session. Readiness uses the controller startup watchdog; do not charge process startup against the discovery response timeout. Keep credentials out of reports and logs. Adapters follow [canonical composition semantics](../spec/draft/base/composition.md); `draft-atomic.ts` provides application examples.
+
+The five synthetic `application-invalid` task-input negatives also declare
+`hostExpected`. They test the host's positive-integer task schema, not an AHP
+protocol constraint. An adapter that accepts the response in the SDK and validates
+in userland must report `sdkAccepted:true`, `hostAccepted:false`, and
+`rejectionLayer:"host-input-schema"`, with actual output exactly matching
+`hostExpected`: execution is refused, but the effective SDK input and messages
+remain. The verifier preserves these diagnostics; it must not invent an SDK
+rollback. Existing implementations that install an application validator inside
+the SDK transaction can still report genuine `actual:{rejected:true}`. This
+alternative never applies to protocol/capability/correlation negatives.

@@ -142,13 +142,27 @@ def verify(scenarios, report, receipts, language, exit_code):
         expected = scenario.get('expected', {'expectError': True})
         if scenario.get('expectError'):
             # A missing/null output is not evidence of fail-closed rejection.
-            passed = passed and equal(actual, {'rejected': True})
+            host_case = 'application-invalid' in scenario.get('tags', []) and 'hostExpected' in scenario
+            host_report = any(k in result for k in ('sdkAccepted', 'hostAccepted', 'rejectionLayer'))
+            if host_report:
+                # Tool business schemas belong to the host, not the protocol.
+                # Keep the SDK's effective event/messages, but prove no execution.
+                expected = scenario.get('hostExpected', expected)
+                passed = (passed and host_case and result.get('sdkAccepted') is True
+                          and result.get('hostAccepted') is False
+                          and result.get('rejectionLayer') == 'host-input-schema'
+                          and equal(actual, expected) and actual.get('executed') is False)
+            else:
+                # Foreign adapters may install an application validator in their
+                # SDK transaction. Their genuine atomic rejection remains valid.
+                passed = passed and equal(actual, {'rejected': True})
         else:
             passed = passed and isinstance(actual, dict) and all(k in actual and equal(v, actual[k]) for k, v in expected.items())
             if isinstance(actual,dict) and any(k in actual and k not in expected for k in OPTIONAL_SEMANTIC_FIELDS):
                 passed=False
         rows.append(dict(id=scenario['id'], expected=expected, actual=actual,
-                         status='passed' if passed else 'failed', adapterStatus=result.get('status', 'missing')))
+                         status='passed' if passed else 'failed', adapterStatus=result.get('status', 'missing'),
+                         **{k: result[k] for k in ('sdkAccepted', 'hostAccepted', 'rejectionLayer') if k in result}))
     invalidate(rows, errors)
     return rows, sorted(set(errors))
 

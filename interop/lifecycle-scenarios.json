@@ -585,7 +585,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "duplicate-reply-ignored",
@@ -708,7 +712,8 @@
         {
           "op": "send",
           "key": "a",
-          "slot": "duplicate"
+          "slot": "duplicate",
+          "bypassSDK": true
         },
         {
           "op": "wait",
@@ -1013,7 +1018,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "two-staged-reverse-acceptance",
@@ -1276,7 +1285,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "first-staged-response-wins",
@@ -1395,7 +1408,8 @@
         {
           "op": "send",
           "key": "a",
-          "slot": "duplicate"
+          "slot": "duplicate",
+          "bypassSDK": true
         },
         {
           "op": "wait",

@@ -53,6 +53,23 @@ Receiver-negative fixtures must send their malformed declared size/hash and
 record the actual receiver status; local validation errors and transport failures
 cannot satisfy receiver rejection assertions.
 
+Public-stream adapters can use client `contentSources`, a list of
+`{descriptor:{ref,size,sha256},bytes:<base64>}` retaining successful fixture
+preparation bytes. These are local sources, not authorization to publish a
+reference without an upload. Preliminary upload steps, including malformed and
+unauthorized probes, still produce their own receiver receipts.
+
+For each additional SDK-driven positive upload, include a top-level report
+`contentUploads` entry:
+`{sourceRef,descriptor:{ref,size,sha256},method,eventId}`. `method` is
+`hooks/intercept` or `hooks/observe`; `sourceRef` identifies the fixture alias or
+its preliminary receiver-confirmed reference. The runner binds the confirmation
+to the exact selected body in that delivery and an unclaimed successful receiver
+upload receipt before the delivery. Hash and size must match the original bytes.
+All remaining upload receipts must match the preliminary fixture steps, including
+negative statuses, in their original order. Unclaimed extras, unknown sources,
+ambiguous deliveries, and late uploads fail; actual receipts are never rewritten.
+
 ## Catalogue adapter extension
 
 Use `lifecycleClient`/`lifecycleServer` with `suite:"catalogue"`, authenticated real
@@ -76,3 +93,10 @@ These synthetic capabilities/trust inputs do not prove production policy
 provisioning or native harness occurrence of catalogue events.
 
 Scenario upload `ref` fields are local aliases. Adapters bind each alias to the receiver-returned reference and substitute it in subsequent event bodies before dispatch; aliases are never sent as upload headers. A local `subscription` label selects test configuration only, never wire identity or authorization.
+
+Only the second `send` in `duplicate-reply-ignored` and
+`first-staged-response-wins` carries `bypassSDK:true`. These are explicit adverse
+wire replays after the first response has been staged (or accepted), not normal
+SDK dispatches. A repeated request ID alone never authorizes bypassing the SDK.
+The replay must still reach the SDK reader and retain the exact attempt and
+control-proof receipts checked by the lifecycle verifier.
