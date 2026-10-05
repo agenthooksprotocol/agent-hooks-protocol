@@ -226,61 +226,73 @@ def has_descriptor(value, descriptor):
     return json_equal(value,descriptor) or any(has_descriptor(item,descriptor) for item in value.values())
 
 
-def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=None):
-    """Use the native sender, verifying each upload before any dependent event."""
+def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=None, batch_size=1):
+    """Batch bounded same-kind steps; confirm all uploads before dependent events."""
     if len(steps)!=len(statuses):raise AssertionError("step status count")
+    if type(batch_size) is not int or not 1<=batch_size<=8:raise ValueError('batch size must be 1..8')
     results=[];refs={};immutable={};sent=[]
-    for original,expected_status in zip(steps,statuses):
-        step={key:value for key,value in original.items() if key!='localRef'}
-        if step['path']=='/hooks/intercept':
-            message=replace_refs(json.loads(base64.b64decode(step['bytes'])),refs)
-            step['bytes']=encode(bytes_json(message))
-        # Original bytes belong to the controller, not a cross-process SDK registry.
-        # Only confirmed uploads are provided; bad/missing metadata is not repaired.
-        if step['path']=='/hooks/intercept' and expected_status!=200:
-            step['bypass']=True
-        plan={'endpoint':endpoint,'token':token,'uploadToken':upload_token,'steps':[step],
+    offset=0
+    while offset<len(steps):
+        end=offset+1
+        is_upload=steps[offset]['path']=='/upload'
+        while end<len(steps) and end-offset<batch_size and (steps[end]['path']=='/upload')==is_upload:
+            end+=1
+        batch=[]
+        for original,expected_status in zip(steps[offset:end],statuses[offset:end]):
+            step={key:value for key,value in original.items() if key!='localRef'}
+            if step['path']=='/hooks/intercept':
+                message=replace_refs(json.loads(base64.b64decode(step['bytes'])),refs)
+                step['bytes']=encode(bytes_json(message))
+                if expected_status!=200:step['bypass']=True
+            batch.append(step)
+        # Snapshot only previously confirmed bytes. Evidence must name an exact
+        # source supplied to this process, not a ref invented by another reply.
+        sources=dict(immutable)
+        plan={'endpoint':endpoint,'token':token,'uploadToken':upload_token,'steps':batch,
               'contentSources':[{'descriptor':reference(ref,raw),'bytes':encode(raw)}
-                                for ref,raw in immutable.items()]}
+                                for ref,raw in sources.items()]}
         out=subprocess.run(command+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=30)
         if out.returncode:raise RuntimeError(out.stderr[-1500:])
         replies=json.loads(out.stdout)
-        if len(replies)!=1:raise AssertionError('sender response count')
-        result=replies[0]
-        if result['status']!=expected_status:
-            raise AssertionError(f"{step['path']} expected {expected_status}, got {result['status']}")
-        if step['path']=='/upload' and expected_status==201:
-            descriptor=json.loads(result['body']);raw=base64.b64decode(step['bytes'])
-            if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'}:
-                raise AssertionError('invalid upload descriptor')
-            if not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or descriptor['size']!=len(raw) or descriptor['sha256']!=hashlib.sha256(raw).hexdigest():
-                raise AssertionError('upload descriptor integrity')
-            if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
-                raise AssertionError('receiver ref mutated')
-            immutable[descriptor['ref']]=raw;refs[original['localRef']]=descriptor
-        confirmations=result.get('contentUploads',[])
-        if not isinstance(confirmations,list):raise AssertionError('invalid content upload evidence')
-        replacements={}
-        for confirmation in confirmations:
-            if step['path']!='/hooks/intercept' or expected_status!=200:
-                raise AssertionError('unexpected content upload evidence')
-            source=confirmation.get('sourceRef');descriptor=confirmation.get('descriptor')
-            if source not in immutable or source in replacements:
-                raise AssertionError('unknown/duplicate content upload source')
-            raw=immutable[source]
-            if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'} or not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or not json_equal(descriptor,reference(descriptor['ref'],raw)):
-                raise AssertionError('content upload descriptor integrity')
-            if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
-                raise AssertionError('receiver ref mutated')
-            # Ref replacements are restricted to exact descriptors already present
-            # in this planned message. The adapter cannot rewrite the envelope.
-            if not has_descriptor(message,reference(source,raw)):
-                raise AssertionError('unselected content upload source')
-            replacements[source]=descriptor
-            immutable[descriptor['ref']]=raw
-        if replacements:
-            step['bytes']=encode(bytes_json(replace_refs(message,replacements)))
-        sent.append(step);results.append(result)
+        if not isinstance(replies,list) or len(replies)!=len(batch):raise AssertionError('sender response count')
+        for original,step,expected_status,result in zip(steps[offset:end],batch,statuses[offset:end],replies):
+            if step['path']=='/hooks/intercept':message=json.loads(base64.b64decode(step['bytes']))
+            if result['status']!=expected_status:
+                raise AssertionError(f"{step['path']} expected {expected_status}, got {result['status']}")
+            if step['path']=='/upload' and expected_status==201:
+                descriptor=json.loads(result['body']);raw=base64.b64decode(step['bytes'])
+                if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'}:
+                    raise AssertionError('invalid upload descriptor')
+                if not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or descriptor['size']!=len(raw) or descriptor['sha256']!=hashlib.sha256(raw).hexdigest():
+                    raise AssertionError('upload descriptor integrity')
+                if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
+                    raise AssertionError('receiver ref mutated')
+                immutable[descriptor['ref']]=raw;refs[original['localRef']]=descriptor
+            confirmations=result.get('contentUploads',[])
+            if not isinstance(confirmations,list):raise AssertionError('invalid content upload evidence')
+            replacements={}
+            for confirmation in confirmations:
+                if step['path']!='/hooks/intercept' or expected_status!=200:
+                    raise AssertionError('unexpected content upload evidence')
+                if not isinstance(confirmation,dict):raise AssertionError('invalid content upload evidence')
+                source=confirmation.get('sourceRef');descriptor=confirmation.get('descriptor')
+                if not isinstance(source,str) or source not in sources or source in replacements:
+                    raise AssertionError('unknown/duplicate content upload source')
+                raw=sources[source]
+                if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'} or not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or not json_equal(descriptor,reference(descriptor['ref'],raw)):
+                    raise AssertionError('content upload descriptor integrity')
+                if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
+                    raise AssertionError('receiver ref mutated')
+                # Ref replacements are restricted to exact descriptors already present
+                # in this planned message. The adapter cannot rewrite the envelope.
+                if not has_descriptor(message,reference(source,raw)):
+                    raise AssertionError('unselected content upload source')
+                replacements[source]=descriptor
+                immutable[descriptor['ref']]=raw
+            if replacements:
+                step['bytes']=encode(bytes_json(replace_refs(message,replacements)))
+            sent.append(step);results.append(result)
+        offset=end
     return results,refs,sent
 
 
@@ -349,7 +361,7 @@ def run_pair(pair):
         # Wrong bearer credential is sent over the same SDK client stack.
         bad=subprocess.run(cmd[sender]+['client'],input=json.dumps({'endpoint':endpoint,'token':'wrong','steps':[{'path':'/receipts','bytes':''}]}),capture_output=True,text=True,env=env,timeout=30)
         if bad.returncode or json.loads(bad.stdout)[0]['status']!=401:raise AssertionError('unauthenticated access accepted')
-        results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env,upload_token)
+        results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env,upload_token,batch_size=8)
         wanted=replace_refs(wanted,refs)
         # Each accepted message uses its own confirmed stream upload references.
         # The remaining receipt fields (bytes, semantics, provenance) stay exact.
