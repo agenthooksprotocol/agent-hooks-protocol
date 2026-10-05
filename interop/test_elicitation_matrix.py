@@ -10,6 +10,10 @@ def guard_cases():
     def add(effect,granted,accept,domain=True):
         name='guard-'+str(len(rows))
         (request,rr,rb),(result,sr,sb)=envelopes(name,fixture['request'],fixture['result'])
+        # Guard rows isolate effect/domain grants; selected-mode authority is
+        # independent and must be present on both elicitation boundaries.
+        request['params']['capabilities']['elicitation']={'form':{}}
+        result['params']['capabilities']['elicitation']={'form':{}}
         target=result if effect['type']=='modify' else request
         if granted:
             target['params']['capabilities']['effects']=[effect['type']]
@@ -45,6 +49,15 @@ def capability_cases():
 
 
 class ElicitationTests(unittest.TestCase):
+    def test_guard_cases_isolate_effect_grants_from_mode_authority(self):
+        rows, expected = guard_cases()
+        self.assertEqual(sum(expected), 3)
+        for row in rows:
+            for boundary in (row['request'], row['result']):
+                self.assertEqual(boundary['params']['capabilities']['elicitation'], {'form': {}})
+        self.assertEqual(rows[-1]['request']['params']['capabilities']['effects'], [])
+        self.assertEqual(rows[-1]['result']['params']['capabilities']['effects'], ['return'])
+
     def test_atomic_positive_cases_explicitly_grant_the_selected_mode(self):
         rows, expected = atomic_cases()
         for row, answer in zip(rows, expected):
