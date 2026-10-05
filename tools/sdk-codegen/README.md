@@ -115,3 +115,28 @@ in the same order and with the same bytes as root `schemas.json`; both are cover
 by the existing source lock's manifest digest/document hashes and `--check`.
 Smoke tests compile constructors, generic inference, and all boundary methods,
 and exercise duration edge cases and presence-preserving projection JSON.
+
+### Hooks and typed capability options
+
+The canonical generated boundary receiver is `*client.Hooks` for all 32 draft
+selectors. The handwritten runtime owns `New`, `Options.Events`, mode constants,
+and the deprecated `Client` compatibility alias. The generated client example
+compiles their seam with `map[string]client.EventCapabilities` and typed modes.
+
+`capability.New([]string{"modify"}, capability.WithInputModification(true, false))`
+selects the schema-derived open string union arm without exposing union assembly.
+`WithEffects(...string)` replaces that effect list. Each modification target in
+`Capabilities.modify` receives a `With<Target>Modification(replace, merge bool)`
+option; declarations determine the arguments, not validation predicate branches.
+Boolean values are encoded directly with `strconv.FormatBool` into fresh raw
+backing bytes because the unchanged root wire model uses raw JSON for composite
+constraints. There is no runtime JSON decoding, panic, or implicit validation.
+
+`WithElicitationForm()` and `WithElicitationURL()` each set an explicit empty-object
+grant. Absent or empty elicitation capability objects grant neither mode. Nested
+options preserve sibling grants and overwrite only their own target; full-object
+options remain available for advanced use. No helper automatically adds effects,
+modes, flow grants, or injection grants. Boundary-specific capability constructors
+retain their advanced wire signatures. All target helpers come from the schema
+object graph; no handwritten list of event boundaries or modification targets is
+maintained.

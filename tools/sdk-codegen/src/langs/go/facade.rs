@@ -21,6 +21,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             constructor(&g, body, name, &short, fields)?;
         }
     }
+    capability_options(&g, packages.entry("capability".into()).or_default())?;
     // Inline effect alternatives get names from their semantic literals rather
     // than unstable VariantN allocation names.
     if let Some(arms) = g.unions.get("Effect") {
@@ -108,17 +109,17 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             if generic {
                 writeln!(
                     methods,
-                    "func (c *Client) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return decodeToolBefore[T](c.intercept(ctx, {tag:?}, input, opts...)) }}"
+                    "func (c *Hooks) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return decodeToolBefore[T](c.intercept(ctx, {tag:?}, input, opts...)) }}"
                 )?;
             } else if intercepts.contains(&tag) {
                 writeln!(
                     methods,
-                    "func (c *Client) {short}(ctx context.Context, input event.{short}Input, opts ...InterceptOption) (*Result, error) {{ return c.intercept(ctx, {tag:?}, input, opts...) }}"
+                    "func (c *Hooks) {short}(ctx context.Context, input event.{short}Input, opts ...InterceptOption) (*Result, error) {{ return c.intercept(ctx, {tag:?}, input, opts...) }}"
                 )?;
             } else {
                 writeln!(
                     methods,
-                    "func (c *Client) {short}(ctx context.Context, input event.{short}Input) (*Result, error) {{ return c.intercept(ctx, {tag:?}, input) }}"
+                    "func (c *Hooks) {short}(ctx context.Context, input event.{short}Input) (*Result, error) {{ return c.intercept(ctx, {tag:?}, input) }}"
                 )?;
             }
         }
@@ -165,6 +166,9 @@ func Milliseconds(value time.Duration) (json.Number, error) {
         let mut imports = format!("import ahp {MODULE:?}\n");
         if body.contains("json.") {
             imports.push_str("import \"encoding/json\"\n");
+        }
+        if body.contains("strconv.") && !body.contains("time.") {
+            imports.push_str("import \"strconv\"\n");
         }
         if body.contains("time.") {
             imports.push_str(
@@ -254,6 +258,115 @@ fn qualify(ty: &str) -> String {
     out.trim_end().to_owned()
 }
 
+// Open string-union collections have an ergonomic string route while still
+// selecting the exact union arm allocated by the wire emitter.
+fn string_union_list(g: &Generator<'_>, field: &RenderedField, argument: &str) -> Option<String> {
+    let item = field.field_type.strip_prefix("[]")?;
+    let (arm, ty) = g.unions.get(item)?.iter().find(|(_, ty)| ty == "string")?;
+    Some(format!(
+        "func() []ahp.{item} {{ items := make([]ahp.{item}, len({argument})); for i, value := range {argument} {{ items[i] = ahp.{item}{{{arm}: ahp.Optional[{ty}]{{Present:true, Value:value}}}} }}; return items }}()"
+    ))
+}
+
+// Constraints such as anyOf validate combinations; only object declarations
+// define helper arguments. Never turn predicate-branch constants into grants.
+fn capability_declarations(shape: &Shape) -> Vec<Property> {
+    match shape {
+        Shape::Object { properties, .. } => properties.clone(),
+        Shape::Intersection { variants } => {
+            variants.iter().flat_map(capability_declarations).collect()
+        }
+        _ => vec![],
+    }
+}
+
+fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
+    for group in &g.objects["Capabilities"] {
+        // Ownership/naming metadata only; leaf names and bodies come from fields.
+        let group_name = match group.wire_name.as_str() {
+            "modify" => "Modification",
+            "elicitation" => "Elicitation",
+            _ => continue,
+        };
+        let leaves = g.objects.get(&group.field_type).ok_or_else(|| {
+            anyhow::anyhow!("capability group {} has no object model", group.wire_name)
+        })?;
+        for leaf in leaves {
+            anyhow::ensure!(
+                !group.required && !leaf.required,
+                "capability grant must be explicitly optional"
+            );
+            let (helper, args, value) = if group.wire_name == "modify" {
+                let mut properties = capability_declarations(&leaf.shape);
+                anyhow::ensure!(
+                    !properties.is_empty()
+                        && properties
+                            .iter()
+                            .all(|p| p.required && matches!(p.shape, Shape::Boolean)),
+                    "unsupported modification grant {}",
+                    leaf.wire_name
+                );
+                // Semantic argument order; membership is entirely schema-derived.
+                properties.sort_by_key(|p| (p.wire_name != "replace", p.wire_name.clone()));
+                let args = properties
+                    .iter()
+                    .map(|p| format!("arg{} bool", go_identifier(&p.wire_name)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut expression = vec![go_string("{")?];
+                for (index, property) in properties.iter().enumerate() {
+                    let key = format!(
+                        "{}{}:",
+                        if index == 0 { "" } else { "," },
+                        serde_json::to_string(&property.wire_name)?
+                    );
+                    expression.push(go_string(&key)?);
+                    expression.push(format!(
+                        "strconv.FormatBool(arg{})",
+                        go_identifier(&property.wire_name)
+                    ));
+                }
+                expression.push(go_string("}")?);
+                anyhow::ensure!(
+                    leaf.field_type == "json.RawMessage",
+                    "unsupported modification model {}",
+                    leaf.field_type
+                );
+                (
+                    format!("With{}{group_name}", leaf.field_name),
+                    args,
+                    format!("json.RawMessage({})", expression.join(" + ")),
+                )
+            } else {
+                let grant_fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
+                    anyhow::anyhow!("elicitation grant {} has no object model", leaf.wire_name)
+                })?;
+                anyhow::ensure!(
+                    grant_fields.is_empty(),
+                    "elicitation grant {} now requires a typed helper policy",
+                    leaf.wire_name
+                );
+                (
+                    format!("With{group_name}{}", leaf.field_name),
+                    String::new(),
+                    format!("{}{{}}", qualify(&leaf.field_type)),
+                )
+            };
+            let ty = qualify(&leaf.field_type);
+            writeln!(
+                out,
+                "// {helper} grants only the declared nested capability; it never adds effects or modes."
+            )?;
+            writeln!(
+                out,
+                "func {helper}({args}) Option {{ return func(v *ahp.Capabilities) {{ v.{}.Present = true; v.{}.Value.{} = ahp.Optional[{ty}]{{Present:true, Value:{value}}} }} }}",
+                group.field_name, group.field_name, leaf.field_name
+            )?;
+        }
+    }
+    Ok(())
+}
+
 fn constructor(
     g: &Generator<'_>,
     out: &mut String,
@@ -286,10 +399,15 @@ fn constructor(
         for f in fields.iter().filter(|f| {
             f.required && f.constructor_default.is_none() && f.field_type.starts_with("[]")
         }) {
-            let item = qualify(f.field_type.trim_start_matches("[]"));
+            let (item, value) = if let Some(value) = string_union_list(g, f, "values") {
+                ("string".into(), value)
+            } else {
+                let item = qualify(f.field_type.trim_start_matches("[]"));
+                (item.clone(), format!("append([]{item}{{}}, values...)"))
+            };
             writeln!(
                 out,
-                "func With{short}{}(values ...{item}) {option} {{ return func(v *ahp.{name}) {{ v.{} = append([]{item}{{}}, values...) }} }}",
+                "func With{short}{}(values ...{item}) {option} {{ return func(v *ahp.{name}) {{ v.{} = {value} }} }}",
                 f.field_name, f.field_name
             )?;
         }
@@ -340,16 +458,9 @@ fn constructor(
                     args.push(format!("{arg} ...*ahp.Backend"));
                     arg
                 }
-                ("InterceptSubscription" | "ObserveSubscription", "events") => {
+                _ if string_union_list(g, f, &arg).is_some() => {
                     args.push(format!("{arg} []string"));
-                    let item = f.field_type.trim_start_matches("[]");
-                    let (arm, ty) = g.unions[item]
-                        .iter()
-                        .find(|(_, ty)| ty == "string")
-                        .expect("event selectors accept extension strings");
-                    format!(
-                        "func() []ahp.{item} {{ values := make([]ahp.{item}, len({arg})); for i, value := range {arg} {{ values[i] = ahp.{item}{{{arm}: ahp.Optional[{ty}]{{Present:true, Value:value}}}} }}; return values }}()"
-                    )
+                    string_union_list(g, f, &arg).unwrap()
                 }
                 _ => {
                     args.push(format!("{arg} {}", qualify(&f.field_type)));
@@ -790,7 +901,8 @@ mod tests {
             .shape;
         let events = enum_strings(&g, selectors);
         assert_eq!(events.len(), 32);
-        assert_eq!(methods.matches("func (c *Client)").count(), events.len());
+        assert_eq!(methods.matches("func (c *Hooks)").count(), events.len());
+        assert!(!methods.contains("*Client"));
         for tag in events {
             assert!(methods.contains(&format!("{tag:?}")), "missing {tag}");
         }
@@ -800,6 +912,38 @@ mod tests {
         assert!(methods.contains(
             "ContextCompactBefore(ctx context.Context, input event.ContextCompactBeforeInput, opts"
         ));
+    }
+    #[test]
+    fn capability_helpers_follow_schema_targets_without_implicit_grants() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let source = &files["capability/generated.go"];
+        assert!(source.contains("func New(argEffects []string, opts ...Option) *ahp.Capabilities"));
+        assert!(source.contains("func WithEffects(values ...string) Option"));
+        assert!(source.contains("func WithElicitationForm() Option"));
+        assert!(source.contains("func WithElicitationURL() Option"));
+        let mut g = Generator::new(&ir);
+        for n in &ir.types {
+            g.emit_named(&g.named_name(&n.name), &n.source, &n.shape)
+                .unwrap();
+        }
+        for field in &g.objects["CapabilitiesModify"] {
+            assert!(source.contains(&format!(
+                "func With{}Modification(argReplace bool, argMerge bool) Option",
+                field.field_name
+            )));
+        }
+        // A changed schema target creates a corresponding helper, with no list
+        // of event boundaries or target names in the implementation.
+        let fields = g.objects.get_mut("CapabilitiesModify").unwrap();
+        fields[0].wire_name = "custom".into();
+        fields[0].field_name = "Custom".into();
+        let mut source = String::new();
+        capability_options(&g, &mut source).unwrap();
+        assert!(source.contains("func WithCustomModification("));
+        assert!(!source.contains("v.Effects"));
+        assert!(!source.contains("json.Unmarshal"));
+        assert!(!source.contains("panic("));
     }
     #[test]
     fn recursive_facade_graph_walks_terminate() {
