@@ -25,6 +25,17 @@ def main() -> None:
     registration = importlib.import_module("facade_contract._models.registration")
     boundaries = importlib.import_module("facade_contract._boundaries")
 
+    # The package initializer uses this same star export. Check every emitted
+    # public constructor, including generated input projections absent from IR.
+    root_exports: dict[str, object] = {}
+    exec("from facade_contract._models import *", root_exports)
+    for name, constructor in vars(models).items():
+        if inspect.isclass(constructor) and issubclass(constructor, dict) and constructor.__module__ == models.__name__ and not name.startswith("_"):
+            assert root_exports.get(name) is constructor, f"Missing root constructor: {name}"
+    inputs = {name for name in vars(event) if name.endswith("Input")}
+    assert len(inputs) == 32, inputs
+    assert inputs <= root_exports.keys(), inputs - root_exports.keys()
+
     constructors = 0
     for name in models.__all__:
         constructor = getattr(models, name)
