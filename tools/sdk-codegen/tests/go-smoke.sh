@@ -13,10 +13,39 @@ trap 'rm -rf "$tmp"' EXIT
 
 cp "$generated" "$tmp/ahp_generated.go"
 cat >"$tmp/go.mod" <<'EOF'
-module example.com/ahp-smoke
+module github.com/agenthooksprotocol/go-sdk
 
-go 1.22
+go 1.27.0
 EOF
+cargo run --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml" -- \
+  generate --repository "$repository" --revision draft --language go-facade --output "$tmp"
+# Generated client methods compile against the runtime's explicit shared seam.
+cat >"$tmp/client/runtime_stub_test.go" <<'EOF'
+package client
+import "context"
+import "github.com/agenthooksprotocol/go-sdk/event"
+import "github.com/agenthooksprotocol/go-sdk/tool"
+import "testing"
+import ahp "github.com/agenthooksprotocol/go-sdk"
+type Options struct{}
+func New(ahp.Registration,Options)(*Client,error){return &Client{},nil}
+func (*Client) Close()error{return nil}
+type Client struct{}
+type InterceptOption func()
+type Result struct{}
+type ToolBeforeResult[T any] struct { Input T }
+func (*Client) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
+func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
+func TestGenericInference(t *testing.T) {
+ type arguments struct { Path string }
+ result,err:=new(Client).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Tool:tool.NewInput("read", "native", arguments{Path:"file"}, tool.WithInputKind("task"))})
+ if err!=nil {t.Fatal(err)}
+ var _ arguments = result.Input
+}
+EOF
+export GOTOOLCHAIN=go1.27.0+auto
+goroot=$(go env GOROOT)
+"$goroot/bin/gofmt" -w "$tmp"/*/generated.go "$tmp/client/boundaries_generated.go" "$tmp/facade_generated_test.go"
 cat >"$tmp/ahp_generated_test.go" <<'EOF'
 package ahp
 

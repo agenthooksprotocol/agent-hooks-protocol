@@ -37,7 +37,7 @@ jobs:
           package-manager-cache: false
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          go-version: "1.27.x"
           cache: false
       - name: Install Python formatter
         run: python3 -m pip install 'ruff==0.12.12'
@@ -129,9 +129,14 @@ jobs:
           LANGUAGE: ${{ matrix.language }}
         run: |
           destination=$(dirname "sdk/$OUTPUT")
-          for artifact in "generated/$LANGUAGE/"*; do
-            install -D "$artifact" "$destination/$(basename "$artifact")"
-          done
+          source="generated/$LANGUAGE"
+          while IFS= read -r -d '' artifact; do
+            relative=${artifact#"$source/"}
+            install -D "$artifact" "$destination/$relative"
+          done < <(find "$source" -type f -print0)
+          if [[ "$LANGUAGE" == rust ]]; then
+            install -D "$source/ahp-codegen.lock.json" sdk/ahp-codegen.lock.json
+          fi
       - name: Open or update SDK pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
@@ -144,6 +149,12 @@ jobs:
             ${{ matrix.output }}
             ${{ matrix.directory }}/schemas.*
             ${{ matrix.directory }}/ahp-codegen.lock.json
+            ahp-codegen.lock.json
+            **/generated.go
+            client/boundaries_generated.go
+            client/facade_generated_test.go
+            facade_generated_test.go
+            internal/canonical/schemas.json
           commit-message: "chore: sync generated schemas from ${{ github.sha }}"
           title: "chore: sync generated AHP schemas"
           body: |

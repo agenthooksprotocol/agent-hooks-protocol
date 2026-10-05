@@ -51,7 +51,7 @@ jobs:
             "$RUNNER_TEMP/ahp_generated.py" "$GITHUB_WORKSPACE"
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          go-version: "1.27.x"
       - name: Test generated Go
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
