@@ -1,3 +1,5 @@
+pub mod facade;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
