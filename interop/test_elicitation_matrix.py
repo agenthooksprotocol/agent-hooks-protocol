@@ -130,24 +130,27 @@ class ElicitationTests(unittest.TestCase):
         sent=[]
         descriptors=[reference('receiver-one',b'body'),reference('receiver-two',b'body')]
         def send(command,**kwargs):
-            plan=json.loads(kwargs['input']);step=plan['steps'][0];sent.append(step)
-            self.assertNotIn('localRef',step)
-            response={'status':201,'body':json.dumps(descriptors[len(sent)-1])} if len(sent)<3 else {'status':200,'body':'{}'}
-            return subprocess.CompletedProcess(command,0,json.dumps([response]),'')
+            plan=json.loads(kwargs['input']);replies=[]
+            for step in plan['steps']:
+                sent.append(step)
+                self.assertNotIn('localRef',step)
+                response={'status':201,'body':json.dumps(descriptors[len(sent)-1])} if len(sent)<3 else {'status':200,'body':'{}'}
+                replies.append(response)
+            return subprocess.CompletedProcess(command,0,json.dumps(replies),'')
         local=reference('local',b'body')
         steps=[elicitation_matrix.upload(local,b'body'),elicitation_matrix.upload(local,b'body'),elicitation_matrix.intercept({'body':local})]
         with patch.object(elicitation_matrix.subprocess,'run',side_effect=send):
-            _,refs,_=elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201,200],{})
+            _,refs,_=elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201,200],{},batch_size=8)
         self.assertEqual(json.loads(base64.b64decode(sent[-1]['bytes']))['body'],descriptors[-1])
         bad={**local,'sha256':'0'*64}
         self.assertEqual(elicitation_matrix.replace_refs(bad,refs),{**bad,'ref':'receiver-two'})
 
     def test_receiver_cannot_reassign_ref_to_changed_bytes(self):
         steps=[elicitation_matrix.upload(reference('local',raw),raw) for raw in (b'one',b'two')]
-        replies=[subprocess.CompletedProcess([],0,json.dumps([{'status':201,'body':json.dumps(reference('same-ref',raw))}]),'') for raw in (b'one',b'two')]
+        replies=[subprocess.CompletedProcess([],0,json.dumps([{'status':201,'body':json.dumps(reference('same-ref',raw))} for raw in (b'one',b'two')]),'')]
         with patch.object(elicitation_matrix.subprocess,'run',side_effect=replies):
             with self.assertRaisesRegex(AssertionError,'receiver ref mutated'):
-                elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201],{})
+                elicitation_matrix.transmit_steps(['native'],'http://unused','token',steps,[201,201],{},batch_size=8)
 
     def test_negative_interception_preserves_raw_probe(self):
         message={'body':reference('missing',b'body')}
@@ -192,6 +195,102 @@ class ElicitationTests(unittest.TestCase):
                 with self.assertRaises(AssertionError):
                     elicitation_matrix.transmit_steps(['native'],'http://unused','token',
                         [elicitation_matrix.upload(local,raw),elicitation_matrix.intercept(message)],[201,200],{})
+
+    def test_batched_boundaries_order_and_confirmed_sources(self):
+        raw=b'body';local=reference('local',raw)
+        steps=([elicitation_matrix.upload(local,raw) for _ in range(9)]+
+               [elicitation_matrix.intercept({'id':i,'body':local}) for i in range(9)]+
+               [elicitation_matrix.upload(local,raw),{'path':'/receipts','bytes':''}])
+        statuses=[201]*9+[200]*9+[201,200]
+        plans=[];uploaded=[];streamed=[];confirmed=[]
+        def send(command,**kwargs):
+            plan=json.loads(kwargs['input']);plans.append(plan);replies=[]
+            # Only prior confirmed descriptors may seed a fresh process.
+            self.assertEqual(plan['contentSources'],[
+                {'descriptor':descriptor,'bytes':encode(raw)} for descriptor in confirmed])
+            for step in plan['steps']:
+                self.assertNotIn('localRef',step)
+                if step['path']=='/upload':
+                    descriptor=reference('uploaded-'+str(len(uploaded)),raw);uploaded.append(descriptor);confirmed.append(descriptor)
+                    replies.append({'status':201,'body':json.dumps(descriptor)})
+                elif step['path']=='/hooks/intercept':
+                    message=json.loads(base64.b64decode(step['bytes']))
+                    self.assertEqual(message,{'id':len(streamed),'body':uploaded[-1]})
+                    descriptor=reference('streamed-'+str(len(streamed)),raw);streamed.append(descriptor);confirmed.append(descriptor)
+                    replies.append({'status':200,'body':'{}','contentUploads':[
+                        {'sourceRef':uploaded[-1]['ref'],'descriptor':descriptor}]})
+                else:replies.append({'status':200,'body':'[]'})
+            return subprocess.CompletedProcess(command,0,json.dumps(replies),'')
+        with patch.object(elicitation_matrix.subprocess,'run',side_effect=send):
+            results,refs,sent=elicitation_matrix.transmit_steps(
+                ['native'],'http://unused','token',steps,statuses,{},batch_size=8)
+        self.assertEqual([len(plan['steps']) for plan in plans],[8,1,8,1,1,1])
+        self.assertEqual([step['path'] for step in sent],[step['path'] for step in steps])
+        self.assertEqual([result['status'] for result in results],statuses)
+        self.assertEqual(refs,{'local':uploaded[-1]})
+        self.assertEqual([json.loads(base64.b64decode(step['bytes'])) for step in sent[9:18]],
+                         [{'id':i,'body':descriptor} for i,descriptor in enumerate(streamed)])
+
+    def test_batched_response_cardinality_and_each_status(self):
+        steps=[{'path':'/receipts','bytes':''}]*2
+        ok={'status':200,'body':'[]'}
+        for replies in ([],[ok],[ok,ok,ok],{'0':ok,'1':ok},[ok,{**ok,'status':401}]):
+            with self.subTest(replies=replies):
+                output=subprocess.CompletedProcess([],0,json.dumps(replies),'')
+                with patch.object(elicitation_matrix.subprocess,'run',return_value=output) as send:
+                    with self.assertRaises(AssertionError):
+                        elicitation_matrix.transmit_steps(['native'],'http://unused','token',
+                            steps,[200,200],{},batch_size=8)
+                self.assertEqual(send.call_count,1)
+
+    def test_batched_invalid_upload_stops_before_intercept(self):
+        raw=b'body';local=reference('local',raw)
+        valid={'status':201,'body':json.dumps(reference('receiver',raw))}
+        broken={'status':201,'body':json.dumps(reference('bad',b'changed'))}
+        steps=[elicitation_matrix.upload(local,raw)]*2+[elicitation_matrix.intercept({'body':local})]
+        for replies in ([valid,broken],[broken,valid]):
+            with self.subTest(replies=replies):
+                output=subprocess.CompletedProcess([],0,json.dumps(replies),'')
+                with patch.object(elicitation_matrix.subprocess,'run',return_value=output) as send:
+                    with self.assertRaisesRegex(AssertionError,'upload descriptor integrity'):
+                        elicitation_matrix.transmit_steps(['native'],'http://unused','token',
+                            steps,[201,201,200],{},batch_size=8)
+                self.assertEqual(send.call_count,1)
+                self.assertEqual([step['path'] for step in json.loads(send.call_args.kwargs['input'])['steps']],
+                                 ['/upload','/upload'])
+
+    def test_batched_evidence_uses_each_message_and_only_planned_sources(self):
+        raw=b'body';local=reference('local',raw);uploaded=reference('uploaded',raw)
+        first=reference('first-stream',raw);second=reference('second-stream',raw)
+        confirmation={'sourceRef':uploaded['ref'],'descriptor':first}
+        for evidence,message in [
+            ([{'sourceRef':first['ref'],'descriptor':second}],{'body':first}),
+            ([{'sourceRef':'unknown','descriptor':second}],{'body':local}),
+            ([{'sourceRef':uploaded['ref'],'descriptor':reference('bad',b'changed')}],{'body':local}),
+            ([confirmation,confirmation],{'body':local}),
+            ([confirmation],{'body':None}),
+            ([confirmation],{'body':{**local,'size':99}}),
+            ([None],{'body':local}),
+        ]:
+            steps=[elicitation_matrix.upload(local,raw),elicitation_matrix.intercept({'body':local}),
+                   elicitation_matrix.intercept(message),elicitation_matrix.upload(local,raw)]
+            outputs=[subprocess.CompletedProcess([],0,json.dumps(replies),'') for replies in [
+                [{'status':201,'body':json.dumps(uploaded)}],
+                [{'status':200,'body':'{}','contentUploads':[confirmation]},
+                 {'status':200,'body':'{}','contentUploads':evidence}]]]
+            with self.subTest(evidence=evidence,message=message):
+                with patch.object(elicitation_matrix.subprocess,'run',side_effect=outputs) as send:
+                    with self.assertRaises(AssertionError):
+                        elicitation_matrix.transmit_steps(['native'],'http://unused','token',
+                            steps,[201,200,200,201],{},batch_size=8)
+                self.assertEqual(send.call_count,2)
+
+    def test_batch_size_is_bounded(self):
+        for size in (0,9,True,1.0):
+            with self.subTest(size=size),patch.object(elicitation_matrix.subprocess,'run') as send:
+                with self.assertRaises(ValueError):
+                    elicitation_matrix.transmit_steps(['native'],'http://unused','token',[],[],{},batch_size=size)
+                send.assert_not_called()
 
     def test_noisy_receiver_startup_is_bounded(self):
         command=[sys.executable,'-c',"import os,time; os.write(2,b'x'*200000+b'TAIL'); os.close(1); time.sleep(20)"]
