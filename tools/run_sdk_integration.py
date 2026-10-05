@@ -7,7 +7,8 @@ Rust interop is built before the matrix so nested stdio startup never runs Cargo
 --jobs is a maximum for runners that expose concurrency flags, capped by CPU
 affinity (or host CPU count when affinity is unavailable). Effective jobs are
 logged and recorded in summary.json. Elicitation and compaction
-currently fix their own pools at four; suites run sequentially. Observation wire
+currently fix their own pools at four; suites run sequentially within each
+--suite-group (all by default, or the disjoint core and extended CI shards). Observation wire
 and chain coverage uses lifecycle's scenarios CLI. Upload reference tests supplement
 real uploads in lifecycle and elicitation. Use a Python environment with jsonschema.
 """
@@ -27,6 +28,11 @@ ROOT = Path(__file__).resolve().parents[1]
 LANGUAGES = ('typescript', 'python', 'go', 'rust')
 GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire',
                'interop', 'lifecycle-client', 'lifecycle-server')
+SUITE_GROUPS = {
+    'core': ('tools-unit', 'interop-unit', 'matrix', 'lifecycle', 'catalogue'),
+    'extended': ('elicitation', 'observation', 'compaction', 'compaction-wire',
+                 'auth', 'sender-isolation'),
+}
 MANIFEST_COMMANDS = ('client', 'server', 'lifecycleClient', 'lifecycleServer')
 
 
@@ -53,7 +59,7 @@ def validate_manifests(root: Path) -> list[str]:
     return errors
 
 
-def suite_commands(root: Path, reports: Path, jobs: int):
+def suite_commands(root: Path, reports: Path, jobs: int, suite_group: str = 'all'):
     """Use public CLIs without narrowing language/transport/auth grids."""
     python = sys.executable
     interop = root / 'interop'
@@ -76,7 +82,9 @@ def suite_commands(root: Path, reports: Path, jobs: int):
         report_flag = '--report' if name == 'auth' else '--output'
         suites.append((name, [python, str(interop / script), *flags,
                               report_flag, str(reports / f'{name}.json')], root))
-    return suites
+    if suite_group == 'all':
+        return suites
+    return [suite for suite in suites if suite[0] in SUITE_GROUPS[suite_group]]
 
 
 def run_command(command, cwd: Path, log: Path, timeout: int, env=None) -> dict:
@@ -143,6 +151,8 @@ def prepare_adapters(root, directory, reports, timeout):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports-dir', type=Path, required=True)
+    parser.add_argument('--suite-group', choices=('all', *SUITE_GROUPS), default='all',
+                        help='suite partition to run (default: all)')
     parser.add_argument('--jobs', type=positive_int, default=4)
     parser.add_argument('--timeout', type=positive_int, default=1800,
                         help='maximum seconds per suite command (default: 1800)')
@@ -161,12 +171,12 @@ def main(argv=None):
         env = {**os.environ, 'AHP_GO_ADAPTER_DIR': directory,
                'AHP_RUST_INTEROP': str(ROOT.parent / 'rust-sdk/target/debug/interop')}
         if all(row['status'] == 'passed' for row in prerequisites):
-            for name, command, cwd in suite_commands(ROOT, reports, jobs):
+            for name, command, cwd in suite_commands(ROOT, reports, jobs, args.suite_group):
                 result = {'name': name, **run_command(command, cwd, reports / f'{name}.log', args.timeout, env=env)}
                 results.append(result)
                 print(f"{name}: {result['status']}", flush=True)
     failed = bool(errors) or any(row['status'] != 'passed' for row in prerequisites + results)
-    summary = {'requested_jobs': args.jobs, 'effective_jobs': jobs, 'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
+    summary = {'suite_group': args.suite_group, 'requested_jobs': args.jobs, 'effective_jobs': jobs, 'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
                'prerequisites': prerequisites, 'suites': results}
     (reports / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(f"SDK integration: {summary['status']}; {len(errors)} manifest errors; reports: {reports}")
