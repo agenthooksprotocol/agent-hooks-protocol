@@ -16,20 +16,8 @@
       "description": "HTTPS is required except for explicitly configured loopback tests. The sender must validate the receiver and the loopback-test authorization at runtime."
     },
     "auth": {
-      "type": "object",
-      "required": [
-        "type",
-        "tokenEnv"
-      ],
-      "properties": {
-        "type": {
-          "const": "bearer"
-        },
-        "tokenEnv": {
-          "type": "string",
-          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
-        }
-      }
+      "$ref": "registration.schema.json#/$defs/authentication",
+      "description": "Independent endpoint binding. Omission uses standard OAuth protected-resource discovery; never inherit event credentials."
     },
     "timeoutMs": {
       "type": "integer",

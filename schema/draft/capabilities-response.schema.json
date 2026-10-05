@@ -523,9 +523,7 @@
                   "items": {
                     "enum": [
                       "bearer",
-                      "oauth",
-                      "mtls",
-                      "workload"
+                      "oauth"
                     ]
                   }
                 },

@@ -109,7 +109,10 @@ to await backend observer processing. No host/task lineage integration claim is
 made from content labels alone.
 
 Lifecycle HTTP tests use synthetic local trust with `none`, bearer, OAuth, mTLS,
-and workload authentication; stdio uses process trust only. Content read/upload
+and workload credential providers; stdio uses process trust only. These are
+deployment HTTP/TLS/credential-provider tests, not portable AHP mechanisms.
+Portable registration uses bearer references for acquired workload tokens and
+out-of-band TLS with absent HTTP authentication for TLS-only deployments. Content read/upload
 permission is independently enforced even when endpoint connection is allowed.
 Independent bearer upload authorization is not a full upload-auth-method
 Cartesian product. The dedicated authentication suite covers endpoint negatives.

@@ -31,6 +31,10 @@ Security, conduct, personal data, and legally sensitive details can require priv
 
 Reviewers can ask for changes, additional evidence, or an AHP proposal. Approval and merge authority follow [GOVERNANCE.md](GOVERNANCE.md); CODEOWNERS is only a review-routing mechanism.
 
+## Coordinating spec and SDK changes
+
+Spec pull requests must pass the required SDK integration check against immutable SDK commits pinned in `interop/sdk-revisions.json`. Develop SDK changes in parallel pull requests and pin their published commits; SDK pull requests do not need to merge first. See [SDK integration](interop/CI.md) for pin maintenance, checks, and local reproduction.
+
 ## Working with protocol snapshots
 
 Current protocol work lives in four parallel directories that make up one logical snapshot: `spec/draft/`, `schema/draft/`, `fixtures/draft/`, and `conformance/draft/`. Keep changes across those roots consistent, including repository-relative paths, version metadata, hashes, and manifest entries.
