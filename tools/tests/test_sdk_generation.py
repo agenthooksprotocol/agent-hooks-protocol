@@ -22,14 +22,17 @@ class SdkGenerationTests(unittest.TestCase):
             calls.append(command)
             if 'generate' in command:
                 target = Path(command[command.index('--output') + 1])
-                if 'go-facade' in command:
-                    target = target / 'event/generated.go'
+                if 'go-facade' in command or 'python-facade' in command:
+                    target = target / ('event/generated.go' if 'go-facade' in command else '_models/__init__.py')
                     target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text('source\n')
             elif Path(command[0]).name == 'gofmt':
                 for source in command[2:]:
                     Path(source).write_text('formatted\n')
-            elif command[0] in ('rustfmt', 'npx') or 'ruff' in command:
+            elif 'ruff' in command:
+                for source in command[7:]:
+                    Path(source).write_text('formatted\n')
+            elif command[0] in ('rustfmt', 'npx'):
                 Path(command[-1]).write_text('formatted\n')
             return subprocess.CompletedProcess(command, 0)
 
@@ -63,6 +66,7 @@ class SdkGenerationTests(unittest.TestCase):
                     self.assertEqual(hashlib.sha256(manifest.read_bytes()).hexdigest(), lock['schemaManifestSha256'])
                     self.assertEqual(json.loads(manifest.read_text())['documents'], lock['documents'])
                     self.assertTrue((folder / ('schemas.ts' if language == 'typescript' else 'schemas.json')).is_file())
+            self.assertEqual('formatted\n', (output / 'python/_models/__init__.py').read_text())
             self.assertEqual('formatted\n', (output / 'go/event/generated.go').read_text())
             self.assertEqual((output / 'go/schemas.json').read_bytes(), (output / 'go/internal/canonical/schemas.json').read_bytes())
             self.assertEqual('formatted\n', (output / 'typescript/schemas.ts').read_text())

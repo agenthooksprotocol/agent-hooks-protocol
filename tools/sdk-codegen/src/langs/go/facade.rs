@@ -188,7 +188,7 @@ func Milliseconds(value time.Duration) (json.Number, error) {
     Ok(files)
 }
 
-fn role(name: &str) -> Option<(&'static str, String)> {
+pub(crate) fn role(name: &str) -> Option<(&'static str, String)> {
     let (package, short) = if name == "Registration" {
         ("registration", "".into())
     } else if name == "Backend" {
