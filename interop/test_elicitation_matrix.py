@@ -45,6 +45,33 @@ def capability_cases():
 
 
 class ElicitationTests(unittest.TestCase):
+    def test_atomic_positive_cases_explicitly_grant_the_selected_mode(self):
+        rows, expected = atomic_cases()
+        for row, answer in zip(rows, expected):
+            if answer is None:
+                continue
+            boundary = row['result'] or row['request']
+            mode = boundary['params']['event']['elicitation']['mode']
+            self.assertIn(mode, boundary['params']['capabilities']['elicitation'])
+            self.assertEqual(boundary['params']['capabilities']['elicitation'][mode], {})
+
+    def test_atomic_missing_mode_cases_retain_effect_grants_and_reject(self):
+        rows, expected = atomic_cases()
+        negative = [(row, answer) for row, answer in zip(rows, expected)
+                    if 'missing-form-mode-' in row['request']['params']['event']['id']]
+        self.assertEqual(len(negative), 9)
+        for row, answer in negative:
+            boundary = row['result'] or row['request']
+            caps = boundary['params']['capabilities']
+            self.assertIsNone(answer)
+            self.assertNotIn('form', caps.get('elicitation', {}))
+            self.assertEqual(caps['effects'], [row['effects'][0]['type']])
+            self.assertEqual(boundary['params']['event']['elicitation']['mode'], 'form')
+            self.assertTrue(row['uploads'])
+            if row['result'] is not None:
+                self.assertIn('form', row['request']['params']['capabilities']['elicitation'])
+                self.assertTrue(caps['modify']['content']['replace'])
+
     def assertJSONEqual(self, actual, expected):
         self.assertTrue(json_equal(actual, expected), (actual, expected))
 

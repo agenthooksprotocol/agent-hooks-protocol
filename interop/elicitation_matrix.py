@@ -124,10 +124,13 @@ def cases():
 
 def atomic_cases():
     fixture=cases()[0];rows=[];expected=[]
-    def add(name,phase,effects,grants,answer=None,selection='body',operations=None):
+    def add(name,phase,effects,grants,answer=None,selection='body',operations=None,mode_grants=True):
         (request,rr,rb),(result,sr,sb)=envelopes('atomic-'+name,fixture['request'],fixture['result'],selection)
+        request['params']['capabilities']['elicitation']={'form':{}}
         boundary=request if phase=='request' else result
+        # AHP modes are independently granted; effects do not imply form support.
         boundary['params']['capabilities']={'effects':grants}
+        if mode_grants:boundary['params']['capabilities']['elicitation']={'form':{}}
         if 'modify' in grants:boundary['params']['capabilities']['modify']={'content':operations or {'replace':True,'merge':True}}
         rows.append({'op':'apply','request':request,'result':None if phase=='request' else result,
                      'uploads':[] if selection!='body' else [{'ref':rr['ref'],'bytes':encode(rb)},{'ref':sr['ref'],'bytes':encode(sb)}],'effects':effects})
@@ -149,6 +152,14 @@ def atomic_cases():
     add('operation-not-granted','result',[replacement],['modify'],operations={'replace':False,'merge':True})
     add('metadata-cannot-execute','request',[{'type':'return','value':supplied}],['return'],selection='metadata')
     add('omit-cannot-execute','request',[{'type':'deny','reason':'Policy'}],['deny'],selection='omit')
+    # Absent, empty, and other-mode AHP grants must fail even with valid effects.
+    # These are not MCP-origin legacy capabilities.
+    for phase,effect in [('request',{'type':'return','value':supplied}),('request',{'type':'deny','reason':'Policy'}),('result',replacement)]:
+        for label,grant in [('absent',None),('empty',{}),('url-only',{'url':{}})]:
+            add('missing-form-mode-'+phase+'-'+effect['type']+'-'+label,phase,[effect],[effect['type']],mode_grants=False)
+            if grant is not None:
+                boundary=rows[-1]['request'] if phase=='request' else rows[-1]['result']
+                boundary['params']['capabilities']['elicitation']=grant
     url=next(row for row in cases() if row['id']=='url-accept-not-completion')
     for name,effect,answer in [
         ('url-return',{'type':'return','value':{'action':'accept'}},{'action':'accept'}),
@@ -157,6 +168,7 @@ def atomic_cases():
     ]:
         (request,rr,rb),_=envelopes('atomic-'+name,url['request'],url['result'])
         request['params']['capabilities']['effects']=[effect['type']]
+        request['params']['capabilities']['elicitation']={'url':{}}
         rows.append({'op':'apply','request':request,'result':None,'uploads':[{'ref':rr['ref'],'bytes':encode(rb)}],'effects':[effect]})
         expected.append(answer)
     return rows,expected
@@ -319,7 +331,7 @@ def run_pair(pair):
         wire_rows=cases();atomic_publications=0
         for fixture,actual,expected in zip(atomic,applied_results,atomic_expected):
             if actual.get('inputUnchanged') is not True:raise AssertionError('atomic staging mutated input')
-            if actual.get('accepted') is not (expected is not None):raise AssertionError('atomic staging acceptance mismatch')
+            if actual.get('accepted') is not (expected is not None):raise AssertionError('atomic staging acceptance mismatch: '+fixture['request']['params']['event']['id'])
             if expected is None:
                 if 'summary' in actual:raise AssertionError('partial failed result published')
                 continue
