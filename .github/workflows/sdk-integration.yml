@@ -14,8 +14,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  sdk-integration:
-    name: SDK integration
+  sdk-integration-shards:
+    name: SDK integration (${{ matrix.suite-group }})
+    strategy:
+      fail-fast: false
+      matrix:
+        suite-group: [core, extended]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:
@@ -141,18 +145,32 @@ jobs:
             cargo build --locked --all-targets --all-features
             cargo test --locked --all-features
           ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/rust-sdk.log"
-      - name: Run all SDK matrices and harness unit tests
+      - name: Run SDK integration shard
         if: ${{ !cancelled() }}
         timeout-minutes: 30
         run: |
           python3 tools/run_sdk_integration.py \
-            --reports-dir "$GITHUB_WORKSPACE/reports" --jobs 4 \
+            --reports-dir "$GITHUB_WORKSPACE/reports" --jobs 4 --suite-group "${{ matrix.suite-group }}" \
             2>&1 | tee "$GITHUB_WORKSPACE/reports/integration.log"
       - name: Upload SDK integration reports
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
-          name: sdk-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          name: sdk-integration-${{ matrix.suite-group }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: reports/
           if-no-files-found: error
           retention-days: 14
+
+  sdk-integration:
+    name: SDK integration
+    needs: [sdk-integration-shards]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every SDK integration shard to succeed
+        env:
+          SHARDS_RESULT: ${{ needs.sdk-integration-shards.result }}
+        run: |
+          # Matrix success requires every shard; failure, cancellation, or skip fails.
+          test "$SHARDS_RESULT" = success
