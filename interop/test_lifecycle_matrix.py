@@ -440,5 +440,25 @@ class TransportApplicabilityTests(unittest.TestCase):
             self.assertEqual(([scenario], []), transport_scenarios([scenario], transport))
 
 
+class PreparedLifecycleTests(unittest.TestCase):
+    def test_discovery_native_commands_reach_sdk_child_config(self):
+        import lifecycle_matrix as lifecycle
+        from unittest.mock import patch
+        manifest = {'language': 'go', 'lifecycleClient': ['go', 'run', './cmd/lifecycle-client'], 'lifecycleServer': ['go', 'run', './cmd/lifecycle-server']}
+        with patch.object(lifecycle, 'LANGUAGES', ('go',)), patch.object(lifecycle, 'load', return_value=manifest), patch.dict(lifecycle.os.environ, {'AHP_GO_ADAPTER_DIR': '/prepared'}):
+            adapters = lifecycle.discover(lifecycle.ROOT)
+        self.assertEqual(adapters['go'][1]['lifecycleClient'], ['/prepared/lifecycle-client'])
+        configs = []
+        original_write = lifecycle.write
+        def capture(path, value):
+            configs.append(dict(value))
+            original_write(path, value)
+        with patch.object(lifecycle, 'write', side_effect=capture), patch.object(lifecycle.subprocess, 'Popen', side_effect=OSError) as spawn, patch.object(lifecycle, 'configuration', return_value={}):
+            lifecycle.run_group('go', 'go', 'stdio', adapters, lifecycle.HERE/'lifecycle-scenarios.json', 1)
+        self.assertEqual(spawn.call_args_list[0].args[0][0], '/prepared/lifecycle-client')
+        config = next(cfg for cfg in configs if 'serverCommand' in cfg)
+        self.assertEqual(config['serverCommand'], ['/prepared/lifecycle-server'])
+
+
 if __name__ == '__main__':
     unittest.main()

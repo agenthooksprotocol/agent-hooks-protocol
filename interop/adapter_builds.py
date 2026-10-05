@@ -6,7 +6,8 @@ import tempfile
 import threading
 from pathlib import Path
 
-GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire')
+GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire',
+               'interop', 'lifecycle-client', 'lifecycle-server')
 GO_SDK = Path(__file__).resolve().parents[2] / 'go-sdk'
 
 
@@ -39,3 +40,26 @@ def go_command(name, sdk_root=None):
             atexit.register(directory.cleanup)
             _builds[key] = binary
         return [_builds[key]]
+
+
+def prepared_go_manifest(manifest, roles):
+    """Replace only exact known launchers; standalone manifests stay unchanged.
+
+    Prepared paths are authoritative, even if missing: never build or fall back
+    to go run or a cached standalone executable in a prepared integration run.
+    """
+    result = dict(manifest)
+    if result.get('language') != 'go' or not os.environ.get('AHP_GO_ADAPTER_DIR'):
+        return result
+    commands = {
+        'client': ('interop', ['client']),
+        'server': ('interop', ['server']),
+        'lifecycleClient': ('lifecycle-client', []),
+        'lifecycleServer': ('lifecycle-server', []),
+    }
+    for role in roles:
+        name, args = commands[role]
+        if result.get(role) != ['go', 'run', './cmd/' + name, *args]:
+            raise ValueError('unexpected Go ' + role + ' launcher')
+        result[role] = go_command(name) + args
+    return result
