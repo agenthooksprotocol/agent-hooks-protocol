@@ -27,18 +27,22 @@ import "github.com/agenthooksprotocol/go-sdk/event"
 import "github.com/agenthooksprotocol/go-sdk/tool"
 import "testing"
 import ahp "github.com/agenthooksprotocol/go-sdk"
-type Options struct{}
-func New(ahp.Registration,Options)(*Client,error){return &Client{},nil}
-func (*Client) Close()error{return nil}
-type Client struct{}
+type Mode string
+const (Intercept Mode = "intercept"; Observe Mode = "observe")
+type EventCapabilities struct { Modes []Mode; Capabilities *ahp.Capabilities }
+type Options struct { Events map[string]EventCapabilities }
+func New(ahp.Registration,Options)(*Hooks,error){return &Hooks{},nil}
+func (*Hooks) Close()error{return nil}
+type Hooks struct{}
+type Client = Hooks
 type InterceptOption func()
 type Result struct{}
 type ToolBeforeResult[T any] struct { Input T }
-func (*Client) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
+func (*Hooks) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
 func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
 func TestGenericInference(t *testing.T) {
  type arguments struct { Path string }
- result,err:=new(Client).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Tool:tool.NewInput("read", "native", arguments{Path:"file"}, tool.WithInputKind("task"))})
+ result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Tool:tool.NewInput("read", "native", arguments{Path:"file"}, tool.WithInputKind("task"))})
  if err!=nil {t.Fatal(err)}
  var _ arguments = result.Input
 }
