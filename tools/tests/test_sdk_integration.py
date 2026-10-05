@@ -35,15 +35,31 @@ class SDKIntegrationTests(unittest.TestCase):
             code = runner.main(['--reports-dir', str(self.reports), '--jobs', '7', '--timeout', '12'])
         return code, json.loads((self.reports / 'summary.json').read_text()), output.getvalue()
 
+    def test_jobs_prefer_affinity_and_respect_requested_maximum(self):
+        with patch.object(runner.os, 'sched_getaffinity', return_value={2, 4}, create=True), patch.object(runner.os, 'cpu_count', return_value=64):
+            self.assertEqual(runner.effective_jobs(7), 2)
+            self.assertEqual(runner.effective_jobs(1), 1)
+            code, summary, output = self.invoke(Mock(return_value=Mock(wait=Mock(return_value=0))))
+            self.assertEqual(code, 0)
+            self.assertEqual(summary['effective_jobs'], 2)
+            self.assertEqual(summary['requested_jobs'], 7)
+            self.assertIn('2 effective', output)
+
+    def test_jobs_fallback_is_bounded(self):
+        for count, expected in ((3, 3), (None, 1), (0, 1)):
+            with patch.object(runner.os, 'sched_getaffinity', side_effect=OSError, create=True), patch.object(runner.os, 'cpu_count', return_value=count):
+                self.assertEqual(runner.effective_jobs(7), expected)
+
     def test_declared_build_commands_use_run_owned_directory(self):
         directory = self.root / 'isolated-bin'
         directory.mkdir()
         with patch.object(runner, 'run_command', return_value={'status': 'passed'}) as run:
             with redirect_stdout(io.StringIO()):
                 results = runner.prepare_adapters(self.root, directory, self.reports, 12)
-        self.assertEqual(len(results), 4)
+        self.assertEqual(len(results), 7)
         self.assertEqual(tuple(row['name'] for row in results),
-                         ('go-elicitation', 'go-compaction', 'go-compaction-wire', 'rust-interop'))
+                         ('go-elicitation', 'go-compaction', 'go-compaction-wire',
+                          'go-interop', 'go-lifecycle-client', 'go-lifecycle-server', 'rust-interop'))
         for call, name in zip(run.call_args_list, runner.GO_ADAPTERS):
             self.assertEqual(call.args, (
                 ['go', 'build', '-o', str(directory / name), './cmd/' + name],
@@ -104,7 +120,7 @@ class SDKIntegrationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(summary['manifest_errors'], [])
         self.assertEqual(popen.call_count, 11)
-        self.assertEqual(len(output.splitlines()), 12)
+        self.assertEqual(len(output.splitlines()), 13)
         self.assertNotIn('verbose adapter details', output)
         self.assertEqual(len(list(self.reports.glob('*.log'))), 11)
         self.assertEqual(len(directories), 1)

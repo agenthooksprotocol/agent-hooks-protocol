@@ -37,6 +37,23 @@ class PreparedAdapterTests(unittest.TestCase):
         ), self.assertRaises(ValueError):
             matrix.load_adapter(matrix.Path('/workspace/rust-sdk/interop/adapter.json'))
 
+    def test_prepared_go_reaches_nested_stdio_relay_config(self):
+        manifest = {'language': 'go', **{role: ['go', 'run', './cmd/interop', role] for role in ('client', 'server')}}
+        configs = []
+        def capture(path, value):
+            configs.append(dict(value))
+            original_write(path, value)
+        original_write = matrix.write
+        with patch.object(matrix, 'load', return_value=manifest), patch.dict(matrix.os.environ, {'AHP_GO_ADAPTER_DIR': '/prepared'}):
+            adapter = matrix.load_adapter(matrix.Path('/workspace/go-sdk/interop/adapter.json'))
+        self.assertEqual(adapter['client'], ['/prepared/interop', 'client'])
+        self.assertEqual(adapter['server'], ['/prepared/interop', 'server'])
+        with patch.object(matrix, 'MODES', ('none',)), patch.object(matrix, 'write', side_effect=capture), patch.object(matrix.subprocess, 'Popen', side_effect=OSError), patch.object(matrix, 'configuration', return_value={}):
+            matrix.run_group(adapter, adapter, [], matrix.HERE/'scenarios.json', None, 1)
+        relay = next(cfg for cfg in configs if 'relayCommand' in cfg)
+        self.assertEqual(relay['relayCommand'], ['/prepared/interop', 'server'])
+
+
 
 class ScenarioGeneration(unittest.TestCase):
     def test_continue_without_instruction_is_accepted(self):

@@ -4,7 +4,9 @@
 Go matrix adapters are built into a fresh run-owned directory before tests.
 Rust interop is built before the matrix so nested stdio startup never runs Cargo.
 
---jobs controls runners that expose concurrency flags. Elicitation and compaction
+--jobs is a maximum for runners that expose concurrency flags, capped by CPU
+affinity (or host CPU count when affinity is unavailable). Effective jobs are
+logged and recorded in summary.json. Elicitation and compaction
 currently fix their own pools at four; suites run sequentially. Observation wire
 and chain coverage uses lifecycle's scenarios CLI. Upload reference tests supplement
 real uploads in lifecycle and elicitation. Use a Python environment with jsonschema.
@@ -23,7 +25,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 LANGUAGES = ('typescript', 'python', 'go', 'rust')
-GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire')
+GO_ADAPTERS = ('elicitation', 'compaction', 'compaction-wire',
+               'interop', 'lifecycle-client', 'lifecycle-server')
 MANIFEST_COMMANDS = ('client', 'server', 'lifecycleClient', 'lifecycleServer')
 
 
@@ -110,6 +113,14 @@ def positive_int(value):
     return number
 
 
+def effective_jobs(requested):
+    try:
+        available = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        available = os.cpu_count() or 1
+    return min(requested, max(1, available))
+
+
 def prepare_adapters(root, directory, reports, timeout):
     """Build declared adapters before timed protocol exchanges."""
     results = []
@@ -136,11 +147,13 @@ def main(argv=None):
     parser.add_argument('--timeout', type=positive_int, default=1800,
                         help='maximum seconds per suite command (default: 1800)')
     args = parser.parse_args(argv)
+    jobs = effective_jobs(args.jobs)
+    print(f'Integration jobs: {jobs} effective (requested maximum: {args.jobs})', flush=True)
     reports = args.reports_dir.resolve()
     reports.mkdir(parents=True, exist_ok=True)
     errors = validate_manifests(ROOT)
     # Remove stale reports even when preparation fails before any suite starts.
-    for name, _, _ in suite_commands(ROOT, reports, args.jobs):
+    for name, _, _ in suite_commands(ROOT, reports, jobs):
         (reports / f'{name}.json').unlink(missing_ok=True)
     results = []
     with tempfile.TemporaryDirectory(prefix='ahp-go-adapters-') as directory:
@@ -148,12 +161,12 @@ def main(argv=None):
         env = {**os.environ, 'AHP_GO_ADAPTER_DIR': directory,
                'AHP_RUST_INTEROP': str(ROOT.parent / 'rust-sdk/target/debug/interop')}
         if all(row['status'] == 'passed' for row in prerequisites):
-            for name, command, cwd in suite_commands(ROOT, reports, args.jobs):
+            for name, command, cwd in suite_commands(ROOT, reports, jobs):
                 result = {'name': name, **run_command(command, cwd, reports / f'{name}.log', args.timeout, env=env)}
                 results.append(result)
                 print(f"{name}: {result['status']}", flush=True)
     failed = bool(errors) or any(row['status'] != 'passed' for row in prerequisites + results)
-    summary = {'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
+    summary = {'requested_jobs': args.jobs, 'effective_jobs': jobs, 'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
                'prerequisites': prerequisites, 'suites': results}
     (reports / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(f"SDK integration: {summary['status']}; {len(errors)} manifest errors; reports: {reports}")

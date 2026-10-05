@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.request
 from auth import Issuer, configuration
+from adapter_builds import prepared_go_manifest
 
 HERE = Path(__file__).resolve().parent
 MODES = ('none', 'bearer', 'oauth', 'mtls', 'workload')
@@ -22,7 +23,8 @@ def load(path):
     return json.loads(Path(path).read_text())
 
 def load_adapter(path):
-    adapter = dict(load(path), cwd=str(path.parent.parent))
+    adapter = dict(prepared_go_manifest(load(path), ('client', 'server')),
+                   cwd=str(path.parent.parent))
     binary = os.environ.get('AHP_RUST_INTEROP')
     if adapter['language'] == 'rust' and binary:
         # Only replace the pinned Cargo launcher, never reinterpret arbitrary
