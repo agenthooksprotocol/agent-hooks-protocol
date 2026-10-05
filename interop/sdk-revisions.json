@@ -8,17 +8,17 @@
     },
     "typescript": {
       "repository": "agenthooksprotocol/typescript-sdk",
-      "revision": "ec1e2411390287a206d88031dee1dc355baf34d6",
+      "revision": "2f9556347dbf59b9abaf28a8cbfd55904a09980c",
       "path": "typescript-sdk"
     },
     "go": {
       "repository": "agenthooksprotocol/go-sdk",
-      "revision": "348dd947b1fd274bf0785a6c1d3a4bb068fd3179",
+      "revision": "4dc4edc2d496a35b03e74bfb4ac7247ac0760f7e",
       "path": "go-sdk"
     },
     "rust": {
       "repository": "agenthooksprotocol/rust-sdk",
-      "revision": "0c4579bce64108f2521870b1f9e58b07d9c38629",
+      "revision": "863385a12295173afe1e57ebd6ae6d57144283e6",
       "path": "rust-sdk"
     }
   }

@@ -32,11 +32,11 @@ def stderr_tail(stream):
     return stream.read(1500).decode('utf-8', errors='replace')
 
 
-def commands():
+def commands(languages=LANGUAGES):
     return {
       'typescript':['node',str(ROOT/'typescript-sdk/interop/elicitation.mjs')],
       'python':[str(ROOT/'python-sdk/.venv/bin/python'),str(ROOT/'python-sdk/interop/elicitation.py')],
-      'go':go_command('elicitation'),
+      'go':go_command('elicitation',ROOT/'go-sdk') if 'go' in languages else None,
       'rust':[str(ROOT/'rust-sdk/target/debug/elicitation')],
     }
 
@@ -124,10 +124,13 @@ def cases():
 
 def atomic_cases():
     fixture=cases()[0];rows=[];expected=[]
-    def add(name,phase,effects,grants,answer=None,selection='body',operations=None):
+    def add(name,phase,effects,grants,answer=None,selection='body',operations=None,mode_grants=True):
         (request,rr,rb),(result,sr,sb)=envelopes('atomic-'+name,fixture['request'],fixture['result'],selection)
+        request['params']['capabilities']['elicitation']={'form':{}}
         boundary=request if phase=='request' else result
+        # AHP modes are independently granted; effects do not imply form support.
         boundary['params']['capabilities']={'effects':grants}
+        if mode_grants:boundary['params']['capabilities']['elicitation']={'form':{}}
         if 'modify' in grants:boundary['params']['capabilities']['modify']={'content':operations or {'replace':True,'merge':True}}
         rows.append({'op':'apply','request':request,'result':None if phase=='request' else result,
                      'uploads':[] if selection!='body' else [{'ref':rr['ref'],'bytes':encode(rb)},{'ref':sr['ref'],'bytes':encode(sb)}],'effects':effects})
@@ -149,6 +152,14 @@ def atomic_cases():
     add('operation-not-granted','result',[replacement],['modify'],operations={'replace':False,'merge':True})
     add('metadata-cannot-execute','request',[{'type':'return','value':supplied}],['return'],selection='metadata')
     add('omit-cannot-execute','request',[{'type':'deny','reason':'Policy'}],['deny'],selection='omit')
+    # Absent, empty, and other-mode AHP grants must fail even with valid effects.
+    # These are not MCP-origin legacy capabilities.
+    for phase,effect in [('request',{'type':'return','value':supplied}),('request',{'type':'deny','reason':'Policy'}),('result',replacement)]:
+        for label,grant in [('absent',None),('empty',{}),('url-only',{'url':{}})]:
+            add('missing-form-mode-'+phase+'-'+effect['type']+'-'+label,phase,[effect],[effect['type']],mode_grants=False)
+            if grant is not None:
+                boundary=rows[-1]['request'] if phase=='request' else rows[-1]['result']
+                boundary['params']['capabilities']['elicitation']=grant
     url=next(row for row in cases() if row['id']=='url-accept-not-completion')
     for name,effect,answer in [
         ('url-return',{'type':'return','value':{'action':'accept'}},{'action':'accept'}),
@@ -157,6 +168,7 @@ def atomic_cases():
     ]:
         (request,rr,rb),_=envelopes('atomic-'+name,url['request'],url['result'])
         request['params']['capabilities']['effects']=[effect['type']]
+        request['params']['capabilities']['elicitation']={'url':{}}
         rows.append({'op':'apply','request':request,'result':None,'uploads':[{'ref':rr['ref'],'bytes':encode(rb)}],'effects':[effect]})
         expected.append(answer)
     return rows,expected
@@ -208,6 +220,12 @@ def replace_refs(value, refs):
     return result
 
 
+def has_descriptor(value, descriptor):
+    if isinstance(value,list):return any(has_descriptor(item,descriptor) for item in value)
+    if not isinstance(value,dict):return False
+    return json_equal(value,descriptor) or any(has_descriptor(item,descriptor) for item in value.values())
+
+
 def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=None):
     """Use the native sender, verifying each upload before any dependent event."""
     if len(steps)!=len(statuses):raise AssertionError("step status count")
@@ -217,7 +235,13 @@ def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=
         if step['path']=='/hooks/intercept':
             message=replace_refs(json.loads(base64.b64decode(step['bytes'])),refs)
             step['bytes']=encode(bytes_json(message))
-        plan={'endpoint':endpoint,'token':token,'uploadToken':upload_token,'steps':[step]}
+        # Original bytes belong to the controller, not a cross-process SDK registry.
+        # Only confirmed uploads are provided; bad/missing metadata is not repaired.
+        if step['path']=='/hooks/intercept' and expected_status!=200:
+            step['bypass']=True
+        plan={'endpoint':endpoint,'token':token,'uploadToken':upload_token,'steps':[step],
+              'contentSources':[{'descriptor':reference(ref,raw),'bytes':encode(raw)}
+                                for ref,raw in immutable.items()]}
         out=subprocess.run(command+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=30)
         if out.returncode:raise RuntimeError(out.stderr[-1500:])
         replies=json.loads(out.stdout)
@@ -234,6 +258,28 @@ def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=
             if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
                 raise AssertionError('receiver ref mutated')
             immutable[descriptor['ref']]=raw;refs[original['localRef']]=descriptor
+        confirmations=result.get('contentUploads',[])
+        if not isinstance(confirmations,list):raise AssertionError('invalid content upload evidence')
+        replacements={}
+        for confirmation in confirmations:
+            if step['path']!='/hooks/intercept' or expected_status!=200:
+                raise AssertionError('unexpected content upload evidence')
+            source=confirmation.get('sourceRef');descriptor=confirmation.get('descriptor')
+            if source not in immutable or source in replacements:
+                raise AssertionError('unknown/duplicate content upload source')
+            raw=immutable[source]
+            if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'} or not isinstance(descriptor['ref'],str) or not descriptor['ref'] or type(descriptor['size']) is not int or not json_equal(descriptor,reference(descriptor['ref'],raw)):
+                raise AssertionError('content upload descriptor integrity')
+            if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
+                raise AssertionError('receiver ref mutated')
+            # Ref replacements are restricted to exact descriptors already present
+            # in this planned message. The adapter cannot rewrite the envelope.
+            if not has_descriptor(message,reference(source,raw)):
+                raise AssertionError('unselected content upload source')
+            replacements[source]=descriptor
+            immutable[descriptor['ref']]=raw
+        if replacements:
+            step['bytes']=encode(bytes_json(replace_refs(message,replacements)))
         sent.append(step);results.append(result)
     return results,refs,sent
 
@@ -266,7 +312,7 @@ def concurrent_plan():
 
 
 def run_pair(pair):
-    sender,receiver=pair;cmd=commands();token=secrets.token_urlsafe(32);upload_token=secrets.token_urlsafe(32)
+    sender,receiver=pair;cmd=commands(pair);token=secrets.token_urlsafe(32);upload_token=secrets.token_urlsafe(32)
     env=os.environ.copy();env['AHP_ELICITATION_TOKEN']=token;env['AHP_ELICITATION_UPLOAD_TOKEN']=upload_token;env['PYTHONPATH']=str(ROOT/'python-sdk/src')
     proc=None;stderr=tempfile.TemporaryFile()
     try:
@@ -285,7 +331,7 @@ def run_pair(pair):
         wire_rows=cases();atomic_publications=0
         for fixture,actual,expected in zip(atomic,applied_results,atomic_expected):
             if actual.get('inputUnchanged') is not True:raise AssertionError('atomic staging mutated input')
-            if actual.get('accepted') is not (expected is not None):raise AssertionError('atomic staging acceptance mismatch')
+            if actual.get('accepted') is not (expected is not None):raise AssertionError('atomic staging acceptance mismatch: '+fixture['request']['params']['event']['id'])
             if expected is None:
                 if 'summary' in actual:raise AssertionError('partial failed result published')
                 continue
@@ -305,6 +351,12 @@ def run_pair(pair):
         if bad.returncode or json.loads(bad.stdout)[0]['status']!=401:raise AssertionError('unauthenticated access accepted')
         results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env,upload_token)
         wanted=replace_refs(wanted,refs)
+        # Each accepted message uses its own confirmed stream upload references.
+        # The remaining receipt fields (bytes, semantics, provenance) stay exact.
+        delivered={json.loads(base64.b64decode(step['bytes']))['id']:json.loads(base64.b64decode(step['bytes']))
+                   for step,result in zip(steps,results) if step['path']=='/hooks/intercept' and result['status']==200}
+        for receipt in wanted:
+            receipt['message']=delivered[receipt['message']['id']]
         receipts=json.loads(results[-1]['body'])
         for receipt in wanted:
             if 'provenance' in receipt['summary']:receipt['summary']['provenance']['authenticatedSource']='authenticated:'+sender
@@ -324,7 +376,9 @@ def run_pair(pair):
         stderr.close()
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=HERE/'elicitation-matrix-results.json');parser.add_argument('--sender',choices=LANGUAGES);parser.add_argument('--receiver',choices=LANGUAGES);args=parser.parse_args()
+    global ROOT, SCHEMA
+    parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,default=HERE/'elicitation-matrix-results.json');parser.add_argument('--root',type=Path,default=ROOT);parser.add_argument('--sender',choices=LANGUAGES);parser.add_argument('--receiver',choices=LANGUAGES);args=parser.parse_args()
+    ROOT=args.root.resolve();SCHEMA=ROOT/'agent-hooks-protocol/schema/draft'
     pairs=[(s,r) for s in LANGUAGES for r in LANGUAGES if (not args.sender or s==args.sender) and (not args.receiver or r==args.receiver)]
     with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(run_pair,pairs))
     report={'transport':'http','authentication':'bearer','offline':True,'results':results,'passed':sum(r['status']=='passed' for r in results),'total':len(results)}

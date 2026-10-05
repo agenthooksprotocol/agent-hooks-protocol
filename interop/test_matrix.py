@@ -10,7 +10,7 @@ import generate_scenarios
 
 class PreparedAdapterTests(unittest.TestCase):
     def manifest(self):
-        return {'language': 'rust', **{role: ['cargo', 'run', '--quiet', '--bin',
+        return {'language': 'rust', **{role: ['cargo', 'run', '--quiet', '--features', 'interop', '--bin',
                 'interop', '--', role] for role in ('client', 'server')}}
 
     def test_prepared_rust_uses_native_binary_for_both_roles(self):
@@ -250,6 +250,58 @@ class Integrity(unittest.TestCase):
         matrix.stop(process)
         self.assertIsNotNone(process.poll())
 
+
+
+
+class HostSchemaNegatives(unittest.TestCase):
+    def setUp(self):
+        self.scenarios = [s for s in generate_scenarios.build()['scenarios']
+                          if 'hostExpected' in s]
+
+    def verify(self, scenario, result):
+        rows, errors = matrix.verify([scenario], {'language': 'typescript', 'results': [result]},
+                                    {'requests': [scenario['request']]}, 'typescript', 0)
+        self.assertEqual(errors, [])
+        return rows[0]
+
+    def host_result(self, scenario):
+        return {'id': scenario['id'], 'status': 'passed', 'actual': deepcopy(scenario['hostExpected']),
+                'sdkAccepted': True, 'hostAccepted': False, 'rejectionLayer': 'host-input-schema'}
+
+    def test_host_refusal_preserves_effective_event_and_messages(self):
+        self.assertEqual(len(self.scenarios), 5)
+        for scenario in self.scenarios:
+            row = self.verify(scenario, self.host_result(scenario))
+            self.assertEqual(row['status'], 'passed')
+            self.assertIs(row['sdkAccepted'], True)
+            self.assertEqual(row['rejectionLayer'], 'host-input-schema')
+
+    def test_foreign_transactional_application_rejection_still_valid(self):
+        for scenario in self.scenarios:
+            self.assertEqual(self.verify(scenario, {'id': scenario['id'], 'status': 'passed',
+                                                   'actual': {'rejected': True}})['status'], 'passed')
+
+    def test_host_branch_fails_closed(self):
+        for scenario in self.scenarios:
+            for mutation in ('executed', 'messages', 'input', 'sdkAccepted', 'hostAccepted',
+                             'rejectionLayer', 'fabricated-rejection', 'missing-diagnostics'):
+                with self.subTest(scenario=scenario['id'], mutation=mutation):
+                    result = self.host_result(scenario)
+                    if mutation == 'executed': result['actual']['executed'] = True
+                    elif mutation == 'messages': result['actual']['messages'] = []
+                    elif mutation == 'input': result['actual']['input'] = {'task': 1}
+                    elif mutation == 'sdkAccepted': result['sdkAccepted'] = False
+                    elif mutation == 'hostAccepted': result['hostAccepted'] = True
+                    elif mutation == 'rejectionLayer': result['rejectionLayer'] = 'sdk'
+                    elif mutation == 'fabricated-rejection': result['actual'] = {'rejected': True}
+                    else:
+                        for key in ('sdkAccepted', 'hostAccepted', 'rejectionLayer'): result.pop(key)
+                    self.assertEqual(self.verify(scenario, result)['status'], 'failed')
+
+    def test_protocol_negative_cannot_claim_host_rejection(self):
+        scenario = next(s for s in generate_scenarios.build()['scenarios'] if s['id'] == 'wrong-response-id')
+        result = self.host_result(self.scenarios[0]); result['id'] = scenario['id']
+        self.assertEqual(self.verify(scenario, result)['status'], 'failed')
 
 if __name__ == '__main__':
     unittest.main()

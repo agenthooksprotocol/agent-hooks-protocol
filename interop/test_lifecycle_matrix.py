@@ -1,7 +1,9 @@
 """Negative verifier tests: a success-shaped report alone cannot pass."""
 from copy import deepcopy
+import base64
+import hashlib
 import unittest
-from lifecycle_matrix import HERE, load, verify
+from lifecycle_matrix import HERE, load, verify, accepted_observation, transport_scenarios
 
 def evidence(scenarios):
     entries=[]
@@ -37,6 +39,84 @@ class VerifierTests(unittest.TestCase):
     def setUp(self):
         self.scenarios=[s for s in load(HERE/'lifecycle-scenarios.json')['scenarios'] if 'chain' not in s]; self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')
+    def test_content_sources_exclude_negative_fixture_probes(self):
+        from lifecycle_matrix import content_sources
+        sources = content_sources(self.scenarios)
+        self.assertTrue(sources)
+        refs = {source['descriptor']['ref'] for source in sources}
+        self.assertTrue({'bad-size', 'bad-hash', 'unauthorized'}.isdisjoint(refs))
+        for source in sources:
+            raw = base64.b64decode(source['bytes'])
+            self.assertEqual(source['descriptor']['size'], len(raw))
+            self.assertEqual(source['descriptor']['sha256'], hashlib.sha256(raw).hexdigest())
+
+    def sdk_upload(self, kind='received'):
+        entries = self.receipts['entries']
+        receipt = next(e for e in entries if e['kind'] == kind and
+                       any('body' in item for item in e['message']['params']['event'].get('items', [])))
+        item = next(item for item in receipt['message']['params']['event']['items'] if 'body' in item)
+        original = deepcopy(item['body'])
+        descriptor = {**original, 'ref': 'sdk-confirmed:' + original['ref']}
+        confirmation = {'sourceRef': original['ref'], 'descriptor': descriptor,
+                        'method': receipt['message']['method'], 'eventId': receipt['message']['params']['event']['id']}
+        self.report['contentUploads'] = [confirmation]
+        item['body'] = deepcopy(descriptor)
+        if kind == 'observed':
+            receipt['event'] = deepcopy(receipt['message']['params']['event'])
+        upload = {'kind': 'upload', 'status': 201, **descriptor}
+        entries.insert(entries.index(receipt), upload)
+        return confirmation, upload, receipt
+
+    def test_sdk_intercept_upload_preserves_preliminary_probes(self):
+        self.sdk_upload()
+        self.assertEqual([], self.check())
+
+    def test_sdk_observe_upload_bound_to_selected_view(self):
+        self.sdk_upload('observed')
+        self.assertEqual([], self.check())
+
+    def test_sdk_upload_unclaimed_extra_fails(self):
+        self.sdk_upload()
+        self.report.pop('contentUploads')
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_wrong_source_fails(self):
+        confirmation, _, _ = self.sdk_upload()
+        confirmation['sourceRef'] = 'unselected-source'
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_wrong_delivery_fails(self):
+        confirmation, _, _ = self.sdk_upload()
+        confirmation['eventId'] = 'another-boundary'
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_wrong_length_or_hash_fails(self):
+        confirmation, _, _ = self.sdk_upload()
+        confirmation['descriptor']['size'] += 1
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_wrong_receiver_ref_fails(self):
+        _, upload, _ = self.sdk_upload()
+        upload['ref'] = 'different-receiver-ref'
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_unauthorized_receipt_fails(self):
+        _, upload, _ = self.sdk_upload()
+        upload['status'] = 401
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_after_delivery_fails(self):
+        _, upload, receipt = self.sdk_upload()
+        entries = self.receipts['entries']
+        entries.remove(upload)
+        entries.insert(entries.index(receipt) + 1, upload)
+        self.assertTrue(self.check())
+
+    def test_sdk_upload_duplicate_confirmation_fails(self):
+        confirmation, _, _ = self.sdk_upload()
+        self.report['contentUploads'].append(deepcopy(confirmation))
+        self.assertTrue(self.check())
+
     def test_ask_fixture_valid_but_reason_extension_rejected(self):
         from observation_wire import ObservationValidator
         validator = ObservationValidator()
@@ -302,4 +382,63 @@ open(c['reportFile'],'w').write(json.dumps({'language':'python','results':[],'re
             self.assertFalse(result['passed']);self.assertTrue(any('cleanup metadata' in e for e in result['errors']))
 
 
-if __name__=='__main__':unittest.main()
+
+
+
+class NotificationAcceptanceTests(unittest.TestCase):
+    def test_empty_accepted_http_notifications_only(self):
+        for status in (202,204):
+            self.assertTrue(accepted_observation((status,b'')))
+            self.assertFalse(accepted_observation((status,b'{}')))
+        for status in (200,201,400,409,500):
+            self.assertFalse(accepted_observation((status,b'')))
+
+class ReplayFixtureTests(unittest.TestCase):
+    def test_only_exact_second_send_probes_bypass_sdk(self):
+        from generate_lifecycle_scenarios import scenarios
+        marked = [(s['id'], index, step) for s in scenarios for index, step in enumerate(s['steps'])
+                  if step.get('bypassSDK')]
+        self.assertEqual({name for name, _, _ in marked},
+                         {'duplicate-reply-ignored', 'first-staged-response-wins'})
+        self.assertEqual(len(marked), 2)
+        for name, index, step in marked:
+            self.assertEqual(step, {'op': 'send', 'key': 'a', 'slot': 'duplicate', 'bypassSDK': True})
+            scenario = next(s for s in scenarios if s['id'] == name)
+            self.assertEqual(sum(st['op'] == 'send' for st in scenario['steps'][:index]), 1)
+            self.assertTrue(any(st['op'] == 'receive' for st in scenario['steps'][:index]))
+        self.assertEqual(load(HERE/'lifecycle-scenarios.json')['scenarios'], scenarios)
+
+
+class TransportApplicabilityTests(unittest.TestCase):
+    def test_two_outstanding_schedules_are_explicitly_http_only(self):
+        from generate_lifecycle_scenarios import scenarios as generated
+        scenarios = load(HERE / 'lifecycle-scenarios.json')['scenarios']
+        self.assertEqual(generated, scenarios)
+        names = {'late-old-while-next-pending', 'request-specific-acceptance',
+                 'two-staged-reverse-acceptance'}
+        selected, excluded = transport_scenarios(scenarios, 'stdio')
+        self.assertEqual(names, {s['id'] for s in excluded})
+        self.assertTrue(names.isdisjoint(s['id'] for s in selected))
+        for row in excluded:
+            self.assertEqual('inapplicable', row['status'])
+            self.assertEqual('stdio', row['transport'])
+            self.assertIn('one outstanding intercept request', row['reason'])
+            self.assertIn('spec/draft/base/transports/stdio.md', row['reason'])
+        http, excluded = transport_scenarios(scenarios, 'http')
+        self.assertTrue(names <= {s['id'] for s in http})
+        for scenario in http:
+            if scenario['id'] in names:
+                self.assertTrue(scenario['expected']['published'])
+                self.assertTrue(scenario['expected']['states'])
+        self.assertEqual({'stdio-unsolicited-old-before-live', 'stdio-unknown-before-live'},
+                         {s['id'] for s in excluded})
+        self.assertTrue(all(s['reason'] for s in excluded))
+
+    def test_unrestricted_scenario_is_not_excluded(self):
+        scenario = {'id': 'both'}
+        for transport in ('http', 'stdio'):
+            self.assertEqual(([scenario], []), transport_scenarios([scenario], transport))
+
+
+if __name__ == '__main__':
+    unittest.main()

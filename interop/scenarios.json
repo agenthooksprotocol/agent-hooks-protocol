@@ -5134,7 +5134,22 @@
         "application-invalid",
         "atomic-rejection"
       ],
-      "expectError": true
+      "expectError": true,
+      "hostExpected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": 0,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [
+          "Visible only after acceptance"
+        ]
+      }
     },
     {
       "id": "invalid-task-fraction-rejects-staged-message",
@@ -5227,7 +5242,22 @@
         "application-invalid",
         "atomic-rejection"
       ],
-      "expectError": true
+      "expectError": true,
+      "hostExpected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": 1.5,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [
+          "Visible only after acceptance"
+        ]
+      }
     },
     {
       "id": "invalid-task-boolean-rejects-staged-message",
@@ -5320,7 +5350,22 @@
         "application-invalid",
         "atomic-rejection"
       ],
-      "expectError": true
+      "expectError": true,
+      "hostExpected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": true,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [
+          "Visible only after acceptance"
+        ]
+      }
     },
     {
       "id": "invalid-task-missing-rejects-staged-message",
@@ -5411,7 +5456,15 @@
         "application-invalid",
         "atomic-rejection"
       ],
-      "expectError": true
+      "expectError": true,
+      "hostExpected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {},
+        "messages": [
+          "Visible only after acceptance"
+        ]
+      }
     },
     {
       "id": "later-invalid-modify-rolls-back-earlier-modify",
@@ -5512,7 +5565,22 @@
         "application-invalid",
         "atomic-rejection"
       ],
-      "expectError": true
+      "expectError": true,
+      "hostExpected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": -1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [
+          "Visible only after acceptance"
+        ]
+      }
     },
     {
       "id": "modify-unadvertised-target",

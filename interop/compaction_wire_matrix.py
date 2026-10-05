@@ -16,10 +16,10 @@ ROOT=HERE.parent.parent
 SCHEMA=ROOT/'agent-hooks-protocol/schema/draft'
 
 
-def commands():
+def commands(languages=LANGUAGES):
     return {'python':[str(ROOT/'python-sdk/.venv/bin/python'),str(ROOT/'python-sdk/interop/compaction_wire.py')],
             'typescript':['node',str(ROOT/'typescript-sdk/interop/compaction-wire.mjs')],
-            'go':go_command('compaction-wire'),
+            'go':go_command('compaction-wire') if 'go' in languages else None,
             'rust':[str(ROOT/'rust-sdk/target/debug/compaction_wire')]}
 
 
@@ -137,7 +137,7 @@ def probe(sender,receiver,transport,endpoint,token,receiver_command,outputs,env)
           'command':receiver_command+['stdio',sub]}
     # Original native transport clients append a trailing stdio argument; the
     # receiver consumes its fixed startup config and subscription arguments only.
-    out=subprocess.run(transport_commands()[sender]+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=60)
+    out=subprocess.run(transport_commands((sender,))[sender]+['client'],input=json.dumps(plan),capture_output=True,text=True,env=env,timeout=60)
     if out.returncode:raise RuntimeError('negative sender: '+out.stderr[-1000:])
     replies=json.loads(out.stdout)
     require(wire_equal(len(replies), 4))
@@ -146,7 +146,7 @@ def probe(sender,receiver,transport,endpoint,token,receiver_command,outputs,env)
 
 
 def run_pair(pair):
-    sender,receiver,transport=pair;rows,config,expected=cases();cmd=commands();proc=None
+    sender,receiver,transport=pair;rows,config,expected=cases();cmd=commands(pair[:2]);proc=None
     env=os.environ.copy();env['PYTHONPATH']=str(ROOT/'python-sdk/src')
     # Each credential selects exactly one receiver scope; scope labels stay local.
     credentials={scope:{'token':secrets.token_urlsafe(24),'uploadToken':secrets.token_urlsafe(24)} for scope in config}
