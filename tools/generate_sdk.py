@@ -91,8 +91,9 @@ for language, destination, filename in targets:
             else:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(artifact.read_bytes())
-        if language == 'rust' and not args.output_dir:
-            target = destination.parent / 'ahp-codegen.lock.json'
+        if language in ('rust', 'python') and not args.output_dir:
+            sdk_root = destination.parent if language == 'rust' else destination.parent.parent
+            target = sdk_root / 'ahp-codegen.lock.json'
             contents = (output / 'ahp-codegen.lock.json').read_bytes()
             if args.check:
                 if not target.is_file() or target.read_bytes() != contents:
