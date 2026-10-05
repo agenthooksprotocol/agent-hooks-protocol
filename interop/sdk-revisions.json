@@ -8,12 +8,12 @@
     },
     "typescript": {
       "repository": "agenthooksprotocol/typescript-sdk",
-      "revision": "0030c53290a079f10769d61a7db2293f7d2b505e",
+      "revision": "2f9556347dbf59b9abaf28a8cbfd55904a09980c",
       "path": "typescript-sdk"
     },
     "go": {
       "repository": "agenthooksprotocol/go-sdk",
-      "revision": "348dd947b1fd274bf0785a6c1d3a4bb068fd3179",
+      "revision": "4dc4edc2d496a35b03e74bfb4ac7247ac0760f7e",
       "path": "go-sdk"
     },
     "rust": {
