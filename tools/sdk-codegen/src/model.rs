@@ -86,6 +86,9 @@ pub enum Shape {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Property {
+    /// Constructor-only annotation; never part of wire validation descriptors.
+    #[serde(skip)]
+    pub constructor_default: Option<Value>,
     pub wire_name: String,
     pub required: bool,
     pub shape: Shape,

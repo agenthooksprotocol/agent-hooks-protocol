@@ -362,6 +362,7 @@ impl Compiler<'_> {
                     for (wire_name, value) in entries {
                         properties.push(Property {
                             wire_name: wire_name.clone(),
+                            constructor_default: value.get("default").cloned(),
                             required: required.contains(wire_name.as_str()),
                             shape: self.lower(
                                 document,
@@ -381,6 +382,7 @@ impl Compiler<'_> {
                     {
                         properties.push(Property {
                             wire_name: (*wire_name).to_owned(),
+                            constructor_default: None,
                             required: true,
                             shape: Shape::Any,
                         });
@@ -826,6 +828,92 @@ fn escape_pointer(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn constructor_metadata_does_not_change_wire_or_other_language_output() {
+        fn clear(shape: &mut Shape) {
+            match shape {
+                Shape::Object { properties, .. } => {
+                    for p in properties {
+                        p.constructor_default = None;
+                        clear(&mut p.shape);
+                    }
+                }
+                Shape::Array { items } => clear(items),
+                Shape::Union { variants, .. } | Shape::Intersection { variants } => {
+                    for s in variants {
+                        clear(s);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = compile(&repository, "draft").unwrap();
+        let mut without = compile(&repository, "draft").unwrap();
+        for n in &mut without.types {
+            clear(&mut n.shape);
+        }
+        assert_eq!(
+            serde_json::to_value(&ir).unwrap(),
+            serde_json::to_value(&without).unwrap()
+        );
+        use crate::langs::{go, python, rust, typescript};
+        for emit in [go::emit, python::emit, rust::emit, typescript::emit] {
+            assert!(
+                emit(&ir).unwrap() == emit(&without).unwrap(),
+                "constructor metadata changed wire output"
+            );
+        }
+    }
+
+    #[test]
+    fn property_defaults_are_constructor_only_annotations() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let schema = serde_json::json!({"type":"object", "required":["count"], "properties":{
+            "enabled":{"type":"boolean", "default":false},
+            "count":{"type":"integer", "default":3},
+            "nullable":{"default":null},
+            "names":{"type":"array", "items":{"type":"string"}, "default":["first"]},
+            "plain":{"type":"string"}
+        }});
+        let shape = compiler.lower("schema.json", "", &schema).unwrap();
+        let Shape::Object { properties, .. } = &shape else {
+            panic!("object expected")
+        };
+        let find = |name: &str| properties.iter().find(|p| p.wire_name == name).unwrap();
+        assert_eq!(
+            find("enabled").constructor_default,
+            Some(serde_json::json!(false))
+        );
+        assert_eq!(
+            find("count").constructor_default,
+            Some(serde_json::json!(3))
+        );
+        assert!(find("count").required);
+        assert_eq!(find("nullable").constructor_default, Some(Value::Null));
+        assert_eq!(
+            find("names").constructor_default,
+            Some(serde_json::json!(["first"]))
+        );
+        assert_eq!(find("plain").constructor_default, None);
+        let mut without = schema.clone();
+        for node in without["properties"].as_object_mut().unwrap().values_mut() {
+            node.as_object_mut().unwrap().remove("default");
+        }
+        let without = compiler.lower("schema.json", "", &without).unwrap();
+        assert_eq!(
+            serde_json::to_value(shape).unwrap(),
+            serde_json::to_value(without).unwrap()
+        );
+    }
     use super::*;
 
     #[test]

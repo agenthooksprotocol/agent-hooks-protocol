@@ -18,6 +18,8 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
     "DiagnosticSeverity",
     "Deref",
     "Integer",
+    "Into",
+    "From",
     "JsonNumber",
     "JsonValue",
     "OnceLock",
@@ -41,7 +43,147 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
 /// the TypeScript SDK. It does not try to reproduce canonical JSON Schema
 /// validation. Unknown object members, open-enum strings, and discriminator
 /// variants are retained so that decoding and encoding is lossless.
+#[allow(dead_code)]
 pub fn emit(ir: &Ir) -> Result<String> {
+    emit_with_defaults(ir, BTreeMap::new())
+}
+
+/// Schema annotations affect construction only, never decoding.
+pub fn emit_from_repository(ir: &Ir, repository: &std::path::Path) -> Result<String> {
+    let mut defaults = BTreeMap::new();
+    for named in &ir.types {
+        let Some((path, pointer)) = named.source.split_once('#') else {
+            continue;
+        };
+        let document: Value =
+            serde_json::from_str(&std::fs::read_to_string(repository.join(path))?)?;
+        if let Some(properties) = document
+            .pointer(pointer)
+            .and_then(|node| node.get("properties"))
+            .and_then(Value::as_object)
+        {
+            for (field, schema) in properties {
+                if let Some(value) = schema.get("default") {
+                    defaults.insert((named.name.clone(), field.clone()), value.clone());
+                }
+            }
+        }
+    }
+    emit_with_defaults(ir, defaults)
+}
+
+/// Follow a property path through the normalized IR, keeping only exact literals.
+/// Open strings/enums are deliberately not treated as concrete protocol events.
+fn boundary_literals(
+    ir: &Ir,
+    shape: &Shape,
+    path: &[&str],
+    visiting: &mut BTreeSet<String>,
+    names: &mut BTreeSet<String>,
+) {
+    match shape {
+        Shape::Ref { name } => {
+            if visiting.insert(name.clone()) {
+                if let Some(named) = ir.types.iter().find(|named| named.name == *name) {
+                    boundary_literals(ir, &named.shape, path, visiting, names);
+                }
+                visiting.remove(name);
+            }
+        }
+        Shape::Union { variants, .. } | Shape::Intersection { variants } => {
+            for variant in variants {
+                boundary_literals(ir, variant, path, visiting, names);
+            }
+        }
+        Shape::Object { properties, .. } if !path.is_empty() => {
+            for property in properties
+                .iter()
+                .filter(|property| property.wire_name == path[0])
+            {
+                boundary_literals(ir, &property.shape, &path[1..], visiting, names);
+            }
+        }
+        Shape::Literal {
+            value: Value::String(name),
+        } if path.is_empty() => {
+            names.insert(name.clone());
+        }
+        _ => {}
+    }
+}
+
+fn boundary_inventory(ir: &Ir) -> BTreeMap<String, BTreeSet<&'static str>> {
+    let mut boundaries = BTreeMap::<String, BTreeSet<&'static str>>::new();
+    for (document, mode) in [
+        ("observe-notification.schema.json#", "observe"),
+        ("intercept-request.schema.json#", "intercept"),
+    ] {
+        for named in ir
+            .types
+            .iter()
+            .filter(|named| named.source.rsplit('/').next() == Some(document))
+        {
+            let mut names = BTreeSet::new();
+            boundary_literals(
+                ir,
+                &named.shape,
+                &["params", "event", "type"],
+                &mut BTreeSet::new(),
+                &mut names,
+            );
+            for name in names {
+                boundaries.entry(name).or_default().insert(mode);
+            }
+        }
+    }
+    boundaries
+}
+
+fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
+    let boundaries = boundary_inventory(ir);
+    // Synthetic/non-event schemas can coexist as modules in one consumer crate.
+    // Do not export an empty crate-global macro for each such module.
+    if boundaries.is_empty() {
+        return Ok(());
+    }
+    output.push_str("\n/// Canonical concrete event boundaries; arbitrary extension events are excluded.\npub mod boundary {\n");
+    output.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct BoundaryDescriptor {\n    pub name: &'static str,\n    /// Wire modes whose event unions contain this concrete event.\n    pub modes: &'static [&'static str],\n    /// Event-specific capability constraint; None for observation-only events.\n    pub capability_schema: Option<&'static str>,\n}\n");
+    output.push_str("pub const ALL_BOUNDARIES: &[BoundaryDescriptor] = &[\n");
+    for (name, modes) in &boundaries {
+        let reference = format!("capabilities.schema.json#/$defs/{name}");
+        let capability = ir
+            .types
+            .iter()
+            .any(|named| named.source.ends_with(&format!("/{reference}")));
+        let capability = if capability {
+            format!("Some({reference:?})")
+        } else {
+            "None".into()
+        };
+        writeln!(
+            output,
+            "BoundaryDescriptor {{ name: {name:?}, modes: &{modes:?}, capability_schema: {capability} }},",
+            modes = modes.iter().collect::<Vec<_>>()
+        )?;
+    }
+    output.push_str("];\n}\n\n/// Add typed complete-event entrypoints inside the runtime Client implementation.\n/// This macro has no runtime dependency until expanded.\n#[macro_export]\nmacro_rules! ahp_event_boundary_methods {\n    () => {\n");
+    let mut methods = BTreeSet::new();
+    for name in boundaries.keys() {
+        let method = format!("{}_event", snake_identifier(name));
+        anyhow::ensure!(
+            methods.insert(method.clone()),
+            "event boundary method collision: {method}"
+        );
+        writeln!(
+            output,
+            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::runtime::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
+        )?;
+    }
+    output.push_str("    };\n}\n");
+    Ok(())
+}
+
+fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> Result<String> {
     let mut output = String::new();
     writeln!(output, "// Generated by ahp-codegen. DO NOT EDIT.")?;
     writeln!(
@@ -68,8 +210,13 @@ pub fn emit(ir: &Ir) -> Result<String> {
         ir.protocol_version
     )?;
     output.push_str(PRELUDE);
+    emit_boundaries(ir, &mut output)?;
 
     let mut context = EmitContext::new(ir);
+    context.defaults = defaults
+        .into_iter()
+        .map(|((name, field), value)| ((context.type_name(&name), field), value))
+        .collect();
     let mut declarations = String::new();
     for named in &ir.types {
         writeln!(declarations, "/// Source: {}", one_line(&named.source))?;
@@ -78,6 +225,76 @@ pub fn emit(ir: &Ir) -> Result<String> {
     }
     output.push_str(&declarations);
     output.push_str(&context.helpers);
+    let mut modules: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for named in &ir.types {
+        let source = named.source.split('#').next().unwrap_or("");
+        let document = source
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .trim_end_matches(".schema.json");
+        let module = match document {
+            "execution-event"
+            | "event"
+            | "lifecycle-event"
+            | "interaction-event"
+            | "task-workspace-event"
+            | "catalogue-event" => "event",
+            "content-item" | "content-reference" | "content-selection" | "content-upload" => {
+                "content"
+            }
+            "effects" | "effect" | "deny-effect" => "effect",
+            "jsonrpc" | "json-rpc" | "json-rpc-message" => "transport",
+            other => other,
+        };
+        modules
+            .entry(snake_identifier(module))
+            .or_default()
+            .insert(context.type_name(&named.name));
+        if named.name.contains("Subscription") {
+            modules
+                .entry("subscription".into())
+                .or_default()
+                .insert(context.type_name(&named.name));
+        }
+        if named.name.contains("Transport") {
+            modules
+                .entry("transport".into())
+                .or_default()
+                .insert(context.type_name(&named.name));
+        }
+        if named.name.starts_with("Capabilities")
+            || named.name.starts_with("Initialize")
+            || named.name.ends_with("Request")
+            || named.name.ends_with("Response")
+            || named.name.ends_with("Notification")
+        {
+            modules
+                .entry("client".into())
+                .or_default()
+                .insert(context.type_name(&named.name));
+        }
+    }
+    for names in modules.values_mut() {
+        loop {
+            let previous = names.len();
+            for name in names.clone() {
+                if let Some(helpers) = context.helper_names.get(&name) {
+                    names.extend(helpers.iter().cloned());
+                }
+            }
+            if names.len() == previous {
+                break;
+            }
+        }
+    }
+    for (module, names) in modules {
+        writeln!(
+            output,
+            "/// Models grouped by protocol domain.\npub mod {module} {{\n    pub use super::{{{}}};\n}}\n",
+            names.into_iter().collect::<Vec<_>>().join(", ")
+        )?;
+    }
 
     let schemas = ir
         .types
@@ -115,6 +332,8 @@ struct EmitContext<'a> {
     type_names: BTreeMap<String, String>,
     used_type_names: BTreeSet<String>,
     helpers: String,
+    helper_names: BTreeMap<String, BTreeSet<String>>,
+    defaults: BTreeMap<(String, String), Value>,
 }
 
 impl<'a> EmitContext<'a> {
@@ -145,6 +364,8 @@ impl<'a> EmitContext<'a> {
             type_names,
             used_type_names,
             helpers: String::new(),
+            helper_names: BTreeMap::new(),
+            defaults: BTreeMap::new(),
         }
     }
 
@@ -156,6 +377,11 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_declaration(&mut self, name: &str, shape: &Shape) -> Result<String> {
+        if matches!(shape, Shape::Intersection { .. }) {
+            if let Some(value) = self.fixed_value(shape, &mut BTreeSet::new()).cloned() {
+                return self.emit_literal(name, &value);
+            }
+        }
         match shape {
             Shape::Object { properties, .. } => self.emit_struct(name, properties),
             Shape::Intersection { .. } => {
@@ -166,7 +392,7 @@ impl<'a> EmitContext<'a> {
                     self.emit_struct(name, &properties)
                 } else {
                     Ok(format!(
-                        "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub JsonValue);\n\n"
+                        "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub JsonValue);\n\nimpl {name} {{ pub fn new(value: impl Into<JsonValue>) -> Self {{ Self(value.into()) }} }}\n\n"
                     ))
                 }
             }
@@ -183,13 +409,20 @@ impl<'a> EmitContext<'a> {
             Shape::Array { items } => {
                 let item = self.render_type(items, &format!("{name} item"))?;
                 Ok(format!(
-                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\n"
+                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Vec<{item}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<Vec<{item}>> for {name} {{ fn from(value: Vec<{item}>) -> Self {{ Self::new(value) }} }}\n\n"
                 ))
             }
             Shape::Ref { name: target } => {
                 let target = self.type_name(target);
+                let default = if self.is_literal(shape, &mut BTreeSet::new()) {
+                    format!(
+                        "impl Default for {name} {{ fn default() -> Self {{ Self(Box::default()) }} }}\n"
+                    )
+                } else {
+                    String::new()
+                };
                 Ok(format!(
-                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Box<{target}>);\n\n"
+                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Box<{target}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Box<{target}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<{target}> for {name} {{ fn from(value: {target}) -> Self {{ Self::new(value) }} }}\n{default}\n"
                 ))
             }
             shape => Ok(format!(
@@ -206,10 +439,12 @@ impl<'a> EmitContext<'a> {
             "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\npub struct {name} {{"
         )?;
         let mut used = BTreeSet::new();
+        let mut fields = Vec::new();
         for property in properties {
             let field = unique_field_identifier(&property.wire_name, &mut used);
             let ty =
                 self.render_type(&property.shape, &format!("{name} {}", property.wire_name))?;
+            fields.push((field.clone(), ty.clone(), property));
             writeln!(output, "    #[serde(rename = {:?})]", property.wire_name)?;
             if property.required {
                 writeln!(output, "    pub {field}: {ty},")?;
@@ -225,7 +460,153 @@ impl<'a> EmitContext<'a> {
             output,
             "    /// Members not known to this schema revision.\n    #[serde(flatten)]\n    pub {extra}: BTreeMap<String, JsonValue>,\n}}\n"
         )?;
+        let mut arguments = Vec::new();
+        let mut initializers = Vec::new();
+        let mut builders = String::new();
+        for (field, ty, property) in &fields {
+            let default = self
+                .defaults
+                .get(&(name.to_owned(), property.wire_name.clone()));
+            let literal = self.is_literal(&property.shape, &mut BTreeSet::new());
+            let value = if let Some(default) = default {
+                let json = serde_json::to_string(default)?;
+                format!(
+                    "serde_json::from_str::<{ty}>({json:?}).expect(\"schema default matches generated type\")"
+                )
+            } else if literal {
+                "Default::default()".to_owned()
+            } else if property.required {
+                arguments.push(format!("{field}: impl Into<{ty}>"));
+                format!("{field}.into()")
+            } else {
+                "Presence::Missing".to_owned()
+            };
+            let value = if !property.required && (default.is_some() || literal) {
+                format!("Presence::Present({value})")
+            } else {
+                value
+            };
+            initializers.push(format!("            {field}: {value},"));
+            if !literal {
+                let assignment = if property.required {
+                    "value.into()".to_owned()
+                } else {
+                    "Presence::Present(value.into())".to_owned()
+                };
+                writeln!(
+                    builders,
+                    "    pub fn with_{field}(mut self, value: impl Into<{ty}>) -> Self {{\n        self.{field} = {assignment};\n        self\n    }}"
+                )?;
+            }
+        }
+        // Required schema members deliberately remain explicit constructor arguments.
+        let constructor_lint = if arguments.len() > 7 {
+            "    #[allow(clippy::too_many_arguments)]\n"
+        } else {
+            ""
+        };
+        writeln!(
+            output,
+            "impl {name} {{\n    /// Construct a model; schema literals and defaults are supplied automatically.\n{constructor_lint}    pub fn new({}) -> Self {{\n        Self {{\n{}\n            {extra}: BTreeMap::new(),\n        }}\n    }}\n{builders}}}\n",
+            arguments.join(", "),
+            initializers.join("\n")
+        )?;
+        if arguments.is_empty() {
+            writeln!(
+                output,
+                "impl Default for {name} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n"
+            )?;
+        }
         Ok(output)
+    }
+
+    fn is_literal(&self, shape: &Shape, visiting: &mut BTreeSet<String>) -> bool {
+        self.fixed_value(shape, visiting).is_some()
+    }
+
+    fn fixed_value<'s>(
+        &'s self,
+        shape: &'s Shape,
+        visiting: &mut BTreeSet<String>,
+    ) -> Option<&'s Value> {
+        match shape {
+            Shape::Literal { value } => Some(value),
+            Shape::Intersection { variants } => variants
+                .iter()
+                .find_map(|shape| self.fixed_value(shape, visiting)),
+            Shape::Ref { name } if visiting.insert(name.clone()) => {
+                let value = self
+                    .named_shapes
+                    .get(name.as_str())
+                    .and_then(|shape| self.fixed_value(shape, visiting));
+                visiting.remove(name);
+                value
+            }
+            _ => None,
+        }
+    }
+
+    // Rust aliases are the same type for coherence, even when schema names differ.
+    fn type_identity(&self, ty: &str) -> String {
+        if let Some(inner) = ty.strip_prefix("Box<").and_then(|ty| ty.strip_suffix('>')) {
+            return format!("Box<{}>", self.type_identity(inner));
+        }
+        for (original, rust_name) in &self.type_names {
+            if rust_name != ty {
+                continue;
+            }
+            return match self.named_shapes.get(original.as_str()) {
+                Some(Shape::Any | Shape::Never) => "JsonValue".into(),
+                Some(Shape::Null) => "()".into(),
+                Some(Shape::Boolean) => "bool".into(),
+                Some(Shape::Integer) => "Integer".into(),
+                Some(Shape::Number) => "JsonNumber".into(),
+                Some(Shape::String) => "String".into(),
+                _ => ty.to_owned(),
+            };
+        }
+        ty.to_owned()
+    }
+
+    fn union_label(&self, shape: &Shape) -> Option<String> {
+        let properties =
+            collect_object_properties(shape, &self.named_shapes, &mut BTreeSet::new())?;
+        let literals = properties
+            .iter()
+            .filter(|property| property.required)
+            .filter_map(|property| {
+                self.fixed_value(&property.shape, &mut BTreeSet::new())
+                    .and_then(Value::as_str)
+                    .map(|value| (property.wire_name.as_str(), value))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let key = [
+            "type",
+            "kind",
+            "mode",
+            "method",
+            "selection",
+            "action",
+            "status",
+        ]
+        .into_iter()
+        .find(|key| literals.contains_key(key))?;
+        let mut label = literals[key].to_owned();
+        // Secondary tags distinguish flow stop/continue and similar typed operations.
+        for (other, value) in &literals {
+            if *other != key && !matches!(*other, "jsonrpc" | "protocolVersion") {
+                label.push(' ');
+                label.push_str(value);
+            }
+        }
+        if key == "selection"
+            && properties
+                .iter()
+                .any(|property| property.required && property.wire_name == "gap")
+        {
+            label.push_str(" gap");
+        }
+        Some(label)
     }
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
@@ -253,13 +634,17 @@ impl<'a> EmitContext<'a> {
         let declaration = self.emit_declaration(&name, shape)?;
         writeln!(self.helpers, "/// Inline schema model.")?;
         self.helpers.push_str(&declaration);
+        self.helper_names
+            .entry(hint.split(' ').next().unwrap_or(hint).to_owned())
+            .or_default()
+            .insert(name.clone());
         Ok(name)
     }
 
     fn emit_literal(&self, name: &str, value: &Value) -> Result<String> {
         let encoded = serde_json::to_string(value)?;
         Ok(format!(
-            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub struct {name};\n\nimpl Serialize for {name} {{\n    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n        let value: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        value.serialize(serializer)\n    }}\n}}\n\nimpl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        let expected: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        if same_json(&value, &expected) {{ Ok(Self) }} else {{ Err(<D::Error as serde::de::Error>::custom(format!(\"expected {{expected}}\"))) }}\n    }}\n}}\n\n"
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]\npub struct {name};\n\nimpl {name} {{ pub fn new() -> Self {{ Self }} }}\n\nimpl Serialize for {name} {{\n    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n        let value: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        value.serialize(serializer)\n    }}\n}}\n\nimpl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        let expected: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        if same_json(&value, &expected) {{ Ok(Self) }} else {{ Err(<D::Error as serde::de::Error>::custom(format!(\"expected {{expected}}\"))) }}\n    }}\n}}\n\n"
         ))
     }
 
@@ -336,11 +721,18 @@ impl<'a> EmitContext<'a> {
             if matches!(shape, Shape::Never) {
                 continue;
             }
-            let variant = unique_union_variant_identifier(shape, index, &mut used);
             let discriminator_value = discriminator.and_then(|property| {
                 shape_discriminator_value(shape, property, &self.named_shapes, &mut BTreeSet::new())
                     .map(str::to_owned)
             });
+            let semantic = self
+                .union_label(shape)
+                .or_else(|| discriminator_value.clone());
+            let variant = if let Some(label) = semantic {
+                unique_upper_camel_identifier(type_identifier(&label), &mut used)
+            } else {
+                unique_union_variant_identifier(shape, index, &mut used)
+            };
             let ty = self.render_type(shape, &format!("{name} {variant}"))?;
             rendered.push((variant, ty, discriminator_value));
         }
@@ -382,6 +774,28 @@ impl<'a> EmitContext<'a> {
             )?;
         } else {
             writeln!(output, "}}\n")?;
+        }
+        let mut conversions = Vec::new();
+        for (variant, ty, _) in &rendered {
+            conversions.push((ty.clone(), variant, "value"));
+            if let Some(inner) = ty.strip_prefix("Box<").and_then(|ty| ty.strip_suffix('>')) {
+                conversions.push((inner.to_owned(), variant, "Box::new(value)"));
+            }
+        }
+        for (ty, variant, value) in &conversions {
+            let identity = self.type_identity(ty);
+            if identity != name
+                && conversions
+                    .iter()
+                    .filter(|(other, _, _)| self.type_identity(other) == identity)
+                    .count()
+                    == 1
+            {
+                writeln!(
+                    output,
+                    "impl From<{ty}> for {name} {{\n    fn from(value: {ty}) -> Self {{ Self::{variant}({value}) }}\n}}\n"
+                )?;
+            }
         }
         Ok(output)
     }
@@ -1341,6 +1755,131 @@ mod tests {
     use super::*;
     use crate::model::{AdditionalProperties, NamedType, PublicRoot, UnionMode};
 
+    #[test]
+    fn boundary_inventory_matches_canonical_schema_and_capabilities() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let response: Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                repository.join("schema/draft/capabilities-response.schema.json"),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let events = response.pointer("/allOf/1/properties/result/properties/manifest/properties/events/items/properties/event/enum").unwrap();
+        let expected: BTreeSet<_> = events
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|name| name.as_str().unwrap().to_owned())
+            .collect();
+        let inventory = boundary_inventory(&ir);
+        assert!(!inventory.is_empty());
+        assert_eq!(inventory.keys().cloned().collect::<BTreeSet<_>>(), expected);
+        let capabilities: Value = serde_json::from_str(
+            &std::fs::read_to_string(repository.join("schema/draft/capabilities.schema.json"))
+                .unwrap(),
+        )
+        .unwrap();
+        let intercept: BTreeSet<_> = inventory
+            .iter()
+            .filter(|(_, modes)| modes.contains("intercept"))
+            .map(|(name, _)| name.clone())
+            .collect();
+        assert_eq!(
+            intercept,
+            capabilities["$defs"]
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect()
+        );
+        let mut output = String::new();
+        emit_boundaries(&ir, &mut output).unwrap();
+        assert_eq!(output.matches("pub fn ").count(), expected.len());
+        assert_eq!(
+            output.matches("BoundaryDescriptor { name:").count(),
+            expected.len()
+        );
+        for name in expected {
+            assert!(inventory[&name].contains("observe"));
+            let method = format!("{}_event", snake_identifier(&name));
+            assert!(output.contains(&format!("pub fn {method}<")));
+            assert!(output.contains(&format!("self.event_for({name:?}, event)")));
+            if intercept.contains(&name) {
+                assert!(
+                    output.contains(&format!("Some(\"capabilities.schema.json#/$defs/{name}\")"))
+                );
+            } else {
+                assert!(output.contains(&format!(
+                    "name: {name:?}, modes: &[\"observe\"], capability_schema: None"
+                )));
+            }
+        }
+    }
+
+    #[test]
+    fn boundary_macro_is_inert_until_expanded_and_every_method_executes() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let mut generated = String::new();
+        emit_boundaries(&ir, &mut generated).unwrap();
+        let directory = std::env::temp_dir().join(format!(
+            "ahp-boundary-macro-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        // No runtime or serde module exists in the unexpanded compilation.
+        let inert = format!("mod generated {{ {generated} }} fn main() {{}}");
+        let mut expanded = format!(
+            r#"
+mod generated {{ {generated} }}
+mod serde {{ pub trait Serialize {{}} impl Serialize for u8 {{}} pub mod de {{ pub trait DeserializeOwned {{}} impl DeserializeOwned for u8 {{}} }} }}
+mod runtime {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
+struct Client;
+impl Client {{
+    ahp_event_boundary_methods!();
+    fn event_for<T>(&self, name: &'static str, event: T) -> runtime::EventBoundary<'_, T> {{ runtime::EventBoundary {{ name, event }} }}
+}}
+fn main() {{ let client = Client;
+"#
+        );
+        for name in boundary_inventory(&ir).keys() {
+            let method = format!("{}_event", snake_identifier(name));
+            writeln!(expanded, "let result = client.{method}(7_u8); assert_eq!(result.name, {name:?}); assert_eq!(result.event, 7);").unwrap();
+        }
+        expanded.push_str("}");
+        for (name, source) in [("inert", inert), ("expanded", expanded)] {
+            let path = directory.join(format!("{name}.rs"));
+            let binary = directory.join(name);
+            std::fs::write(&path, source).unwrap();
+            let result = std::process::Command::new("rustc")
+                .args(["--edition=2024", "-Awarnings"])
+                .arg(&path)
+                .arg("-o")
+                .arg(&binary)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            assert!(
+                std::process::Command::new(binary)
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
     fn sample_ir() -> Ir {
         Ir {
             schema_revision: "test-revision".into(),
@@ -1354,6 +1893,7 @@ mod tests {
                 source: "message.json#".into(),
                 shape: Shape::Object {
                     properties: vec![Property {
+                        constructor_default: None,
                         wire_name: "type".into(),
                         required: false,
                         shape: Shape::Union {
@@ -1367,6 +1907,121 @@ mod tests {
                 },
             }],
         }
+    }
+
+    #[test]
+    fn non_event_schemas_do_not_export_a_boundary_macro() {
+        let output = emit(&sample_ir()).unwrap();
+        assert!(!output.contains("macro_rules! ahp_event_boundary_methods"));
+    }
+
+    #[test]
+    fn constructors_and_conversion_coherence() {
+        let ir = sample_ir();
+        let mut context = EmitContext::new(&ir);
+        let object = context
+            .emit_struct(
+                "Example",
+                &[
+                    Property {
+                        constructor_default: None,
+                        wire_name: "id".into(),
+                        required: true,
+                        shape: Shape::String,
+                    },
+                    Property {
+                        constructor_default: None,
+                        wire_name: "kind".into(),
+                        required: true,
+                        shape: Shape::Intersection {
+                            variants: vec![
+                                Shape::String,
+                                Shape::Literal {
+                                    value: Value::String("fixed".into()),
+                                },
+                            ],
+                        },
+                    },
+                    Property {
+                        constructor_default: None,
+                        wire_name: "optional".into(),
+                        required: false,
+                        shape: Shape::Boolean,
+                    },
+                ],
+            )
+            .unwrap();
+        assert!(object.contains("pub fn new(id: impl Into<String>)"));
+        assert!(object.contains("kind: Default::default()"));
+        assert!(object.contains("optional: Presence::Missing"));
+        assert!(object.contains("pub fn with_optional"));
+        assert!(!object.contains("pub fn with_kind"));
+
+        let union = context
+            .emit_union("Ambiguous", &[Shape::String, Shape::String], None)
+            .unwrap();
+        assert!(!union.contains("impl From<String>"));
+        let union = context
+            .emit_union("Unique", &[Shape::String, Shape::Boolean], None)
+            .unwrap();
+        assert!(union.contains("impl From<String> for Unique"));
+        assert!(union.contains("impl From<bool> for Unique"));
+    }
+
+    #[test]
+    fn constructor_argument_lint_is_scoped_to_large_constructors() {
+        let ir = sample_ir();
+        let mut context = EmitContext::new(&ir);
+        let properties = (0..8)
+            .map(|index| Property {
+                constructor_default: None,
+                wire_name: format!("field{index}"),
+                required: true,
+                shape: Shape::String,
+            })
+            .collect::<Vec<_>>();
+        let large = context.emit_struct("Large", &properties).unwrap();
+        assert!(large.contains("#[allow(clippy::too_many_arguments)]\n    pub fn new("));
+        assert_eq!(
+            large
+                .matches("#[allow(clippy::too_many_arguments)]")
+                .count(),
+            1
+        );
+        let small = context.emit_struct("Small", &properties[..7]).unwrap();
+        assert!(!small.contains("#[allow(clippy::too_many_arguments)]"));
+    }
+
+    #[test]
+    fn aliased_union_payloads_do_not_get_conflicting_from_impls() {
+        let mut ir = sample_ir();
+        ir.types.push(NamedType {
+            name: "Text".into(),
+            source: "text.json#".into(),
+            shape: Shape::String,
+        });
+        ir.types.push(NamedType {
+            name: "OtherText".into(),
+            source: "other.json#".into(),
+            shape: Shape::String,
+        });
+        let mut context = EmitContext::new(&ir);
+        let union = context
+            .emit_union(
+                "Aliased",
+                &[
+                    Shape::Ref {
+                        name: "Text".into(),
+                    },
+                    Shape::Ref {
+                        name: "OtherText".into(),
+                    },
+                    Shape::String,
+                ],
+                None,
+            )
+            .unwrap();
+        assert!(!union.contains("impl From<"));
     }
 
     #[test]
@@ -1405,6 +2060,7 @@ mod tests {
                     source: "node.json#".into(),
                     shape: Shape::Object {
                         properties: vec![Property {
+                            constructor_default: None,
                             wire_name: "next".into(),
                             required: false,
                             shape: Shape::Ref {
@@ -1440,6 +2096,7 @@ mod tests {
         fn object(shape: Shape, required: bool) -> Shape {
             Shape::Object {
                 properties: vec![Property {
+                    constructor_default: None,
                     wire_name: "effects".into(),
                     required,
                     shape,
@@ -1480,6 +2137,7 @@ mod tests {
     fn discriminated_unions_alone_emit_guarded_unknown_variants() {
         let branch = |name: &str| Shape::Object {
             properties: vec![Property {
+                constructor_default: None,
                 wire_name: "type".into(),
                 required: true,
                 shape: Shape::Literal {

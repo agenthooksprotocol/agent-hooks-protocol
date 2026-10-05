@@ -83,7 +83,7 @@ jobs:
           package-manager-cache: false
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          go-version: "1.27.x"
           cache: false
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
@@ -138,8 +138,8 @@ jobs:
         working-directory: rust-sdk
         run: |
           (set -e
-            cargo build --locked --all-targets
-            cargo test --locked
+            cargo build --locked --all-targets --all-features
+            cargo test --locked --all-features
           ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/rust-sdk.log"
       - name: Run all SDK matrices and harness unit tests
         if: ${{ !cancelled() }}

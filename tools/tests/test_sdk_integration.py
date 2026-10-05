@@ -51,7 +51,7 @@ class SDKIntegrationTests(unittest.TestCase):
 
         sdk = self.root.parent / 'rust-sdk'
         self.assertEqual(run.call_args_list[-1].args, (
-            ['cargo', 'build', '--locked', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
+            ['cargo', 'build', '--locked', '--features', 'interop', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
             sdk, self.reports / 'build-rust-interop.log', 12))
 
     def test_failed_preparation_blocks_suites_and_clears_stale_reports(self):

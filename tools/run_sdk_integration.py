@@ -122,7 +122,7 @@ def prepare_adapters(root, directory, reports, timeout):
     name = 'rust-interop'
     sdk = root.parent / 'rust-sdk'
     result = {'name': name, **run_command(
-        ['cargo', 'build', '--locked', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
+        ['cargo', 'build', '--locked', '--features', 'interop', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
         sdk, reports / 'build-rust-interop.log', timeout)}
     results.append(result)
     print(f"build-{name}: {result['status']}", flush=True)

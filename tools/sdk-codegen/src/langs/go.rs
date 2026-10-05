@@ -1,3 +1,4 @@
+pub mod facade;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
@@ -107,6 +108,8 @@ struct Generator<'a> {
     named_names: BTreeMap<String, String>,
     used_names: BTreeSet<String>,
     declarations: Vec<String>,
+    objects: BTreeMap<String, Vec<RenderedField>>,
+    unions: BTreeMap<String, Vec<(String, String)>>,
 }
 
 impl<'a> Generator<'a> {
@@ -139,6 +142,8 @@ impl<'a> Generator<'a> {
             named_names,
             used_names,
             declarations: Vec::new(),
+            objects: BTreeMap::new(),
+            unions: BTreeMap::new(),
         }
     }
 
@@ -184,6 +189,9 @@ impl<'a> Generator<'a> {
                             .find(|existing| existing.wire_name == property.wire_name)
                         {
                             existing.required |= property.required;
+                            if existing.constructor_default.is_none() {
+                                existing.constructor_default = property.constructor_default.clone();
+                            }
                             existing.shape = intersect_shapes(
                                 std::mem::replace(&mut existing.shape, Shape::Any),
                                 property.shape,
@@ -231,9 +239,12 @@ impl<'a> Generator<'a> {
                 field_name,
                 field_type,
                 required: property.required,
+                constructor_default: property.constructor_default.clone(),
+                shape: property.shape.clone(),
             });
         }
 
+        self.objects.insert(name.to_owned(), fields.clone());
         let mut declaration = String::new();
         let field_width = fields
             .iter()
@@ -439,6 +450,7 @@ impl<'a> Generator<'a> {
             let field_name = allocate_local_name(&base, &mut field_names);
             fields.push((field_name, field_type));
         }
+        self.unions.insert(name.to_owned(), fields.clone());
         let descriptor = serde_json::to_string(shape)?;
         let mut declaration = String::new();
         match source {
@@ -596,11 +608,14 @@ fn intersect_shapes(left: Shape, right: Shape) -> Shape {
     }
 }
 
+#[derive(Clone)]
 struct RenderedField {
+    constructor_default: Option<serde_json::Value>,
     wire_name: String,
     field_name: String,
     field_type: String,
     required: bool,
+    shape: Shape,
 }
 
 fn union_variant_name(generator: &Generator<'_>, shape: &Shape, index: usize) -> String {
@@ -1205,6 +1220,7 @@ mod tests {
                 source: "message.json#".into(),
                 shape: Shape::Object {
                     properties: vec![Property {
+                        constructor_default: None,
                         wire_name: "displayName".into(),
                         required: false,
                         shape: Shape::String,
@@ -1250,10 +1266,12 @@ mod tests {
             source: "envelope.json#".into(),
             shape: Shape::Object {
                 properties: vec![Property {
+                    constructor_default: None,
                     wire_name: "payload".into(),
                     required: true,
                     shape: Shape::Object {
                         properties: vec![Property {
+                            constructor_default: None,
                             wire_name: "id".into(),
                             required: true,
                             shape: Shape::Integer,
@@ -1307,6 +1325,7 @@ mod tests {
                     source: "node.json#".into(),
                     shape: Shape::Object {
                         properties: vec![Property {
+                            constructor_default: None,
                             wire_name: "next".into(),
                             required: false,
                             shape: Shape::Ref {
@@ -1373,6 +1392,7 @@ mod tests {
         fn object(shape: Shape, required: bool) -> Shape {
             Shape::Object {
                 properties: vec![Property {
+                    constructor_default: None,
                     wire_name: "effects".into(),
                     required,
                     shape,
