@@ -2,7 +2,7 @@
 
 `ahp-codegen` is the official schema-driven SDK model generator. It reads the schema manifest directly; stable SDK names live in that manifest so schema and generation changes are reviewed together. Every named schema-document root receives parse and encode entrypoints. If generated output conflicts with its source schema, the schema takes precedence. Implementations may use this generator, another generator, or handwritten models.
 
-Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, generator version, and exact source repository commit. `tools/generate_sdk.py` records its checkout HEAD as `sourceCommit`; commit generator changes before publishing regenerated SDK artifacts. Use `--go-sdk <root>` or `--rust-sdk <root>` to regenerate one SDK, and append `--check` to verify identical output. Rust keeps matching locks in its root and `src/` directories.
+Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, generator version, and exact source repository commit. `tools/generate_sdk.py` records its checkout HEAD as `sourceCommit`; commit generator changes before publishing regenerated SDK artifacts. Use `--python-sdk <root>`, `--go-sdk <root>`, or `--rust-sdk <root>` to regenerate one SDK, and append `--check` to verify identical output. Rust keeps matching locks in its root and `src/` directories.
 
 ## Compatibility model
 
@@ -115,3 +115,35 @@ in the same order and with the same bytes as root `schemas.json`; both are cover
 by the existing source lock's manifest digest/document hashes and `--check`.
 Smoke tests compile constructors, generic inference, and all boundary methods,
 and exercise duration edge cases and presence-preserving projection JSON.
+
+## Python semantic facade
+
+`python-facade` emits runtime keyword-only dictionary constructors for every
+resolved object root, definition, and nested object, separately from `generated.py`
+wire parsing. Required fields remain required; optional fields preserve absence,
+explicit null, and schema defaults. Literal tags and protocol version are constructor
+conveniences only. Unknown fields remain intact and constructors do not replace
+canonical validation.
+
+Generated `_models` exports the complete model surface; `event`, `tool`, `effect`,
+`capability`, `transport`, and `subscription` expose semantic aliases. Runtime-owned
+`registration.py` can re-export `_models.registration` without losing its validator.
+`tool.Call`, `tool.Input`, `tool.Origin`, and `tool.Path.NATIVE` support host event
+construction. Path is an open schema string, not an alias for tool origin; `NATIVE`
+is the documented canonical example, not a closed list of all paths.
+
+`_boundaries.BoundaryMixin` supplies all 32 async named boundaries. The handwritten
+`Hooks` class implements `dispatch(event_name, input, **kwargs)` and inherits this
+mixin. Host input projections omit SDK-owned envelope fields.
+
+Capability grants are generated from the capabilities schema's effect vocabulary
+and nested target dimensions. For example,
+`capability.Declaration(modes=[capability.Mode.INTERCEPT], grants=[capability.Allow(),
+capability.ModifyInput(replace=True)])` produces the canonical declaration without
+repeating `modify` as both an effect and target key. Grants combine explicit authority;
+delivery modes and elicitation form/URL grants are never inferred. Canonical mappings
+remain usable directly. Conflicting scalar grant metadata raises `ValueError`.
+
+The driver targets `python-sdk/src/agenthooksprotocol`, formats every generated
+Python file with the pinned formatter, and records the immutable generator source
+commit in the lock. It never overwrites the package initializer or runtime modules.
