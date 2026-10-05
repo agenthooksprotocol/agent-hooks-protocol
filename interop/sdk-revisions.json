@@ -13,7 +13,7 @@
         "rust": {
             "path": "rust-sdk",
             "repository": "agenthooksprotocol/rust-sdk",
-            "revision": "1f836ca5a08178c3e8d1c19cc5f7754eec442910"
+            "revision": "7006de06e94e0fe27d1f0e9e0ee5c2093c9bd55e"
         },
         "typescript": {
             "path": "typescript-sdk",
