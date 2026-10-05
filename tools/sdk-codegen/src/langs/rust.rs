@@ -180,6 +180,29 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
         )?;
     }
     output.push_str("    };\n}\n");
+    output.push_str("\n/// Add complete-event entrypoints inside the Hooks facade implementation.\n/// Use the `inventory` arm as an expression to obtain the canonical event names.\n/// This macro has no facade dependency until expanded.\n#[macro_export]\nmacro_rules! ahp_hooks_boundary_methods {\n    (inventory) => {\n        &[");
+    for name in boundaries.keys() {
+        write!(output, "{name:?},")?;
+    }
+    output.push_str("] as &'static [&'static str]\n    };\n    () => {\n");
+    let mut methods = BTreeSet::new();
+    for name in boundaries.keys() {
+        // The facade reserves tool_before for its typed ToolCallInput helper.
+        let method = if name == "tool.before" {
+            "tool_before_event".to_owned()
+        } else {
+            snake_identifier(name)
+        };
+        anyhow::ensure!(
+            methods.insert(method.clone()),
+            "Hooks boundary method collision: {method}"
+        );
+        writeln!(
+            output,
+            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::hooks::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
+        )?;
+    }
+    output.push_str("    };\n}\n");
     Ok(())
 }
 
@@ -1797,7 +1820,7 @@ mod tests {
         );
         let mut output = String::new();
         emit_boundaries(&ir, &mut output).unwrap();
-        assert_eq!(output.matches("pub fn ").count(), expected.len());
+        assert_eq!(output.matches("pub fn ").count(), 2 * expected.len());
         assert_eq!(
             output.matches("BoundaryDescriptor { name:").count(),
             expected.len()
@@ -1841,17 +1864,35 @@ mod tests {
 mod generated {{ {generated} }}
 mod serde {{ pub trait Serialize {{}} impl Serialize for u8 {{}} pub mod de {{ pub trait DeserializeOwned {{}} impl DeserializeOwned for u8 {{}} }} }}
 mod runtime {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
+mod hooks {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
+struct Hooks;
+impl Hooks {{
+    ahp_hooks_boundary_methods!();
+    fn tool_before(&self) {{}}
+    fn event_for<T>(&self, name: &'static str, event: T) -> hooks::EventBoundary<'_, T> {{ hooks::EventBoundary {{ name, event }} }}
+}}
+const NAMED_BOUNDARIES: &[&str] = ahp_hooks_boundary_methods!(inventory);
 struct Client;
 impl Client {{
     ahp_event_boundary_methods!();
     fn event_for<T>(&self, name: &'static str, event: T) -> runtime::EventBoundary<'_, T> {{ runtime::EventBoundary {{ name, event }} }}
 }}
-fn main() {{ let client = Client;
+fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
 "#
         );
         for name in boundary_inventory(&ir).keys() {
             let method = format!("{}_event", snake_identifier(name));
             writeln!(expanded, "let result = client.{method}(7_u8); assert_eq!(result.name, {name:?}); assert_eq!(result.event, 7);").unwrap();
+        }
+        let names = boundary_inventory(&ir).into_keys().collect::<Vec<_>>();
+        writeln!(expanded, "assert_eq!(NAMED_BOUNDARIES, &{names:?});").unwrap();
+        for name in &names {
+            let method = if name == "tool.before" {
+                "tool_before_event".to_owned()
+            } else {
+                name.replace('.', "_")
+            };
+            writeln!(expanded, "let result = hooks.{method}(7_u8); assert_eq!(result.name, {name:?}); assert_eq!(result.event, 7);").unwrap();
         }
         expanded.push_str("}");
         for (name, source) in [("inert", inert), ("expanded", expanded)] {
@@ -1913,6 +1954,7 @@ fn main() {{ let client = Client;
     fn non_event_schemas_do_not_export_a_boundary_macro() {
         let output = emit(&sample_ir()).unwrap();
         assert!(!output.contains("macro_rules! ahp_event_boundary_methods"));
+        assert!(!output.contains("macro_rules! ahp_hooks_boundary_methods"));
     }
 
     #[test]
