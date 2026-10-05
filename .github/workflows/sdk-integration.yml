@@ -107,7 +107,7 @@ jobs:
         run: |
           (set -e
             python3 -m venv .venv
-            .venv/bin/python -m pip install -e .
+            .venv/bin/python -m pip install -e '.[http,pydantic]' 'trio>=0.29,<1'
             .venv/bin/python -m compileall -q src tests
             .venv/bin/python -m unittest discover -s tests
           ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/python-sdk.log"
