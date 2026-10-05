@@ -23,7 +23,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     );
     let mut modules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut boundaries = format!(
-        "{HEADER}from typing import Any\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, cast\n\nif TYPE_CHECKING:\n    from ._hooks import HookResult, Hooks\n    from . import _models as models\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
     );
     let mut count = 0;
     for (name, shape) in &shapes {
@@ -61,10 +61,10 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                         .cloned()
                         .collect::<Vec<_>>();
                     constructor(&mut body, &input_name, &input_fields, ir)?;
-                    exports.insert(input_name.clone(), input_name);
+                    exports.insert(input_name.clone(), input_name.clone());
                     writeln!(
                         boundaries,
-                        "\n    async def {}(self, input: Any, **kwargs: Any) -> Any:\n        return await self.dispatch({tag:?}, input, **kwargs)",
+                        "\n    async def {}(self, input: models.{input_name} | dict[str, Any], **kwargs: Any) -> HookResult:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, **kwargs)",
                         snake_case(short)
                     )?;
                     count += 1;
@@ -159,7 +159,8 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .get_mut("path.py")
         .unwrap()
         .push_str("NATIVE = Path.NATIVE\n");
-    files.insert("_grants.py".into(), grants::emit(&renderer)?);
+    let (grant_source, grant_exports) = grants::emit(&renderer)?;
+    files.insert("_grants.py".into(), grant_source);
     for namespace in [
         "event",
         "tool",
@@ -172,9 +173,14 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     ] {
         let exports = modules.entry(namespace.into()).or_default();
         let mut source = HEADER.to_owned();
-        for (alias, name) in exports {
+        for (alias, name) in exports.iter() {
             writeln!(source, "from . import {name} as {alias}")?;
         }
+        writeln!(
+            source,
+            "__all__ = {}",
+            serde_json::to_string(&exports.keys().collect::<Vec<_>>())?
+        )?;
         files.insert(format!("_models/{namespace}.py"), source);
         // Existing runtime modules must never be replaced by generation.
         if [
@@ -187,16 +193,25 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         ]
         .contains(&namespace)
         {
-            files.insert(
-                format!("{namespace}.py"),
-                format!("{HEADER}from ._models.{namespace} import *\n"),
-            );
+            let mut public = HEADER.to_owned();
+            for alias in exports.keys() {
+                if namespace == "capability" && grant_exports.contains(alias) {
+                    continue;
+                }
+                writeln!(
+                    public,
+                    "from ._models.{namespace} import {alias} as {alias}"
+                )?;
+            }
+            files.insert(format!("{namespace}.py"), public);
         }
     }
-    files
-        .get_mut("capability.py")
-        .unwrap()
-        .push_str("from ._grants import *\n");
+    for name in grant_exports {
+        writeln!(
+            files.get_mut("capability.py").unwrap(),
+            "from ._grants import {name} as {name}"
+        )?;
+    }
     Ok(files)
 }
 

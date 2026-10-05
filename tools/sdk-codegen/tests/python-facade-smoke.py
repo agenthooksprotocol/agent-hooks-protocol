@@ -82,6 +82,36 @@ def main() -> None:
         },
     }
     assert wire.parse_capabilities(declaration["capabilities"])["ok"]
+    # Exercise the real constructed payload, including nested StrEnum values;
+    # comparing enum values to strings alone misses parser preflight rejection.
+    occurrence = event.ToolBefore(
+        id="enum-event", source="urn:example:facade", time="2026-08-24T08:51:14Z",
+        call=tool.Call(id="enum-call"), tool=input["tool"], path=tool.Path.NATIVE,
+    )
+    request = models.InterceptRequest(
+        id="enum-event",
+        params=models.InterceptRequestParams(
+            event=occurrence, capabilities=declaration["capabilities"],
+            state={"permission": "allow", "candidate": None},
+        ),
+    )
+    parsed_request = wire.parse_intercept_request(request)
+    assert parsed_request["ok"], parsed_request
+    assert wire.parse_tool_before_event(occurrence)["ok"]
+    assert wire._to_safe_json(declaration)["modes"] == ["intercept"]
+    assert json.loads(wire.encode_intercept_request(request))["params"]["event"]["path"] == "native"
+    response = json.loads((Path(__file__).resolve().parents[3] / "fixtures/draft/http/capabilities-response.valid.json").read_text())
+    response["result"]["manifest"]["events"] = [{"event": "tool.before", **declaration}]
+    parsed_declaration = wire.parse_capabilities_response(response)
+    assert parsed_declaration["ok"], parsed_declaration
+    if (directory / "runtime.py").is_file():
+        # SDK consumer execution additionally uses its actual canonical Validator.
+        validator = importlib.import_module("facade_contract.runtime").Validator()
+        validator.validate("intercept-request", request)
+        validator.validators["tool-before.schema.json"].validate(occurrence)
+        validator.validate("capabilities", declaration["capabilities"])
+        validator.validate("capabilities-response", response)
+
     explicit_form = capability.Declaration(modes=["observe"], grants=[capability.ElicitationForm()])
     assert explicit_form == {"modes": ["observe"], "capabilities": {"effects": [], "elicitation": {"form": {}}}}
     assert "url" not in explicit_form["capabilities"]["elicitation"]
@@ -96,7 +126,8 @@ def main() -> None:
         methods = inspect.getmembers(boundaries.BoundaryMixin, inspect.iscoroutinefunction)
         assert len(methods) == 32, len(methods)
         seen = set()
-        for name, _ in methods:
+        for name, method in methods:
+            assert inspect.signature(method).return_annotation == "HookResult"
             tag, returned, kwargs = await getattr(Hooks(), name)(input, marker="kept")
             assert returned is input and kwargs == {"marker": "kept"}
             assert tag.replace(".", "_") == name
