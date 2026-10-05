@@ -1,7 +1,7 @@
 use super::*;
 
 /// Compile every capability dimension and target into a canonical grant fragment.
-pub(super) fn emit(renderer: &Renderer<'_>) -> Result<String> {
+pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
     let ir = renderer.ir;
     let shape = &ir
         .types
@@ -126,7 +126,7 @@ class Declaration(dict[str, Any]):
         self["capabilities"] = capabilities
 "#);
     writeln!(out, "\n__all__ = {}", serde_json::to_string(&exports)?)?;
-    Ok(out)
+    Ok((out, exports))
 }
 
 fn strings(shape: &Shape, values: &mut std::collections::BTreeSet<String>) {

@@ -17,9 +17,16 @@ mod tests {
             }
         }
         assert_eq!(files["_boundaries.py"].matches("async def ").count(), 32);
-        assert_eq!(files["_boundaries.py"].matches("return await self.dispatch(").count(), 32);
+        assert_eq!(files["_boundaries.py"].matches("return await cast(\"Hooks\", self).dispatch(").count(), 32);
         for runtime in ["registration.py", "content.py", "__init__.py"] { assert!(!files.contains_key(runtime)); }
         assert!(files["_models/tool.py"].contains("ToolBeforeEventCall as Call"));
+        assert!(files["_models/tool.py"].contains("__all__ = ["));
+        assert!(files["tool.py"].contains("import Call as Call"));
+        assert!(files["tool.py"].contains("import Tool as Tool"));
+        assert!(files["capability.py"].contains("from ._grants import ModifyInput as ModifyInput"));
+        assert!(!files["capability.py"].contains("from ._models.capability import ModifyInput as ModifyInput"));
+        assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
+        assert_eq!(files["_boundaries.py"].matches("-> HookResult:").count(), 32);
         assert!(files["_models/effect.py"].contains("EffectModify as Modify"));
         assert!(files["path.py"].contains("NATIVE = Path.NATIVE"));
     }
