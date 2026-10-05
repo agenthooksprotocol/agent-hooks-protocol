@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 import time
 from auth import Issuer, configuration
+from adapter_builds import prepared_go_manifest
 from matrix import MODES
 from observation_wire import ObservationValidator
 from matrix import load, write, control, ready, stop, equal, kill_group
@@ -358,7 +359,8 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
 def discover(root):
     result={}
     for lang in LANGUAGES:
-        cwd=root/(lang+'-sdk'); manifest=load(cwd/'interop/adapter.json')
+        cwd=root/(lang+'-sdk')
+        manifest=prepared_go_manifest(load(cwd/'interop/adapter.json'), ('lifecycleClient','lifecycleServer'))
         for key in ('lifecycleClient','lifecycleServer'):
             if not isinstance(manifest.get(key),list) or not manifest[key] or not all(isinstance(x,str) for x in manifest[key]):
                 raise ValueError(f'{lang}: missing actual {key} command')
