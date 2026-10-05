@@ -29,7 +29,7 @@ def load_adapter(path):
         # adapter arguments. Compilation is an orchestration prerequisite, not
         # part of the SDK's bounded stdio discovery exchange.
         for role in ('client', 'server'):
-            expected = ['cargo', 'run', '--quiet', '--bin', 'interop', '--', role]
+            expected = ['cargo', 'run', '--quiet', '--features', 'interop', '--bin', 'interop', '--', role]
             if adapter[role] != expected:
                 raise ValueError('unexpected Rust interop launcher')
             adapter[role] = [binary, role]

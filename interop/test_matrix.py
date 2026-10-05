@@ -10,7 +10,7 @@ import generate_scenarios
 
 class PreparedAdapterTests(unittest.TestCase):
     def manifest(self):
-        return {'language': 'rust', **{role: ['cargo', 'run', '--quiet', '--bin',
+        return {'language': 'rust', **{role: ['cargo', 'run', '--quiet', '--features', 'interop', '--bin',
                 'interop', '--', role] for role in ('client', 'server')}}
 
     def test_prepared_rust_uses_native_binary_for_both_roles(self):
