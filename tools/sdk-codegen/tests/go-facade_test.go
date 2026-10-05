@@ -4,6 +4,7 @@ package ahp_test
 import (
 	"encoding/json"
 	ahp "github.com/agenthooksprotocol/go-sdk"
+	"github.com/agenthooksprotocol/go-sdk/capability"
 	"github.com/agenthooksprotocol/go-sdk/content"
 	"github.com/agenthooksprotocol/go-sdk/effect"
 	"github.com/agenthooksprotocol/go-sdk/event"
@@ -110,48 +111,148 @@ func TestGeneratedTypedHostProjection(t *testing.T) {
 // Metadata options are reusable across payload types and preserve presence,
 // including explicit zero values. The constructor never erases the payload.
 func TestGeneratedToolInputConstructor(t *testing.T) {
-    type arguments struct { Path string `json:"path"` }
-    kind := tool.WithInputKind("")
-    typed := tool.NewInput("read", "native", arguments{Path:"file.txt"}, nil, kind)
-    var _ arguments = typed.Input
-    if !typed.Kind.Present || typed.Kind.Value != "" || typed.Mcp.Present { t.Fatal("optional metadata presence lost") }
-    raw := tool.NewInput("read", "native", json.RawMessage(`{"path":"file.txt"}`), kind)
-    a, err := json.Marshal(typed)
-    if err != nil { t.Fatal(err) }
-    b, err := json.Marshal(raw)
-    if err != nil || string(a) != string(b) { t.Fatalf("typed/raw mismatch: %s %s %v", a,b,err) }
-    absent := tool.NewInput("read", "native", arguments{})
-    if absent.Kind.Present || absent.Mcp.Present { t.Fatal("absent options materialized") }
-    mcp := &ahp.ExecutionEventMcp{}
-    withMcp := tool.NewInput("read", "mcp", arguments{}, tool.WithInputMcp(mcp))
-    if !withMcp.Mcp.Present || withMcp.Mcp.Value != mcp { t.Fatal("typed MCP metadata lost") }
+	type arguments struct {
+		Path string `json:"path"`
+	}
+	kind := tool.WithInputKind("")
+	typed := tool.NewInput("read", "native", arguments{Path: "file.txt"}, nil, kind)
+	var _ arguments = typed.Input
+	if !typed.Kind.Present || typed.Kind.Value != "" || typed.Mcp.Present {
+		t.Fatal("optional metadata presence lost")
+	}
+	raw := tool.NewInput("read", "native", json.RawMessage(`{"path":"file.txt"}`), kind)
+	a, err := json.Marshal(typed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := json.Marshal(raw)
+	if err != nil || string(a) != string(b) {
+		t.Fatalf("typed/raw mismatch: %s %s %v", a, b, err)
+	}
+	absent := tool.NewInput("read", "native", arguments{})
+	if absent.Kind.Present || absent.Mcp.Present {
+		t.Fatal("absent options materialized")
+	}
+	mcp := &ahp.ExecutionEventMcp{}
+	withMcp := tool.NewInput("read", "mcp", arguments{}, tool.WithInputMcp(mcp))
+	if !withMcp.Mcp.Present || withMcp.Mcp.Value != mcp {
+		t.Fatal("typed MCP metadata lost")
+	}
 }
 
 func TestGeneratedConstructorLiteralsAndOptionalDefaults(t *testing.T) {
-    sub := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"})
-    wire := sub.ObserveSubscription.Value
-    if wire.Mode != "observe" || !wire.IncludeNative.Present || wire.IncludeNative.Value { t.Fatal("literal or schema default lost") }
-    explicit := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"}, subscription.WithObserveIncludeNative(true))
-    if !explicit.ObserveSubscription.Value.IncludeNative.Present || !explicit.ObserveSubscription.Value.IncludeNative.Value { t.Fatal("default override lost") }
-    last := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"}, subscription.WithObserveIncludeNative(true), subscription.WithObserveIncludeNative(false))
-    if !last.ObserveSubscription.Value.IncludeNative.Present || last.ObserveSubscription.Value.IncludeNative.Value { t.Fatal("last explicit false lost") }
-    intercept := subscription.NewIntercept([]string{"tool.before"}, time.Second, "fail-closed", content.NewSelection("omit"))
-    if !intercept.InterceptSubscription.Value.IncludeNative.Present || intercept.InterceptSubscription.Value.IncludeNative.Value { t.Fatal("intercept default lost") }
-    a, err := json.Marshal(sub)
-    if err != nil { t.Fatal(err) }
-    var fields map[string]json.RawMessage
-    if err := json.Unmarshal(a, &fields); err != nil { t.Fatal(err) }
-    if string(fields["includeNative"]) != "false" { t.Fatalf("schema default not materialized: %s",a) }
-    if string(fields["mode"]) != `"observe"` { t.Fatalf("wrong union arm/literal: %s",a) }
-    delete(fields, "includeNative")
-    absent, err := json.Marshal(fields)
-    if err != nil { t.Fatal(err) }
-    var parsed ahp.ObserveSubscription
-    if err := json.Unmarshal(absent, &parsed); err != nil { t.Fatal(err) }
-    if parsed.IncludeNative.Present { t.Fatal("parser invented constructor default") }
-    roundtrip, err := json.Marshal(parsed)
-    if err != nil { t.Fatal(err) }
-    var again map[string]json.RawMessage
-    if err := json.Unmarshal(roundtrip, &again); err != nil { t.Fatal(err) }
-    if _, exists := again["includeNative"]; exists { t.Fatal("parser roundtrip materialized absent default") }
+	sub := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"})
+	wire := sub.ObserveSubscription.Value
+	if wire.Mode != "observe" || !wire.IncludeNative.Present || wire.IncludeNative.Value {
+		t.Fatal("literal or schema default lost")
+	}
+	explicit := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"}, subscription.WithObserveIncludeNative(true))
+	if !explicit.ObserveSubscription.Value.IncludeNative.Present || !explicit.ObserveSubscription.Value.IncludeNative.Value {
+		t.Fatal("default override lost")
+	}
+	last := subscription.NewObserve(content.NewSelection("omit"), []string{"tool.after"}, subscription.WithObserveIncludeNative(true), subscription.WithObserveIncludeNative(false))
+	if !last.ObserveSubscription.Value.IncludeNative.Present || last.ObserveSubscription.Value.IncludeNative.Value {
+		t.Fatal("last explicit false lost")
+	}
+	intercept := subscription.NewIntercept([]string{"tool.before"}, time.Second, "fail-closed", content.NewSelection("omit"))
+	if !intercept.InterceptSubscription.Value.IncludeNative.Present || intercept.InterceptSubscription.Value.IncludeNative.Value {
+		t.Fatal("intercept default lost")
+	}
+	a, err := json.Marshal(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(a, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["includeNative"]) != "false" {
+		t.Fatalf("schema default not materialized: %s", a)
+	}
+	if string(fields["mode"]) != `"observe"` {
+		t.Fatalf("wrong union arm/literal: %s", a)
+	}
+	delete(fields, "includeNative")
+	absent, err := json.Marshal(fields)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed ahp.ObserveSubscription
+	if err := json.Unmarshal(absent, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if parsed.IncludeNative.Present {
+		t.Fatal("parser invented constructor default")
+	}
+	roundtrip, err := json.Marshal(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var again map[string]json.RawMessage
+	if err := json.Unmarshal(roundtrip, &again); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := again["includeNative"]; exists {
+		t.Fatal("parser roundtrip materialized absent default")
+	}
+}
+
+func TestGeneratedCapabilityHelpers(t *testing.T) {
+	absent := capability.New([]string{})
+	if absent.Elicitation.Present || absent.Modify.Present || absent.Flow.Present || absent.Inject.Present || len(absent.Effects) != 0 {
+		t.Fatal("constructor invented grants")
+	}
+	empty := capability.New(nil, capability.WithElicitation(ahp.CapabilitiesElicitation{}))
+	if !empty.Elicitation.Present || empty.Elicitation.Value.Form.Present || empty.Elicitation.Value.URL.Present {
+		t.Fatal("empty elicitation inferred a mode")
+	}
+	grants := capability.New([]string{"modify", "dev.example.extension"},
+		capability.WithInputModification(false, true),
+		capability.WithOutputModification(true, false),
+		capability.WithElicitationForm(), capability.WithElicitationURL())
+	if !grants.Elicitation.Value.Form.Present || !grants.Elicitation.Value.URL.Present {
+		t.Fatal("explicit elicitation grant absent")
+	}
+	raw, err := json.Marshal(grants)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Effects     []string                   `json:"effects"`
+		Modify      map[string]map[string]bool `json:"modify"`
+		Elicitation map[string]map[string]any  `json:"elicitation"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded.Effects) != 2 || decoded.Effects[0] != "modify" || decoded.Effects[1] != "dev.example.extension" {
+		t.Fatalf("effects changed: %s", raw)
+	}
+	input := decoded.Modify["input"]
+	if value, present := input["replace"]; !present || value {
+		t.Fatalf("explicit false lost: %s", raw)
+	}
+	if !input["merge"] || !decoded.Modify["output"]["replace"] {
+		t.Fatalf("target operation lost: %s", raw)
+	}
+	for _, mode := range []string{"form", "url"} {
+		if value, ok := decoded.Elicitation[mode]; !ok || value == nil || len(value) != 0 {
+			t.Fatalf("grant must be explicit empty object: %s", raw)
+		}
+	}
+	overridden := capability.New(nil, capability.WithEffects("allow"), capability.WithEffects("deny"), capability.WithInputModification(true, false), capability.WithInputModification(false, true))
+	if len(overridden.Effects) != 1 || string(overridden.Modify.Value.Input.Value) != `{"replace":false,"merge":true}` {
+		t.Fatal("last option did not win")
+	}
+	noImplicitEffects := capability.New(nil, capability.WithInputModification(false, false), capability.WithElicitationForm())
+	if len(noImplicitEffects.Effects) != 0 {
+		t.Fatal("nested helper implicitly granted an effect")
+	}
+	// Options produce new body storage for each use, not shared raw JSON.
+	option := capability.WithInputModification(true, false)
+	first, second := capability.New(nil, option), capability.New(nil, option)
+	first.Modify.Value.Input.Value[0] = 'x'
+	if second.Modify.Value.Input.Value[0] != '{' {
+		t.Fatal("shared modification backing storage")
+	}
 }
