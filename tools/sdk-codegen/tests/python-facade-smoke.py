@@ -60,6 +60,39 @@ def main() -> None:
                 raise AssertionError(f"{name} lost required arguments")
     assert constructors > 250, constructors
 
+    # session.start inputs contain host facts only; the SDK supplies its manifest.
+    fixture = Path(__file__).resolve().parents[3] / "fixtures/draft/http/observe-session-start.valid.json"
+    session_event = json.loads(fixture.read_text())["params"]["event"]
+    host_facts = {
+        "session": session_event["session"],
+        "trigger": session_event["trigger"],
+        "harness": session_event["harness"],
+        "permission_mode": session_event["permissionMode"],
+        "items": session_event["items"],
+    }
+    session_input = event.SessionStartInput(**host_facts)
+    assert session_input == {
+        "session": host_facts["session"], "trigger": host_facts["trigger"],
+        "harness": host_facts["harness"], "permissionMode": host_facts["permission_mode"],
+        "items": host_facts["items"],
+    }
+    sdk_fields = {"manifest", "id", "type", "time", "source", "protocol_version"}
+    assert sdk_fields.isdisjoint(inspect.signature(event.SessionStartInput).parameters)
+    assert inspect.signature(event.SessionStart).parameters["manifest"].default is inspect.Parameter.empty
+    envelope = {key: session_event[key] for key in ("id", "source", "time")}
+    try:
+        event.SessionStart(**envelope, **host_facts)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Canonical session.start constructor must require manifest")
+    full_session = event.SessionStart(**envelope, **host_facts, manifest=session_event["manifest"])
+    assert wire.parse_session_start_event(full_session)["ok"]
+    assert json.loads(wire.encode_session_start_event(full_session)) == full_session
+    missing_manifest = dict(full_session)
+    del missing_manifest["manifest"]
+    assert not wire.parse_session_start_event(missing_manifest)["ok"]
+
     assert event.Path.NATIVE == "native"
     assert tool.Origin.MCP == "mcp"
     input = event.ToolBeforeInput(

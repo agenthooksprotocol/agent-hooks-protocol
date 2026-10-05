@@ -57,6 +57,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                         .filter(|p| {
                             !["id", "type", "time", "source", "protocolVersion"]
                                 .contains(&p.wire_name.as_str())
+                                && !(tag == "session.start" && p.wire_name == "manifest")
                         })
                         .cloned()
                         .collect::<Vec<_>>();
