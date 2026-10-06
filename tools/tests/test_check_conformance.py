@@ -71,7 +71,10 @@ class SnapshotCheckerTests(unittest.TestCase):
             source = REPOSITORY_ROOT / name
             destination = self.root / name
             if source.is_dir():
-                shutil.copytree(source, destination)
+                shutil.copytree(
+                    source, destination,
+                    ignore=shutil.ignore_patterns('target', '__pycache__', '.pytest_cache'),
+                )
         # Include linked harness documentation without copying generated reports.
         (self.root / "interop").mkdir()
         for source in (REPOSITORY_ROOT / "interop").glob("*.md"):
