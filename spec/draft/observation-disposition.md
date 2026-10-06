@@ -19,7 +19,7 @@ The host's settlement controller supplies only accepted effective content. Pendi
 or discarded modifications must not leak into observations; interruption preserves
 already-accepted changes but immediately ends pending decision requests. Scheduling
 or processing best-effort observers must not delay interruption or keep interrupted
-execution alive. Observers may run in any order and cannot return effects or reopen
+execution alive. Normal hook-call completion includes completion or bounded failure of its owned observation deliveries; no observer work is detached after completion. The host may background the entire call, subject to interception and approval gates. Observers may run in any order and cannot return effects or reopen
 the decision. Selected authorized uploads must finish before each notification;
 failed observation transfer never reopens interception.
 

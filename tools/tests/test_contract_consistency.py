@@ -111,5 +111,36 @@ class ContractConsistencyTests(unittest.TestCase):
         self.assertTrue(self.errors({'effects': ['future-effect']}, 'capabilities'))
 
 
+class OperationOwnershipContractTests(unittest.TestCase):
+    """Guard normative SDK ownership wording; not runtime delivery evidence."""
+
+    def text(self, name):
+        return (ROOT / 'spec' / 'draft' / name).read_text()
+
+    def test_observation_is_owned_without_becoming_a_decision(self):
+        composition = self.text('base/composition.md')
+        self.assertNotIn('Observer delivery MUST NOT delay the interceptor chain or tool execution', composition)
+        self.assertIn('MUST NOT leave detached observer deliveries', composition)
+        self.assertIn('MUST obtain the interception decision', composition)
+        self.assertIn('MUST NOT initiate further best-effort observations', composition)
+        failure = self.text('base/failure.md')
+        self.assertNotIn('Observe subscriptions are always non-blocking', failure)
+        self.assertIn('failure never changes the settled decision', failure)
+
+    def test_outer_budget_does_not_reset_or_own_borrowed_resources(self):
+        failure = self.text('base/failure.md')
+        self.assertIn('MUST NOT reset or extend the enclosing deadline', failure)
+        self.assertIn('remain caller-owned unless ownership was explicitly transferred', failure)
+        self.assertIn('Bounded safety cleanup may finish after the processing deadline', failure)
+
+    def test_lazy_content_and_external_auth_keep_security_boundaries(self):
+        content = self.text('content-upload.md')
+        self.assertIn('Constructing an owned source MUST NOT read or upload', content)
+        self.assertIn('MUST be checked against actual bytes', content)
+        auth = self.text('capability-auth.md')
+        self.assertIn('Delegation does not relax the authentication requirements', auth)
+        self.assertIn('MUST NOT appear in diagnostics or credential-attempt identifiers', auth)
+
+
 if __name__ == '__main__':
     unittest.main()

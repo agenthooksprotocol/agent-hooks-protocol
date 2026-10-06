@@ -108,8 +108,11 @@ reject CR/LF in framing values before constructing HTTP headers.
 
 ## Preparation and security boundaries
 
-Upload content as soon as it is available. Its configured transfer budget is
-separate from the hook timeout, which starts at interception dispatch. Transfer
+Select independently authorized receivers and content views before consuming an owned body source. Constructing an owned source MUST NOT read or upload its bytes. Metadata-only, omitted, and unmatched routes MUST NOT consume the source. For selected body delivery, snapshot the bytes once within byte and time bounds, compute their actual size and SHA-256, and reuse that immutable snapshot for authorized fan-out rather than racing readers. Each receiver still allocates and confirms its own independently authorized upload reference before dependent event publication. Optional caller-supplied size/hash expectations MUST be checked against actual bytes, not trusted as verification; they are not required to construct a source.
+
+Owned sources and any spool resources have explicit cleanup on success, failure, cancellation, and unused-source paths. Snapshotting and staging remain within the owning operation; they MUST NOT continue as detached work after completion. Host execution data remains separate from a delivery source. Bounded spooling is permitted; unbounded buffering and silent truncation are not.
+
+The configured transfer budget is separate from the per-interceptor timeout, which starts at interception dispatch. Both are bounded by any enclosing hook-call budget, including pre-dispatch preparation. Transfer
 failure is distinct from hook failure; content gaps describe withholding,
 unavailability, limits or transfer failure without silent truncation. Observation
 preparation and uploads are best effort, never an execution gate or a durable

@@ -15,7 +15,9 @@ For each interceptor:
 5. If an operational failure occurs under `fail-closed`, the harness stops the chain and denies the operation.
 This order is normative. Harnesses MUST NOT run interceptors concurrently in this protocol revision.
 ### Observers
-Observer delivery MUST NOT delay the interceptor chain or tool execution. A harness MAY dispatch observer notifications concurrently.
+Observer delivery MUST NOT participate in decision-making or delay settlement of the interceptor chain. Delivery after settlement MAY delay the return of the enclosing hook call, and therefore execution by a caller awaiting that call. A harness MAY dispatch observer notifications concurrently within that operation.
+
+A hook call owns the deliveries it initiates. Normal completion means each owned delivery has completed or reached an explicit bounded failure outcome; implementations MUST NOT leave detached observer deliveries running after that completion. A host MAY run the entire call as a host-owned task, but MUST obtain the interception decision and satisfy any approval requirement before executing the gated operation. Observations cannot reopen a settled decision. Interruption stops new deliveries and cancels or safely retires pending I/O; it MUST NOT initiate further best-effort observations or wait for ordinary observer processing. Bounded cleanup needed to drain or retire I/O and reap owned processes is distinct from observer processing.
 Dispatch observations after settlement using only accepted effective content. Remaining uncalled matching intercept subscriptions also receive `hooks/observe`; already-called interceptors receive no automatic second copy. See [observation delivery](../observation-disposition.md). Backends that make control decisions are responsible for exporting their own durable decision audit, preferably through OpenTelemetry or another dedicated audit pipeline.
 ### Overlapping subscriptions
 Distinct matching subscriptions on the same backend remain independent. Track invocation by subscription ID, not backend ID; an explicit observe subscription is not deduplicated against interception.

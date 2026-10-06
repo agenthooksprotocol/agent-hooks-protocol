@@ -197,15 +197,23 @@ cancellation.
 The interception deadline starts at dispatch and includes any authentication work
 needed for that dispatch, including discovery, acquisition, refresh, interaction,
 and retries. No authentication step resets or extends the deadline. Cancellation
-MUST cancel pending authentication and prevent late delivery. Authorization MAY be
+MUST cancel the operation's pending authentication wait and prevent late delivery. A harness-shared acquisition needed by other active callers need not be cancelled; the cancelled operation MUST NOT resume delivery when that acquisition completes. Authorization MAY be
 prepared before dispatch under a separate bounded, cancellable preparation budget;
-content upload authentication and transfer use the independent upload budget.
+content upload authentication and transfer use the independent upload budget. Any enclosing hook-call budget also bounds preparation, authentication waits, and upload transfer.
 Pre-dispatch preparation MUST NOT become an unbounded wait hidden from policy.
 See [failure semantics](base/failure.md) and [uploads](content-upload.md).
 
 Authentication establishes the verified workload/client principal, not a human
 operator, organization, role, or delegation. Additional claims require trusted
 proof. Credential rotation and acquisition MUST NOT create hook lifecycle events.
+
+### Client authentication integration
+
+An SDK MAY delegate credential acquisition and challenge handling to a harness-owned provider rather than implement an OAuth manager. Delegation does not relax the authentication requirements above. The provider receives the selected registration authentication binding, destination, backend identity, independent event/upload purpose, and operation cancellation context. Challenge handling includes the authentication response and an identity for the credential attempt so a stale rejection need not invalidate newer credentials. Secret values MUST NOT appear in diagnostics or credential-attempt identifiers.
+
+The portable bearer and OAuth bindings both yield bearer credentials for the AHP HTTP endpoint. Environment variables and credential references are resolved by the configured provider; OAuth client secrets are used at the token endpoint, not sent as AHP endpoint credentials. Missing configured secrets and unsupported mechanisms fail explicitly, never by anonymous fallback. HTTP/TLS deployment extensions remain separate transport configuration.
+
+The harness may own discovery policy, token exchange, refresh, coordination, persistence, and explicit authorization UI. SDK discovery/exchange helpers are optional conveniences; no particular token cache, refresh scheduler, browser implementation, or durable store interface is required by AHP. The protocol client retains responsibility for endpoint isolation, safe credential application, bounded challenged retry, and validation of the final response. Choosing an external provider does not authorize an otherwise unsafe replay.
 
 ## Extension policy
 
