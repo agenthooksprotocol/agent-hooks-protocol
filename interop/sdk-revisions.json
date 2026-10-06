@@ -8,7 +8,7 @@
         "python": {
             "path": "python-sdk",
             "repository": "agenthooksprotocol/python-sdk",
-            "revision": "2860a0d678300f75fb2ad00fbf5947a8b0dc5fdb"
+            "revision": "294d7252f3325f1437061332e65ffc89b138ba17"
         },
         "rust": {
             "path": "rust-sdk",
