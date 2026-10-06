@@ -98,8 +98,7 @@ def verify_chains(scenarios, report, receipts, language, exit_code):
         if any(replied[i]>=received[i+1] for i in range(min(len(replied),len(received))-1)):errors.append('interceptors were not serial')
         if scenario['chain'].get('interrupt'):
             if len(cancelled)!=1 or not received or not replied or not settled or not received[0]<cancelled[0]<=settled[0]<replied[0]:errors.append('interruption waited for pending request')
-            # Best-effort delivery can race the discarded late reply. It must
-            # not gate cancellation/settlement, but need not finish before it.
+            if observed or blocked:errors.append('interruption initiated observation work')
         elif cancelled:errors.append('unexpected chain interruption')
         elif settled and replied and replied[-1]>=settled[0]:errors.append('chain settled before response')
     return errors
