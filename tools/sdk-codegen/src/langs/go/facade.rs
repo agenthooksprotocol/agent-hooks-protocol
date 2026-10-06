@@ -1335,6 +1335,68 @@ mod tests {
         ));
     }
     #[test]
+    fn functional_modify_operations_follow_each_targets_schema_metadata() {
+        let ir = draft();
+        let mut g = Generator::new(&ir);
+        for n in &ir.types {
+            g.emit_named(&g.named_name(&n.name), &n.source, &n.shape)
+                .unwrap();
+        }
+        let targets = g.objects.get_mut("CapabilitiesModify").unwrap();
+        assert!(targets.len() > 1);
+        let first_target = targets[0].field_name.clone();
+        let second_target = targets[1].field_name.clone();
+        for (index, target) in targets.iter_mut().enumerate() {
+            let operation = if index == 0 { "patch" } else { "splice" };
+            target.shape = Shape::Object {
+                properties: vec![Property {
+                    wire_name: operation.into(),
+                    required: true,
+                    shape: Shape::Boolean,
+                    constructor_default: None,
+                }],
+                forbidden_property_sets: vec![],
+                additional: crate::model::AdditionalProperties::Forbidden,
+            };
+        }
+        let mut source = String::new();
+        capability_composition(&g, &mut source).unwrap();
+        assert_eq!(
+            source
+                .matches("const Patch ModifyOperation = \"patch\"")
+                .count(),
+            1
+        );
+        assert_eq!(
+            source
+                .matches("const Splice ModifyOperation = \"splice\"")
+                .count(),
+            1
+        );
+        assert!(!source.contains("const Replace ModifyOperation"));
+        assert!(!source.contains("const Merge ModifyOperation"));
+        let first = source
+            .split(&format!("func Modify{first_target}("))
+            .nth(1)
+            .unwrap()
+            .split("func ")
+            .next()
+            .unwrap();
+        let second = source
+            .split(&format!("func Modify{second_target}("))
+            .nth(1)
+            .unwrap()
+            .split("func ")
+            .next()
+            .unwrap();
+        assert!(first.contains("flags := map[string]bool{\"patch\":false}"));
+        assert!(!first.contains("\"splice\""));
+        assert!(second.contains("flags := map[string]bool{\"splice\":false}"));
+        assert!(!second.contains("\"patch\""));
+        assert!(source.contains("known := flags[string(operation)]"));
+    }
+
+    #[test]
     fn capability_helpers_follow_schema_targets_without_implicit_grants() {
         let ir = draft();
         let files = emit(&ir).unwrap();

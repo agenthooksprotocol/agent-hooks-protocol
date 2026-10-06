@@ -99,3 +99,6 @@ for (const type of ["bearer", "unsupported"]) {
 }
 
 console.log("generated TypeScript codec smoke tests passed");
+// Exercise the semantic surface through the same CI consumer entrypoint.
+require("./typescript-ergonomics-smoke.cjs");
+require("./capability-typescript.cjs");

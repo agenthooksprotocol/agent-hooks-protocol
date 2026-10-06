@@ -99,7 +99,8 @@ wire models; `event` additionally uses `tool`; generated client methods depend o
 
 All 32 concrete draft event selectors receive host-input projections and named
 methods. Observation-only methods have no interception options. `ToolBefore[T]`
-carries `tool.Input[T]`; the runtime decodes accepted effective input separately.
+accepts flattened `event.ToolBeforeInput[T]` (`CallID`, `Name`, `Input`,
+`Path`, `Origin`); the runtime decodes accepted effective input separately.
 Composite facts without a concrete wire struct remain raw JSON in projections.
 Source/type/manifest are SDK-owned; absent ID/time and optional fields are omitted.
 
@@ -166,8 +167,116 @@ constraints. There is no runtime JSON decoding, panic, or implicit validation.
 `WithElicitationForm()` and `WithElicitationURL()` each set an explicit empty-object
 grant. Absent or empty elicitation capability objects grant neither mode. Nested
 options preserve sibling grants and overwrite only their own target; full-object
-options remain available for advanced use. No helper automatically adds effects,
+options remain available for advanced use. These advanced raw options never automatically add effects,
 modes, flow grants, or injection grants. Boundary-specific capability constructors
 retain their advanced wire signatures. All target helpers come from the schema
 object graph; no handwritten list of event boundaries or modification targets is
 maintained.
+
+
+## Shared host ergonomics
+
+`src/ergonomics.rs` is SDK-only semantic metadata, not a second wire schema.
+All four emitters use its host-input projection. Required `call` and `tool`
+wrappers are flattened (`call.id` becomes `callId`, `tool.name/input/origin`
+become `name/input/origin`); other nested host facts retain their identity.
+Application-owned arguments are never flattened. Optional wrappers retain their
+presence and conditional requirements. Host `id` and `time` are optional,
+`parentEventId` is preserved, and source/type/protocol version and the configured
+session-start manifest remain runtime-owned. The mapping rejects flat-name
+collisions and unresolved required wrappers. Assembled requests still require
+canonical validation before delivery.
+
+Content-source slots are discovered by following canonical `ContentItem`
+references, including array indices and nested facts. Examples include
+`instructions`, `summary`, `items`, and `fileChangesBefore`. Native readable
+sources remain out of band: only the runtime can select, snapshot, upload and
+publish descriptors during the owned call. Slot metadata neither reads a source
+nor grants body access. Raw wire content descriptors are unchanged.
+
+Delivery diagnostic codes preserve the existing Go vocabulary across SDKs:
+`protocol_rejection`, `remote_rpc`, `transport`, `cancelled`,
+`deadline_exceeded`, `preparation`, and `capacity`. These are causes, separate
+from delivery stage. A malformed JSON-RPC envelope is protocol rejection, not a
+legitimate remote RPC error. Runtime integration owns attribution, failure policy,
+synthetic-denial evidence and redaction; generated codes introduce no wire error
+codes and no second error framework.
+
+Generated capability composition is separate from advanced raw constructors.
+`intercept()` deliberately advertises both intercept and observe, while
+`observe()` advertises observation only. Effects and their explicit target grants
+are constructed together; form and URL elicitation each require an explicit
+grant. Raw omitted fields retain their exact original semantics. Builders are
+reusable without shared mutable declarations. Boundary compatibility and
+per-call narrowing remain runtime admission checks, not proof that the host
+implements an advertised effect.
+
+Initial-state helpers explicitly construct a supplied native decision for this
+occurrence. They are not backend allow/deny effects or default approval. No
+candidate is canonical `candidate: null`; a supplied JSON-null candidate is
+`candidate: {value: null}`. Provenance is ordinary descriptive metadata, not
+execution evidence. Settled permission and accepted-input accessors remain
+runtime-owned and must not imply authorization merely from successful decoding.
+
+### Isolated staging and verification
+
+Do not regenerate into SDK repositories while their runtimes are being edited.
+After committing generator changes, stage all outputs and source locks with:
+
+```sh
+python3 -m pip install ruff==0.12.12
+python3 tools/generate_sdk.py --output-dir /tmp/ahp-codegen-stage
+cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
+python3 -m unittest tools.tests.test_sdk_generation
+```
+
+The staging tree has `typescript/`, `python/`, `go/`, and `rust/` directories.
+TypeScript and Rust ergonomic exports accompany their ordinary generated wire
+file; Python and Go also emit semantic modules/packages. The regular per-SDK
+driver flags install the same artifacts when their owner is ready. Run generation
+again after any generator commit so `sourceCommit` names the committed source,
+not an earlier checkout with uncommitted generator changes.
+
+### Runtime integration interfaces
+
+- **Go:** `event.ToolBeforeInput[T]` has flattened facts and a canonical
+  `MarshalJSON`; every event input implements
+  `AHPContentSources() map[string]*content.Source`. Named source fields use
+  `*content.Source` or index-preserving `[]*content.Source` and never appear in
+  JSON. Paths are event-relative (`/instructions`, `/items/1`). The handwritten
+  `content` leaf package avoids an event/client import cycle. The runtime must
+  collect bindings before serialization in either delivery mode. `capability.Event`
+  and `capability.Mode` can be runtime aliases. Generic receiver methods require
+  the declared Go 1.27 toolchain.
+- **Python:** `event.*Input.to_wire()` returns canonical host facts. Immutable
+  `bind_<slot>_source` methods retain sources outside the mapping and expose
+  `content_sources`. `_boundaries.CONTENT_SOURCE_SLOTS` maps event-qualified slot
+  keys to event name and canonical path tuple; `*` denotes the concrete array
+  index supplied by the binder. Collect bindings before `to_wire()`. `state`,
+  `permission`, `candidate`, and `diagnostics` are generated semantic modules;
+  the package initializer remains handwritten.
+- **TypeScript:** `EventInputs` maps event selectors to flattened input types;
+  `toEventInput(type, input)` performs the generated canonical projection.
+  `contentSlots[event].slot(index?, source)` constructs named out-of-band binding
+  records. Runtime exports can expose these generated helpers without maintaining
+  another event-field or content-slot inventory.
+- **Rust:** `ergonomic_inputs::*Input` has required-fact constructors, optional
+  field setters and fallible `to_event_value()`. Named `<boundary>_sources`
+  modules create out-of-band generic source bindings. The generated
+  `ahp_ergonomic_hook_methods!` macro calls runtime `projected_event_for` with the
+  serialization result so failures remain operation errors rather than panics.
+  Existing low-level wire boundary macros remain available.
+
+These seams do not replace capability compatibility/narrowing checks, canonical
+request validation, content authorization, result settlement or shutdown. Those
+remain handwritten runtime responsibilities and require SDK tests in addition to
+generator consumer checks.
+
+Known event selectors are available as TypeScript `EventType`/`events`, Rust
+`EventType` (canonical serde tags and `as_str()`), Python `event.Type`, and Go
+`event.Type`/constants. These describe known SDK selectors; raw wire extension
+strings remain supported through low-level APIs. TypeScript host tool-input
+projections preserve application generics (`ToolBeforeInput<T = unknown>`),
+without casting accepted result input back to the proposed type. Rust
+`state::Candidate::try_new`, `effects::try_return`, and target `try_replace`/
+`try_merge` helpers preserve ordinary serializer errors for native values.

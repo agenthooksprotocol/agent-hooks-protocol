@@ -1,0 +1,39 @@
+
+#[cfg(test)]
+pub mod generated { pub use super::*; }
+#[cfg(test)]
+pub mod hooks {
+    pub struct EventBoundary<'a, T> {
+        pub name: &'static str,
+        pub value: Result<serde_json::Value, serde_json::Error>,
+        pub marker: std::marker::PhantomData<&'a T>,
+    }
+}
+#[cfg(test)]
+pub struct TestHooks;
+#[cfg(test)]
+impl TestHooks {
+    fn projected_event_for<T>(&self, name: &'static str, value: Result<serde_json::Value, serde_json::Error>) -> hooks::EventBoundary<'_, T> {
+        hooks::EventBoundary { name, value, marker: std::marker::PhantomData }
+    }
+    ahp_ergonomic_hook_methods!();
+}
+#[test]
+fn named_macro_projects_without_flat_wire_leakage() {
+    let h = TestHooks;
+    let input = ergonomic_inputs::ToolBeforeInput::new("c".into(), "/tool".into(), serde_json::json!({"x":1}), "read".into(), ToolBeforeInputOrigin::Native).with_parent_event_id("parent".into());
+    let call = h.tool_before(input);
+    assert_eq!(call.name, "tool.before");
+    let value = call.value.unwrap();
+    assert_eq!(value["tool"]["input"]["x"], 1);
+    assert_eq!(value["call"]["id"], "c");
+    assert_eq!(value["parentEventId"], "parent");
+    assert!(value.get("callId").is_none());
+}
+#[test]
+fn content_sources_bind_without_serialization() {
+    struct Source;
+    let binding = ergonomic_inputs::tool_before_sources::items(2, Source);
+    assert_eq!(binding.path, ["items", "2"]);
+    let _source = binding.source;
+}

@@ -1,0 +1,28 @@
+use ahp_codegen::capability::{self as c, ContinuationCounts, Delivery, FlowOperation, ModifyOperation};
+use serde_json::{json, to_value};
+#[test]
+fn immutable_matched_declarations() -> Result<(), Box<dyn std::error::Error>> {
+    let base = c::intercept().deny();
+    let modified = base.modify_input([ModifyOperation::Replace])?;
+    assert_eq!(to_value(&base)?, json!({"modes":["intercept","observe"],"capabilities":{"effects":["deny"]}}));
+    assert_eq!(to_value(&modified)?, json!({"modes":["intercept","observe"],"capabilities":{"effects":["deny","modify"],"modify":{"input":{"replace":true,"merge":false}}}}));
+    assert_eq!(to_value(c::observe())?, json!({"modes":["observe"]}));
+    assert!(c::intercept().build().is_err());
+    assert!(to_value(c::intercept()).is_err());
+    assert!(base.modify_input([]).is_err());
+    assert!(base.inject_context([]).is_err());
+    assert!(base.flow([], ContinuationCounts::default()).is_err());
+    assert!(base.flow([FlowOperation::Continue], ContinuationCounts::default()).is_err());
+    assert!(base.flow([FlowOperation::Stop], ContinuationCounts {max_continuations: Some(u64::MAX), ..Default::default()}).is_err());
+    let all = modified.modify_input([ModifyOperation::Merge])?.modify_output([ModifyOperation::Replace])?
+        .allow().ask().message().r#return().elicitation_form().elicitation_url()
+        .flow([FlowOperation::Continue,FlowOperation::Stop], ContinuationCounts {remaining_continuations:Some(2), continuation_count:Some(0), max_continuations:None})?
+        .inject_context([Delivery::Now,Delivery::NextTurn])?;
+    let wire = to_value(all.build()?)?;
+    assert_eq!(wire["capabilities"]["modify"]["input"], json!({"replace":true,"merge":true}));
+    assert_eq!(wire["capabilities"]["elicitation"], json!({"form":{},"url":{}}));
+    // build() converts to actual generated Capabilities through fallible serde.
+    let _: ahp_codegen::Capabilities = serde_json::from_value(wire["capabilities"].clone())?;
+    assert!(c::intercept().elicitation_url().build().is_ok());
+    Ok(())
+}

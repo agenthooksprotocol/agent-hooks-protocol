@@ -39,11 +39,16 @@ pub fn object_fields(ir: &Ir, shape: &Shape) -> Option<Vec<Property>> {
             }
             Shape::Intersection { variants } => {
                 let mut fields = BTreeMap::<String, Property>::new();
+                let mut has_object = false;
                 for variant in variants {
-                    if matches!(variant, Shape::Any) {
+                    // anyOf/oneOf siblings constrain an existing object; their
+                    // branch-only members are not unconditional host fields.
+                    if matches!(variant, Shape::Any | Shape::Union { .. }) {
                         continue;
                     }
-                    for p in visit(ir, variant, seen)? {
+                    let properties = visit(ir, variant, seen)?;
+                    has_object = true;
+                    for p in properties {
                         if let Some(old) = fields.get_mut(&p.wire_name) {
                             old.required |= p.required;
                             if !matches!(p.shape, Shape::Any) {
@@ -54,7 +59,7 @@ pub fn object_fields(ir: &Ir, shape: &Shape) -> Option<Vec<Property>> {
                         }
                     }
                 }
-                Some(fields.into_values().collect())
+                has_object.then(|| fields.into_values().collect())
             }
             _ => None,
         }
@@ -212,6 +217,24 @@ pub fn content_slots(ir: &Ir, fields: &[InputField]) -> Vec<ContentSlot> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn boolean_grant_predicates_do_not_replace_declared_operation_types() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&root, "draft").unwrap();
+        let root = ir.types.iter().find(|n| n.name == "Capabilities").unwrap();
+        let fields = object_fields(&ir, &root.shape).unwrap();
+        let modify = fields.iter().find(|p| p.wire_name == "modify").unwrap();
+        for target in object_fields(&ir, &modify.shape).unwrap() {
+            let operations = object_fields(&ir, &target.shape).unwrap();
+            assert_eq!(operations.len(), 2);
+            assert!(
+                operations
+                    .iter()
+                    .all(|p| p.required && matches!(p.shape, Shape::Boolean))
+            );
+        }
+    }
+
     #[test]
     fn named_content_slots_follow_schema_references_without_application_data() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

@@ -1,3 +1,4 @@
+mod capability_ergonomics;
 mod compiler;
 mod ergonomics;
 mod langs;

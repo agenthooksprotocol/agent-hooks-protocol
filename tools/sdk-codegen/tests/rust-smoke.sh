@@ -15,6 +15,9 @@ cargo_command=(cargo "+$rust_toolchain")
 
 mkdir -p "$temporary/emitter/src" "$temporary/consumer/src" "$temporary/consumer/tests"
 cp "$generated" "$temporary/consumer/src/lib.rs"
+cat "$repository/tools/sdk-codegen/tests/rust-boundary-macro-smoke.rs.in" >> "$temporary/consumer/src/lib.rs"
+cp "$repository/tools/sdk-codegen/tests/rust-ergonomics-smoke.rs.in" "$temporary/consumer/tests/ergonomics.rs"
+{ echo "extern crate agenthooksprotocol as ahp_codegen;"; cat "$repository/tools/sdk-codegen/tests/capability-rust.rs.in"; } > "$temporary/consumer/tests/capability.rs"
 cat >"$temporary/emitter/Cargo.toml" <<'TOML'
 [package]
 name = "ahp-rust-emitter-smoke"
@@ -32,6 +35,10 @@ TOML
 cat >"$temporary/emitter/src/main.rs" <<RS
 #[path = "$repository/tools/sdk-codegen/src/model.rs"]
 mod model;
+#[path = "$repository/tools/sdk-codegen/src/ergonomics.rs"]
+mod ergonomics;
+#[path = "$repository/tools/sdk-codegen/src/capability_ergonomics.rs"]
+mod capability_ergonomics;
 #[path = "$repository/tools/sdk-codegen/src/langs/rust.rs"]
 mod rust;
 

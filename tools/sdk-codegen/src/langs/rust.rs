@@ -1,4 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+
+#[path = "rust/ergonomics.rs"]
+mod ergonomics;
 use std::fmt::Write;
 
 use anyhow::Result;
@@ -246,6 +249,8 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
         let name = context.type_name(&named.name);
         declarations.push_str(&context.emit_declaration(&name, &named.shape)?);
     }
+    ergonomics::emit(ir, &mut context, &mut declarations)?;
+    declarations.push_str(&crate::capability_ergonomics::rust(ir)?);
     output.push_str(&declarations);
     output.push_str(&context.helpers);
     let mut modules: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -356,6 +361,8 @@ struct EmitContext<'a> {
     used_type_names: BTreeSet<String>,
     helpers: String,
     helper_names: BTreeMap<String, BTreeSet<String>>,
+    ergonomic_fields: BTreeMap<String, Vec<(String, String)>>,
+    ergonomic_arms: BTreeMap<String, Vec<(String, String)>>,
     defaults: BTreeMap<(String, String), Value>,
 }
 
@@ -388,6 +395,8 @@ impl<'a> EmitContext<'a> {
             used_type_names,
             helpers: String::new(),
             helper_names: BTreeMap::new(),
+            ergonomic_fields: BTreeMap::new(),
+            ergonomic_arms: BTreeMap::new(),
             defaults: BTreeMap::new(),
         }
     }
@@ -478,6 +487,13 @@ impl<'a> EmitContext<'a> {
                 )?;
             }
         }
+        self.ergonomic_fields.insert(
+            name.to_owned(),
+            fields
+                .iter()
+                .map(|(_, ty, p)| (p.wire_name.clone(), ty.clone()))
+                .collect(),
+        );
         let extra = unique_field_identifier("additional_properties", &mut used);
         writeln!(
             output,
@@ -771,6 +787,13 @@ impl<'a> EmitContext<'a> {
                 "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(untagged)]\npub enum {name} {{"
             )?;
         }
+        self.ergonomic_arms.insert(
+            name.to_owned(),
+            rendered
+                .iter()
+                .map(|(variant, ty, _)| (variant.clone(), ty.clone()))
+                .collect(),
+        );
         for (variant, ty, _) in &rendered {
             writeln!(output, "    {variant}({ty}),")?;
         }

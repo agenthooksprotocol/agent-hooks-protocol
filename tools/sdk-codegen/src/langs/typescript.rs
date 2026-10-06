@@ -1,5 +1,7 @@
 use std::fmt::Write;
 
+mod ergonomics;
+
 use anyhow::Result;
 
 use crate::model::{AdditionalProperties, Ir, Shape};
@@ -73,6 +75,8 @@ pub fn emit(ir: &Ir) -> Result<String> {
             function
         )?;
     }
+    ergonomics::emit(ir, &mut output)?;
+    output.push_str(&crate::capability_ergonomics::typescript(ir)?);
     Ok(output)
 }
 

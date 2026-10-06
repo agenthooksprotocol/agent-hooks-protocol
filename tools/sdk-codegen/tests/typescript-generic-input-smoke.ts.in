@@ -1,0 +1,15 @@
+import { EventInputs, ToolBeforeInput, toEventInput } from './generated';
+
+interface Args { path: string }
+const args: Args = { path: 'application-owned' };
+const input: ToolBeforeInput<Args> = {
+  callId: 'call', name: 'read', input: args, path: '/tools/read', origin: 'native',
+};
+const path: string = input.input.path;
+const erased: EventInputs['tool.before'] = input;
+const proposed: unknown = erased.input;
+toEventInput('tool.before', input);
+// The projection does not expose a settled result claiming the original Args type.
+// @ts-expect-error Default host input leaves application payload unknown.
+const unvalidated: Args = erased.input;
+void [path, proposed, unvalidated];
