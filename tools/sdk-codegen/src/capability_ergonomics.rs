@@ -233,6 +233,25 @@ pub fn rust(ir: &Ir) -> Result<String> {
         return Ok(String::new());
     };
     let mut out = String::from(RUST_PRELUDE);
+    out.push_str("pub use super::EventType as Event;\n");
+    for (name, values) in [("EffectType", &m.effects), ("ModifyTarget", &m.targets)] {
+        writeln!(
+            out,
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)] pub enum {name} {{"
+        )?;
+        for value in values {
+            writeln!(out, "#[serde(rename = {value:?})] {},", pascal(value))?;
+        }
+        writeln!(
+            out,
+            "}}\nimpl {name} {{ pub fn as_str(self) -> &'static str {{ match self {{"
+        )?;
+        for value in values {
+            writeln!(out, "Self::{} => {value:?},", pascal(value))?;
+        }
+        out.push_str("} } }\n");
+    }
+
     for (name, values) in [
         ("ModifyOperation", &m.operations),
         ("FlowOperation", &m.flow),

@@ -248,6 +248,14 @@ fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) ->
             out,
             "        if {param} is not _UNSET:\n            arguments[{param:?}] = {param}"
         )?;
+        if name == "Flow" && matches!(field.shape, Shape::Integer) {
+            writeln!(
+                out,
+                "            if type({param}) is not int or not {min} <= {param} <= {max}:\n                raise ValueError(\"continuation counts must be nonnegative safe integers\")",
+                min = crate::ergonomics::MIN_CONTINUATION_COUNT,
+                max = crate::ergonomics::MAX_CONTINUATION_COUNT
+            )?;
+        }
         if matches!(field.shape, Shape::Boolean) {
             bools.push(param.clone());
             writeln!(
@@ -285,6 +293,9 @@ fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) ->
                 .collect::<Vec<_>>()
                 .join(" or ")
         )?;
+    }
+    if name == "Flow" {
+        out.push_str("        if 'continue' in operations and (remaining_continuations is _UNSET or continuation_count is _UNSET):\n            raise ValueError(\"continue requires remaining_continuations and continuation_count\")\n");
     }
     writeln!(out, "        return self._add({name}(**arguments))\n")?;
     Ok(())

@@ -263,9 +263,14 @@ not an earlier checkout with uncommitted generator changes.
 - **Rust:** `ergonomic_inputs::*Input` has required-fact constructors, optional
   field setters and fallible `to_event_value()`. Named `<boundary>_sources`
   modules create out-of-band generic source bindings. The generated
-  `ahp_ergonomic_hook_methods!` macro calls runtime `projected_event_for` with the
-  serialization result so failures remain operation errors rather than panics.
-  Existing low-level wire boundary macros remain available.
+  `ahp_ergonomic_hook_methods!` macro calls runtime `input_for(name, input,
+  Input::to_event_value)` and returns `hooks::InputBoundary<'_, Input>`. It retains
+  the input and projector without serializing until the operation is polled, so
+  projection consumes the operation budget. The generated tool boundary is named
+  `tool_before_event` to coexist with the handwritten typed primary `tool_before`.
+  Existing low-level wire boundary macros remain available. `capability::Event`
+  reexports `EventType`; schema-derived `EffectType` and `ModifyTarget` expose
+  canonical serde tags and `as_str()` without duplicating wire effect models.
 
 These seams do not replace capability compatibility/narrowing checks, canonical
 request validation, content authorization, result settlement or shutdown. Those
@@ -280,3 +285,10 @@ projections preserve application generics (`ToolBeforeInput<T = unknown>`),
 without casting accepted result input back to the proposed type. Rust
 `state::Candidate::try_new`, `effects::try_return`, and target `try_replace`/
 `try_merge` helpers preserve ordinary serializer errors for native values.
+
+Capability continuation counts are nonnegative interoperable integers. Generated
+Go and Python composition reject negative or out-of-range counts before producing
+a declaration (Python also rejects booleans/fractions and missing continue counts).
+TypeScript already enforces this range; Rust uses unsigned counts and rejects
+values above the safe range. Raw manifests still undergo ordinary canonical
+validation; structural parsing alone does not prove numeric validity.

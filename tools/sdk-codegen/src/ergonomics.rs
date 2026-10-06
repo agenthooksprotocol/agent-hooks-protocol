@@ -3,6 +3,10 @@ use crate::model::{Ir, Property, Shape};
 use anyhow::{Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// SDK counters use the interoperable integer range, with canonical minimum zero.
+pub const MIN_CONTINUATION_COUNT: i64 = 0;
+pub const MAX_CONTINUATION_COUNT: i64 = 9_007_199_254_740_991;
+
 /// Delivery causes, not stages or protocol error codes. Preserve existing Go codes.
 pub const DIAGNOSTIC_CODES: &[&str] = &[
     "protocol_rejection",
@@ -217,6 +221,27 @@ pub fn content_slots(ir: &Ir, fields: &[InputField]) -> Vec<ContentSlot> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn continuation_count_minimum_matches_canonical_schema() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let schema: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("schema/draft/capabilities.schema.json")).unwrap(),
+        )
+        .unwrap();
+        let fields = schema["properties"]["flow"]["properties"]
+            .as_object()
+            .unwrap();
+        let counts = fields
+            .values()
+            .filter(|p| p["type"] == "integer")
+            .collect::<Vec<_>>();
+        assert!(!counts.is_empty());
+        for count in counts {
+            assert_eq!(count["minimum"].as_i64(), Some(MIN_CONTINUATION_COUNT));
+        }
+        assert_eq!(MAX_CONTINUATION_COUNT, (1_i64 << 53) - 1);
+    }
+
     #[test]
     fn boolean_grant_predicates_do_not_replace_declared_operation_types() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

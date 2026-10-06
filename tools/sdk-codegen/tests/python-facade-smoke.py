@@ -160,6 +160,24 @@ def main() -> None:
             pass
         else:
             raise AssertionError("Invalid ergonomic grant accepted")
+    invalid_counts = [
+        dict(remaining_continuations=-1, continuation_count=0),
+        dict(remaining_continuations=0, continuation_count=-1),
+        dict(remaining_continuations=True, continuation_count=0),
+        dict(remaining_continuations=0.5, continuation_count=0),
+        dict(remaining_continuations=2**53, continuation_count=0),
+        dict(remaining_continuations=0, continuation_count=0, max_continuations=-1),
+        {},
+    ]
+    for counts in invalid_counts:
+        try:
+            base.flow(operations=["continue"], **counts)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Invalid continuation counts accepted")
+    for count in [0, 2**53 - 1]:
+        assert base.flow(operations=["continue"], remaining_continuations=count, continuation_count=count).to_wire()["capabilities"]["flow"]["remainingContinuations"] == count
     try:
         base._modes = ()
     except AttributeError:

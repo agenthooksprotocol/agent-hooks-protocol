@@ -111,18 +111,23 @@ pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> 
             initializers.join(", ")
         )?;
         out.push_str(&builders);
+        let method = if event == "tool.before" {
+            "tool_before_event".into()
+        } else {
+            snake_identifier(&event)
+        };
+        let input_type = format!(
+            "$crate::$models::ergonomic_inputs::{name}{}",
+            if generic { "<T>" } else { "" }
+        );
+        let projection = format!(
+            "$crate::$models::ergonomic_inputs::{name}{}::to_event_value",
+            if generic { "::<T>" } else { "" }
+        );
         writeln!(
             methods,
-            "pub fn {}{}(&self, input: $crate::$models::ergonomic_inputs::{name}{}) -> $crate::hooks::EventBoundary<'_, {}> {{ self.projected_event_for::<{}>({event:?}, input.to_event_value()) }}",
-            snake_identifier(&event),
-            if generic {
-                "<T: serde::Serialize + serde::de::DeserializeOwned>"
-            } else {
-                ""
-            },
-            if generic { "<T>" } else { "" },
-            if generic { "T" } else { "serde_json::Value" },
-            if generic { "T" } else { "serde_json::Value" }
+            "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for({event:?}, input, {projection}) }}",
+            if generic { "<T: serde::Serialize>" } else { "" }
         )?;
         out.push_str("/// Project host facts; the runtime supplies owned fields and validates the complete request.\npub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {\nlet flat = serde_json::to_value(self)?;\nlet mut event = serde_json::json!({\"type\": Self::EVENT_TYPE});\n");
         for f in &inputs {

@@ -484,9 +484,18 @@ func Modify{name}(operations ...ModifyOperation) Grant {{
         } else {
             ("", "")
         };
+        let validation = if operation == "continue" {
+            format!(
+                "if remaining < {min} || count < {min} || remaining > {max} || count > {max} {{ return fmt.Errorf(\"continuation counts must be nonnegative safe integers\") }};",
+                min = crate::ergonomics::MIN_CONTINUATION_COUNT,
+                max = crate::ergonomics::MAX_CONTINUATION_COUNT
+            )
+        } else {
+            String::new()
+        };
         writeln!(
             out,
-            "func Flow{name}({args}) Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ v.Flow.Present = true; {counts} for _, operation := range v.Flow.Value.Operations {{ if string(operation) == {operation:?} {{ return nil }} }}; v.Flow.Value.Operations = append(v.Flow.Value.Operations, ahp.CapabilitiesFlowOperationsItem({operation:?})); addEffect(v, \"flow\"); return nil }} }} }}"
+            "func Flow{name}({args}) Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ {validation} v.Flow.Present = true; {counts} for _, operation := range v.Flow.Value.Operations {{ if string(operation) == {operation:?} {{ return nil }} }}; v.Flow.Value.Operations = append(v.Flow.Value.Operations, ahp.CapabilitiesFlowOperationsItem({operation:?})); addEffect(v, \"flow\"); return nil }} }} }}"
         )?;
     }
     let deliver = g.objects["CapabilitiesInjectContext"]
