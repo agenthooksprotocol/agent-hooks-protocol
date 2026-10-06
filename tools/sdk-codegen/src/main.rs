@@ -1,4 +1,5 @@
 mod compiler;
+mod ergonomics;
 mod langs;
 mod model;
 

@@ -19,12 +19,14 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         collect(&named.name, &named.shape, &mut shapes);
     }
     let mut body = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom enum import StrEnum\nimport json\n\n_UNSET: Any = object()\n\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nimport json\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\n_UNSET: Any = object()\n\n"
     );
     let mut modules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut boundaries = format!(
         "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, cast\n\nif TYPE_CHECKING:\n    from ._hooks import HookResult, Hooks\n    from . import _models as models\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
     );
+    let mut content_slots_source =
+        String::from("\nCONTENT_SOURCE_SLOTS: dict[str, tuple[str, tuple[str, ...]]] = {\n");
     let mut count = 0;
     for (name, shape) in &shapes {
         if let Some(fields) = properties(&renderer, shape) {
@@ -52,16 +54,94 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                     .and_then(|p| literal(ir, &p.shape))
                 {
                     let input_name = format!("{short}Input");
-                    let input_fields = fields
+                    let projection = crate::ergonomics::input_fields(ir, &fields, &tag)?;
+                    let input_fields = projection
                         .iter()
-                        .filter(|p| {
-                            !["id", "type", "time", "source", "protocolVersion"]
-                                .contains(&p.wire_name.as_str())
-                                && !(tag == "session.start" && p.wire_name == "manifest")
-                        })
-                        .cloned()
+                        .map(|field| field.property.clone())
                         .collect::<Vec<_>>();
                     constructor(&mut body, &input_name, &input_fields, ir)?;
+                    body.push_str("    def to_wire(self) -> dict[str, Any]:\n        result = deepcopy(dict(self))\n");
+                    for field in &projection {
+                        if field.path != [field.property.wire_name.clone()] {
+                            writeln!(body, "        if {:?} in self:", field.property.wire_name)?;
+                            writeln!(
+                                body,
+                                "            value = result.pop({:?})",
+                                field.property.wire_name
+                            )?;
+                            body.push_str("            target = result\n");
+                            for key in &field.path[..field.path.len() - 1] {
+                                writeln!(
+                                    body,
+                                    "            target = target.setdefault({key:?}, {{}})"
+                                )?;
+                            }
+                            writeln!(
+                                body,
+                                "            target[{:?}] = value",
+                                field.path.last().unwrap()
+                            )?;
+                        }
+                    }
+                    body.push_str("        return result\n\n");
+                    let slots = crate::ergonomics::content_slots(ir, &projection);
+                    if !slots.is_empty() {
+                        body.push_str("    @property\n    def content_sources(self) -> dict[str, OwnedContentSource]:\n        return dict(getattr(self, \"_content_sources\", {}))\n\n");
+                    }
+                    let mut slot_names = HashSet::new();
+                    for slot in slots {
+                        let method = snake_case(&slot.name);
+                        anyhow::ensure!(
+                            slot_names.insert(method.clone()),
+                            "content slot collision in {tag}: {method}"
+                        );
+                        let key = format!("{tag}.{method}");
+                        writeln!(
+                            content_slots_source,
+                            "    {key:?}: ({tag:?}, ({})),",
+                            slot.path
+                                .iter()
+                                .map(|p| format!("{p:?},"))
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        )?;
+                        write!(
+                            body,
+                            "    def bind_{method}_source(self, source: OwnedContentSource"
+                        )?;
+                        let indices = (0..slot.path.iter().filter(|p| *p == "*").count())
+                            .map(|i| {
+                                if i == 0 {
+                                    "index".to_owned()
+                                } else {
+                                    format!("index_{}", i + 1)
+                                }
+                            })
+                            .collect::<Vec<_>>();
+                        if slot.many {
+                            body.push_str(", *");
+                        }
+                        for index in &indices {
+                            write!(body, ", {index}: int")?;
+                        }
+                        writeln!(body, ") -> {input_name}:")?;
+                        for index in &indices {
+                            writeln!(
+                                body,
+                                "        if isinstance({index}, bool) or not isinstance({index}, int) or {index} < 0:\n            raise ValueError(\"Content source index must be a nonnegative integer\")"
+                            )?;
+                        }
+                        let suffix = indices
+                            .iter()
+                            .map(|index| format!("[{{{index}}}]"))
+                            .collect::<Vec<_>>()
+                            .join("");
+                        let prefix = if indices.is_empty() { "" } else { "f" };
+                        writeln!(
+                            body,
+                            "        result = copy(self)\n        result._content_sources = {{**self.content_sources, {prefix}\"{key}{suffix}\": source}}\n        return result\n"
+                        )?;
+                    }
                     exports.insert(input_name.clone(), input_name.clone());
                     writeln!(
                         boundaries,
@@ -93,6 +173,8 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             }
         }
     }
+    content_slots_source.push_str("}\n");
+    boundaries.push_str(&content_slots_source);
     if count == 0 {
         boundaries.push_str("    pass\n");
     }
@@ -213,6 +295,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             "from ._grants import {name} as {name}"
         )?;
     }
+    ergonomic_modules(&mut files, &renderer, &shapes)?;
     Ok(files)
 }
 
@@ -417,4 +500,163 @@ fn annotation(ir: &Ir, shape: &Shape) -> &'static str {
             .unwrap_or("Any"),
         _ => "Any",
     }
+}
+
+/// Native ergonomic names retain the canonical model objects as their values.
+fn ergonomic_modules(
+    files: &mut BTreeMap<String, String>,
+    renderer: &Renderer<'_>,
+    shapes: &BTreeMap<String, Shape>,
+) -> Result<()> {
+    let mut diagnostics = format!("{HEADER}from enum import StrEnum\n\nclass Code(StrEnum):\n");
+    for code in crate::ergonomics::DIAGNOSTIC_CODES {
+        writeln!(
+            diagnostics,
+            "    {} = {code:?}",
+            snake_case(code).to_uppercase()
+        )?;
+    }
+    diagnostics.push_str("\nDiagnosticCode = Code\n");
+    files.insert("diagnostics.py".into(), diagnostics);
+    let state_name = "InterceptRequestParamsState";
+    let candidate_name = format!("{state_name}CandidateVariant2");
+    let mut state = format!(
+        "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom ._models import {state_name} as State\nfrom ._models import {state_name}Permission as Permission\nfrom ._models import {state_name}Flow as Flow\nfrom ._models import {candidate_name} as Candidate\nfrom ._models import {candidate_name}Provenance as Provenance\n\n_UNSET: Any = object()\n\ndef initial(permission: Permission, *, candidate: Candidate | None = None"
+    );
+    let fields = properties(renderer, &shapes[state_name]).expect("decision state object");
+    for field in &fields {
+        if !["permission", "candidate"].contains(&field.wire_name.as_str()) {
+            write!(
+                state,
+                ", {}: {} = _UNSET",
+                snake_case(&field.wire_name),
+                if field.wire_name == "flow" {
+                    "Flow"
+                } else {
+                    annotation(renderer.ir, &field.shape)
+                }
+            )?;
+        }
+    }
+    state.push_str(") -> State:\n    \"\"\"Explicit native-hook starting permission, not execution authorization.\"\"\"\n    result = State(permission=Permission(permission), candidate=candidate)\n");
+    for field in &fields {
+        if !["permission", "candidate"].contains(&field.wire_name.as_str()) {
+            let param = snake_case(&field.wire_name);
+            writeln!(
+                state,
+                "    if {param} is not _UNSET:\n        result[{:?}] = {param}",
+                field.wire_name
+            )?;
+        }
+    }
+    state.push_str("    return result\n\n__all__ = [\"State\", \"Permission\", \"Candidate\", \"Provenance\", \"Flow\", \"initial\"]\n");
+    files.insert("state.py".into(), state);
+    files.insert(
+        "permission.py".into(),
+        format!("{HEADER}from .state import Permission as Permission\n"),
+    );
+    files.insert("candidate.py".into(), format!("{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom .state import Candidate as Candidate, Provenance as Provenance\n\ndef value(value: Any, *, provenance: Provenance | None = None) -> Candidate:\n    if provenance is None:\n        return Candidate(value=value)\n    return Candidate(value=value, provenance=provenance)\n"));
+
+    let effect = files.get_mut("effect.py").unwrap();
+    effect.push_str("\nfrom typing import Any\nfrom ._models import _UNSET\n\n");
+    // Match operation helpers to the exact same target grants as declarations.
+    let capabilities = renderer
+        .ir
+        .types
+        .iter()
+        .find(|n| n.name == "Capabilities")
+        .unwrap();
+    let dimensions = properties(renderer, &capabilities.shape).unwrap();
+    let modify = dimensions
+        .iter()
+        .find(|field| field.wire_name == "modify")
+        .unwrap();
+    for target in properties(renderer, &modify.shape).unwrap() {
+        for operation in properties(renderer, &target.shape).unwrap_or_default() {
+            if !matches!(
+                operation.shape,
+                Shape::Boolean
+                    | Shape::Literal {
+                        value: Value::Bool(_)
+                    }
+            ) {
+                continue;
+            }
+            let name = format!(
+                "{}_{}",
+                snake_case(&operation.wire_name),
+                snake_case(&target.wire_name)
+            );
+            writeln!(
+                effect,
+                "def {name}(value: Any) -> Modify:\n    return Modify(target={:?}, operation={:?}, value=value)\n",
+                target.wire_name, operation.wire_name
+            )?;
+        }
+    }
+    for (name, shape) in shapes {
+        if name.starts_with("Effect") && name != "EffectModify" {
+            if let Some(fields) = properties(renderer, shape) {
+                if fields
+                    .iter()
+                    .any(|p| p.wire_name == "type" && literal(renderer.ir, &p.shape).is_some())
+                {
+                    let short = name.trim_start_matches("Effect");
+                    let alias = allocate_identifier(
+                        &snake_case(short),
+                        "effect",
+                        &mut reserved_identifiers(),
+                    );
+                    let params = fields
+                        .iter()
+                        .filter(|p| literal(renderer.ir, &p.shape).is_none())
+                        .collect::<Vec<_>>();
+                    write!(effect, "def {alias}(")?;
+                    if !params.is_empty() {
+                        effect.push_str("*, ");
+                    }
+                    for p in &params {
+                        write!(
+                            effect,
+                            "{}: {}{}, ",
+                            snake_case(&p.wire_name),
+                            annotation(renderer.ir, &p.shape),
+                            if p.required { "" } else { " = _UNSET" }
+                        )?;
+                    }
+                    writeln!(
+                        effect,
+                        ") -> {short}:\n    return {short}({})\n",
+                        params
+                            .iter()
+                            .map(|p| {
+                                let name = snake_case(&p.wire_name);
+                                format!("{name}={name}")
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                    let semantic = ["type", "target", "operation"]
+                        .iter()
+                        .filter_map(|key| {
+                            fields
+                                .iter()
+                                .find(|p| p.wire_name == *key)
+                                .and_then(|p| literal(renderer.ir, &p.shape))
+                                .and_then(|v| v.as_str().map(str::to_owned))
+                        })
+                        .collect::<Vec<_>>()
+                        .join("_");
+                    let semantic =
+                        allocate_identifier(&semantic, "effect", &mut reserved_identifiers());
+                    if semantic != alias {
+                        writeln!(effect, "{semantic} = {alias}")?;
+                    }
+                }
+            }
+        }
+    }
+    // Deny is a separately named canonical model, not an Effect-prefixed model.
+    effect.push_str("deny = Deny\n");
+    Ok(())
 }

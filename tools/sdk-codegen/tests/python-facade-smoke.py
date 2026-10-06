@@ -76,7 +76,30 @@ def main() -> None:
         "harness": host_facts["harness"], "permissionMode": host_facts["permission_mode"],
         "items": host_facts["items"],
     }
-    sdk_fields = {"manifest", "id", "type", "time", "source", "protocol_version"}
+    # Named sources remain out-of-band; binding neither copies nor reads streams.
+    class UnreadSource:
+        def __deepcopy__(self, memo):
+            raise AssertionError("Source entered wire copy")
+
+    source = UnreadSource()
+    bound = session_input.bind_items_source(source, index=0)
+    assert session_input.content_sources == {}
+    assert bound.content_sources == {"session.start.items[0]": source}
+    assert bound.to_wire() == session_input.to_wire()
+    assert json.dumps(bound.to_wire()) == json.dumps(session_input.to_wire())
+    bound.content_sources.clear()
+    assert bound.content_sources["session.start.items[0]"] is source
+    assert boundaries.CONTENT_SOURCE_SLOTS["session.start.items"] == ("session.start", ("items", "*"))
+    assert boundaries.CONTENT_SOURCE_SLOTS["tool.after.file_changes_after"] == ("tool.after", ("fileChanges", "*", "after"))
+    assert boundaries.CONTENT_SOURCE_SLOTS["context.compact.before.instructions"] == ("context.compact.before", ("instructions",))
+    for index in [-1, True, "0"]:
+        try:
+            session_input.bind_items_source(source, index=index)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Invalid source index accepted")
+    sdk_fields = {"manifest", "type", "source", "protocol_version"}
     assert sdk_fields.isdisjoint(inspect.signature(event.SessionStartInput).parameters)
     assert inspect.signature(event.SessionStart).parameters["manifest"].default is inspect.Parameter.empty
     envelope = {key: session_event[key] for key in ("id", "source", "time")}
@@ -96,12 +119,53 @@ def main() -> None:
     assert event.Path.NATIVE == "native"
     assert tool.Origin.MCP == "mcp"
     input = event.ToolBeforeInput(
-        call=tool.Call(id="call"),
-        tool=tool.Input(name="read", origin=tool.Origin.NATIVE, input={}),
+        call_id="call", name="read", origin=tool.Origin.NATIVE, input={},
         path=event.Path.NATIVE,
         parent_event_id="parent",
     )
     assert input["parentEventId"] == "parent"
+    assert input.to_wire() == {
+        "call": {"id": "call"}, "tool": {"name": "read", "origin": "native", "input": {}},
+        "path": "native", "parentEventId": "parent",
+    }
+    input.to_wire()["tool"]["input"]["changed"] = True
+    assert input["input"] == {}
+    assert effect.replace_input({"x": 1}) == effect.Modify(target="input", operation="replace", value={"x": 1})
+    assert effect.merge_input({"x": 1})["operation"] == "merge"
+    assert wire.parse_effect(effect.replace_input({"x": 1}))["ok"]
+    assert effect.flow_continue() == {"type": "flow", "operation": "continue"}
+    assert effect.inject_context_append(value=[], deliver_at="now") == {"type": "inject", "operation": "append", "target": "context", "value": [], "deliverAt": "now"}
+    state = importlib.import_module("facade_contract.state")
+    candidate = importlib.import_module("facade_contract.candidate")
+    diagnostics = importlib.import_module("facade_contract.diagnostics")
+    assert state.initial(state.Permission.NONE) == {"permission": "none", "candidate": None}
+    assert state.initial(state.Permission.ALLOW, candidate=candidate.value(None))["candidate"] == {"value": None}
+    assert diagnostics.Code.REMOTE_RPC == "remote_rpc"
+    base = capability.intercept()
+    composed = base.deny().modify_input(replace=True).elicitation_form()
+    assert base.allow().to_wire() == {"modes": ["intercept", "observe"], "capabilities": {"effects": ["allow"]}}
+    assert base.elicitation_form().to_wire()["capabilities"] == {"effects": [], "elicitation": {"form": {}}}
+    assert base.elicitation_url().to_wire()["capabilities"] == {"effects": [], "elicitation": {"url": {}}}
+    composed_wire = composed.to_wire()
+    assert composed_wire["capabilities"]["effects"] == ["deny", "modify"]
+    assert composed_wire["capabilities"]["elicitation"] == {"form": {}}
+    assert wire.parse_capabilities(composed_wire["capabilities"])["ok"]
+    composed_wire["capabilities"]["effects"].clear()
+    assert composed.to_wire()["capabilities"]["effects"] == ["deny", "modify"]
+    assert capability.observe().to_wire()["modes"] == ["observe"]
+    for invalid in [lambda: base.to_wire(), lambda: base.modify_input(), lambda: base.modify_input(replace="true"), lambda: capability.observe().deny(), lambda: base.flow(operations=[]), lambda: base.flow(operations=["unknown"])]:
+        try:
+            invalid()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Invalid ergonomic grant accepted")
+    try:
+        base._modes = ()
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("Mutable capability builder")
     assert "id" not in input and "type" not in input
     assert effect.Deny(reason="blocked") == {"type": "deny", "reason": "blocked"}
     value = registration.Registration(hooks=[])
@@ -130,7 +194,7 @@ def main() -> None:
     # comparing enum values to strings alone misses parser preflight rejection.
     occurrence = event.ToolBefore(
         id="enum-event", source="urn:example:facade", time="2026-08-24T08:51:14Z",
-        call=tool.Call(id="enum-call"), tool=input["tool"], path=tool.Path.NATIVE,
+        call=tool.Call(id="enum-call"), tool=input.to_wire()["tool"], path=tool.Path.NATIVE,
     )
     request = models.InterceptRequest(
         id="enum-event",

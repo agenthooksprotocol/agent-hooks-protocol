@@ -19,12 +19,18 @@ go 1.27.0
 EOF
 cargo run --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml" -- \
   generate --repository "$repository" --revision draft --language go-facade --output "$tmp"
+# The handwritten leaf content package owns the source abstraction.
+cat >"$tmp/content/source_stub.go" <<'EOF'
+package content
+import "io"
+type Source struct { Reader io.ReadCloser }
+func NewSource(reader io.ReadCloser) *Source { return &Source{Reader: reader} }
+EOF
 # Generated client methods compile against the runtime's explicit shared seam.
 cat >"$tmp/client/runtime_stub_test.go" <<'EOF'
 package client
 import "context"
 import "github.com/agenthooksprotocol/go-sdk/event"
-import "github.com/agenthooksprotocol/go-sdk/tool"
 import "testing"
 import ahp "github.com/agenthooksprotocol/go-sdk"
 type Mode string
@@ -42,7 +48,7 @@ func (*Hooks) intercept(context.Context, string, any, ...InterceptOption) (*Resu
 func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
 func TestGenericInference(t *testing.T) {
  type arguments struct { Path string }
- result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Tool:tool.NewInput("read", "native", arguments{Path:"file"}, tool.WithInputKind("task"))})
+ result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Name:"read", Origin:"native", Input:arguments{Path:"file"}, ToolKind:ahp.Some("task")})
  if err!=nil {t.Fatal(err)}
  var _ arguments = result.Input
 }
