@@ -3,22 +3,22 @@
         "go": {
             "path": "go-sdk",
             "repository": "agenthooksprotocol/go-sdk",
-            "revision": "1962e40b08474b5768c8f361c0057365bf34f8ec"
+            "revision": "d26f8b85d1a9391f814cadec91a1833414e22e4b"
         },
         "python": {
             "path": "python-sdk",
             "repository": "agenthooksprotocol/python-sdk",
-            "revision": "4320a25631fa3c20c608859bbbc08be529ad9612"
+            "revision": "2860a0d678300f75fb2ad00fbf5947a8b0dc5fdb"
         },
         "rust": {
             "path": "rust-sdk",
             "repository": "agenthooksprotocol/rust-sdk",
-            "revision": "7006de06e94e0fe27d1f0e9e0ee5c2093c9bd55e"
+            "revision": "7c0ad6e89cfcb85952e07b98b00873e88e889b2a"
         },
         "typescript": {
             "path": "typescript-sdk",
             "repository": "agenthooksprotocol/typescript-sdk",
-            "revision": "3588476a2fbb50af9a48d0a332081a6d0dd97960"
+            "revision": "7a9d3e597fe937ff85acf976ab995441a646a16c"
         }
     },
     "version": 1
