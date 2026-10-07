@@ -1,11 +1,18 @@
 # Required SDK integration check
 
 Configure branch protection (or a repository ruleset) to require the **SDK
-integration** job from `.github/workflows/sdk-integration.yml`. It runs on every
-pull request, pushes to `main`, manual dispatch, and `sdk-released` repository
-dispatch events. Branch pushes do not duplicate the pull-request integration
-run. There are no path filters or scheduled polls. Adding this file does not
-itself change repository branch protection.
+integration** job from `.github/workflows/sdk-integration.yml`. Every pull
+request runs a cheap scope check. SDK compatibility runs when the PR changes
+`spec/`, `schema/`, `fixtures/`, `conformance/`, `interop/`, `tools/`, or the
+`ci.yml`, `sdk-integration.yml`, or `sync-sdks.yml` workflows. Manual dispatch
+always runs compatibility.
+
+Documentation-only and website changes skip SDK resolution and both shards.
+The required aggregate check still runs and succeeds only if the scope check
+succeeded and those jobs were deliberately skipped. Scope-check failures and
+required shard failures remain failures, not successful skips. Workflow-level
+path filters are not used, so unrelated PRs do not leave a pending required
+check. SDK releases and branch pushes do not trigger this workflow.
 
 ## What runs
 
@@ -14,8 +21,7 @@ The proposed spec checkout is `agent-hooks-protocol/`; `python-sdk/`,
 the pull request's proposed merge tree, not the default branch's generator.
 
 1. A single **Resolve SDK revisions** job snapshots all four SDK `main` heads
-   through the GitHub API before the matrix starts. For `sdk-released` events,
-   it resolves the latest stable releases instead (see below). Both shards use
+   through the GitHub API before the matrix starts. Both shards use
    the same immutable outputs, never separate floating-ref lookups. Repository
    names, paths, and full 40-character SHAs are strictly validated. The runtime
    `sdk-revisions.json` is uploaded both by the resolver and in each shard's
@@ -54,32 +60,18 @@ work. Jobs have a 60-minute limit, individual expensive steps have limits, and
 new runs cancel older runs for the same ref. Forced termination can prevent an
 artifact upload from completing even though its step uses `always()`.
 
-## Revision selection and release events
+## Revision selection
 
-Pull requests, pushes to `main`, and manual runs use the latest SDK `main`
-commits observed at the start of the resolver job. These commits need not be
-released. The checked-in `interop/sdk-revisions.json` provides the fixed
-repository/path configuration; its historical revisions are not CI pins. No
-workflow updates that file or opens a pin-update PR.
+Compatibility runs use the latest SDK `main` commits observed at the start of
+the resolver job. The resolver contains the fixed four SDK repository names
+and sibling paths. Each run generates its own `sdk-revisions.json`; the runtime
+artifact records the exact commits used by every shard.
 
-For `repository_dispatch` type `sdk-released`, the resolver reads all four SDKs
-and selects the highest stable `vX.Y.Z` GitHub release for each SDK
-(`agenthooksprotocol-vX.Y.Z` for TypeScript), excluding drafts and prereleases.
-Lightweight and annotated tags resolve to immutable commits. Each requires a
-successful push-to-`main` `release.yml` run at that SHA, including a successful
-`publish` job for TypeScript, Python, and Rust or `release-please` for Go. Missing
-or unfinished release evidence fails resolution instead of silently falling
-back to unrelated revisions. SDK senders notify from separate `workflow_run`
-workflows after successful release completion. Dispatch payloads are not trusted
-as evidence: the resolver verifies GitHub metadata for the allowlisted SDKs.
-
-The receiver uses only the read-only workflow token, ordinary `pull_request`,
-and non-persistent checkout credentials. It needs no app token, publishing
-credentials, or write permissions and uses no registry probes or publication
-checks. Proposed code executes only on GitHub-hosted runners. Dependency installs
-need network access. Language versions include patch-floating selectors and
-some ecosystems lack complete dependency locks; snapshotting SDK commits does
-not claim fully hermetic dependency resolution.
+The workflow uses a read-only token, ordinary `pull_request`, and non-persistent
+checkout credentials. Proposed code executes only on GitHub-hosted runners.
+Dependency installs need network access. Language versions include patch-floating
+selectors and some ecosystems lack complete dependency locks; snapshotting SDK
+commits does not claim fully hermetic dependency resolution.
 
 ## Local reproduction
 
