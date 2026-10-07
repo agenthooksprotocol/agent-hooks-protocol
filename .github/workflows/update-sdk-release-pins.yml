@@ -1,8 +1,8 @@
 name: Update SDK release pins
 
 on:
-  schedule:
-    - cron: "17 * * * *"
+  repository_dispatch:
+    types: [sdk-released]
   workflow_dispatch:
 
 permissions:

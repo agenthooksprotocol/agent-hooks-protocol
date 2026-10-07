@@ -65,8 +65,11 @@ hermetic dependency resolution.
 
 ### Automatic release pins
 
-The **Update SDK release pins** workflow runs hourly and on manual dispatch. It
-opens or updates one signed-off PR on `automation/sdk-release-pins`, changing only
+The **Update SDK release pins** workflow runs on `repository_dispatch` events
+with type `sdk-released`, or on manual dispatch. There is no scheduled polling.
+Each SDK sends its notification from a separate `workflow_run` workflow after
+its release workflow completes successfully, not from inside the release run.
+The receiver opens or updates one signed-off PR on `automation/sdk-release-pins`, changing only
 `interop/sdk-revisions.json`. The PR runs the existing SDK integration CI; the
 workflow never merges it or writes directly to `main`.
 
@@ -75,8 +78,12 @@ The updater selects the highest stable `vX.Y.Z` GitHub release for each SDK
 It resolves lightweight or annotated tags to exact commits and requires a
 successful push-to-`main` `release.yml` run at that SHA. TypeScript, Python, and
 Rust also require a successful `publish` job; Go requires `release-please`.
-Pending or failed releases leave pins unchanged until a later scheduled run.
-Pins already ahead of or diverged from the release are preserved. API failures
+Each event reads all four SDKs to coalesce releases into the same PR. Dispatch
+payloads are not trusted as release evidence: repositories come from the strict
+manifest allowlist, and release tags, commits, runs, and jobs are checked through
+the GitHub API. Pending or failed releases leave pins unchanged until another
+release notification or manual dispatch. Pins already ahead of or diverged from
+the release are preserved. API failures
 abort before any manifest write. This is release metadata selection, not a
 registry probe, installation check, or workflow retry.
 
