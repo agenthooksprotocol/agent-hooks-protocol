@@ -15,6 +15,9 @@ cargo_command=(cargo "+$rust_toolchain")
 
 mkdir -p "$temporary/emitter/src" "$temporary/consumer/src" "$temporary/consumer/tests"
 cp "$generated" "$temporary/consumer/src/lib.rs"
+cat "$repository/tools/sdk-codegen/tests/rust-boundary-macro-smoke.rs.in" >> "$temporary/consumer/src/lib.rs"
+cp "$repository/tools/sdk-codegen/tests/rust-ergonomics-smoke.rs.in" "$temporary/consumer/tests/ergonomics.rs"
+{ echo "extern crate agenthooksprotocol as ahp_codegen;"; cat "$repository/tools/sdk-codegen/tests/capability-rust.rs.in"; } > "$temporary/consumer/tests/capability.rs"
 cat >"$temporary/emitter/Cargo.toml" <<'TOML'
 [package]
 name = "ahp-rust-emitter-smoke"
@@ -32,6 +35,10 @@ TOML
 cat >"$temporary/emitter/src/main.rs" <<RS
 #[path = "$repository/tools/sdk-codegen/src/model.rs"]
 mod model;
+#[path = "$repository/tools/sdk-codegen/src/ergonomics.rs"]
+mod ergonomics;
+#[path = "$repository/tools/sdk-codegen/src/capability_ergonomics.rs"]
+mod capability_ergonomics;
 #[path = "$repository/tools/sdk-codegen/src/langs/rust.rs"]
 mod rust;
 
@@ -57,6 +64,7 @@ fn main() -> anyhow::Result<()> {
             source: "node.json#".into(),
             shape: model::Shape::Object {
                 properties: vec![model::Property {
+                    constructor_default: None,
                     wire_name: "next".into(),
                     required: false,
                     shape: model::Shape::Ref { name: "Node".into() },
@@ -107,7 +115,8 @@ fn main() -> anyhow::Result<()> {
 }
 RS
 
-"${cargo_command[@]}" test --quiet --manifest-path "$temporary/emitter/Cargo.toml"
+# Test the complete generator crate: repository-aware emitter tests need its compiler.
+"${cargo_command[@]}" test --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml"
 "${cargo_command[@]}" run --quiet --manifest-path "$temporary/emitter/Cargo.toml" -- \
     "$temporary/consumer/src/recursive.rs" "$temporary/consumer/src/collision.rs"
 printf '\n#[allow(dead_code)]\npub mod recursive;\n#[allow(dead_code)]\npub mod collision;\n' \
@@ -115,7 +124,7 @@ printf '\n#[allow(dead_code)]\npub mod recursive;\n#[allow(dead_code)]\npub mod 
 
 cat >"$temporary/consumer/Cargo.toml" <<'TOML'
 [package]
-name = "ahp-generated-rust-smoke"
+name = "agenthooksprotocol"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.88"
@@ -130,7 +139,7 @@ cat >"$temporary/consumer/tests/smoke.rs" <<'RS'
 use std::fs;
 use std::path::PathBuf;
 
-use ahp_generated_rust_smoke::{
+use agenthooksprotocol::{
     BackendTransport, Capabilities, CapabilitiesEffectsItem, DiagnosticCode,
     InterceptSubscriptionFailurePolicy, JsonRpcId, JsonRpcMessage, JsonRpcResponseId,
     ParseDiagnostic, ParseResult, ExecutionEventToolOrigin, encode_registration,
@@ -192,7 +201,7 @@ fn preserves_unknown_data_and_absence_on_round_trip() {
 
     let (model, raw, diagnostics) = success(parse_registration_value(registration.clone()));
     assert!(diagnostics.is_empty());
-    assert!(matches!(model.hooks[0].transport, BackendTransport::HttpTransport(_)));
+    assert!(matches!(model.hooks[0].transport, BackendTransport::Http(_)));
     assert_eq!(raw, registration);
     let encoded: Value = serde_json::from_str(&encode_registration(&model).unwrap()).unwrap();
     assert_eq!(encoded, registration);
@@ -218,6 +227,37 @@ fn closed_unions_reject_malformed_values_and_null_selects_null() {
     assert!(matches!(response.id.as_ref(), JsonRpcResponseId::Null(())));
 
     let _ = typed_effects as fn(&Capabilities) -> &[CapabilitiesEffectsItem];
+}
+
+#[test]
+fn public_constructors_fill_constants_defaults_and_convert_unions() {
+    use agenthooksprotocol::*;
+    let request = client::CapabilitiesRequest::new(
+        JsonRpcId::String("request-1".into()),
+        client::CapabilitiesRequestParams::new(),
+    );
+    let wire = serde_json::to_value(request).unwrap();
+    assert_eq!(wire, json!({"id":"request-1", "jsonrpc":"2.0", "method":"hooks/capabilities", "params":{"protocolVersion":"draft"}}));
+    assert!(parse_capabilities_request_value(wire).is_ok());
+
+    let effect: effect::Effect = effect::DenyEffect::new("policy").with_code("denied").into();
+    assert!(matches!(effect, Effect::Deny(_)));
+    assert_eq!(serde_json::to_value(effect).unwrap(), json!({"type":"deny", "reason":"policy", "code":"denied"}));
+    let selection = content::ContentSelection::new(content::ContentSelectionDefault::Metadata);
+    let subscription = subscription::ObserveSubscription::new(selection, vec![]);
+    assert_eq!(subscription.include_native, Presence::Present(false));
+    let constructed = serde_json::to_value(subscription.with_include_native(true)).unwrap();
+    assert_eq!(constructed["includeNative"], true);
+    assert_eq!(constructed["mode"], "observe");
+    assert!(constructed.get("filters").is_none());
+
+    let parsed: ObserveSubscription = serde_json::from_value(json!({"events":[],"content":{"default":"metadata"},"mode":"observe","future":{"nested":true}})).unwrap();
+    assert!(parsed.include_native.is_missing());
+    let encoded = serde_json::to_value(parsed).unwrap();
+    assert!(encoded.get("includeNative").is_none());
+    assert_eq!(encoded["future"], json!({"nested":true}));
+    let registration = registration::Registration::new(vec![]);
+    assert_eq!(serde_json::to_value(registration).unwrap(), json!({"hooks":[],"protocolVersion":"draft"}));
 }
 
 #[test]
@@ -292,7 +332,7 @@ fn reports_structural_failures_and_keeps_valid_json_raw() {
 }
 #[test]
 fn canonical_positive_fixtures_and_supplied_execution() {
-    use ahp_generated_rust_smoke::{parse_wire_message, encode_wire_message, parse_execution_event, encode_execution_event};
+    use agenthooksprotocol::{parse_wire_message, encode_wire_message, parse_execution_event, encode_execution_event};
     let manifest = fixture("fixtures/draft/manifest.json");
     for entry in manifest["cases"].as_array().unwrap() {
         let binding = entry["binding"].as_str().unwrap();
@@ -320,7 +360,7 @@ fn canonical_positive_fixtures_and_supplied_execution() {
     assert!(!parse_execution_event(&serde_json::to_string(&supplied).unwrap()).is_ok());
     for transport in ["http", "stdio"] {
         let missing = fixture(&format!("fixtures/draft/http/mcp-{transport}-location-missing.invalid.json"))["params"]["event"].clone();
-        assert!(!ahp_generated_rust_smoke::parse_tool_before_event(&serde_json::to_string(&missing).unwrap()).is_ok(), "required-only {transport} location predicate was lost");
+        assert!(!agenthooksprotocol::parse_tool_before_event(&serde_json::to_string(&missing).unwrap()).is_ok(), "required-only {transport} location predicate was lost");
     }
 }
 

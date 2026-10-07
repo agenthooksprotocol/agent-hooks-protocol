@@ -13,10 +13,49 @@ trap 'rm -rf "$tmp"' EXIT
 
 cp "$generated" "$tmp/ahp_generated.go"
 cat >"$tmp/go.mod" <<'EOF'
-module example.com/ahp-smoke
+module github.com/agenthooksprotocol/go-sdk
 
-go 1.22
+go 1.27.0
 EOF
+cargo run --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml" -- \
+  generate --repository "$repository" --revision draft --language go-facade --output "$tmp"
+# The handwritten leaf content package owns the source abstraction.
+cat >"$tmp/content/source_stub.go" <<'EOF'
+package content
+import "io"
+type Source struct { Reader io.ReadCloser }
+func NewSource(reader io.ReadCloser) *Source { return &Source{Reader: reader} }
+EOF
+# Generated client methods compile against the runtime's explicit shared seam.
+cat >"$tmp/client/runtime_stub_test.go" <<'EOF'
+package client
+import "context"
+import "github.com/agenthooksprotocol/go-sdk/event"
+import "testing"
+import ahp "github.com/agenthooksprotocol/go-sdk"
+type Mode string
+const (Intercept Mode = "intercept"; Observe Mode = "observe")
+type EventCapabilities struct { Modes []Mode; Capabilities *ahp.Capabilities }
+type Options struct { Events map[string]EventCapabilities }
+func New(ahp.Registration,Options)(*Hooks,error){return &Hooks{},nil}
+func (*Hooks) Close()error{return nil}
+type Hooks struct{}
+type Client = Hooks
+type InterceptOption func()
+type Result struct{}
+type ToolBeforeResult[T any] struct { Input T }
+func (*Hooks) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
+func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
+func TestGenericInference(t *testing.T) {
+ type arguments struct { Path string }
+ result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Name:"read", Origin:"native", Input:arguments{Path:"file"}, ToolKind:ahp.Some("task")})
+ if err!=nil {t.Fatal(err)}
+ var _ arguments = result.Input
+}
+EOF
+export GOTOOLCHAIN=go1.27.0+auto
+goroot=$(go env GOROOT)
+"$goroot/bin/gofmt" -w "$tmp"/*/generated.go "$tmp/client/boundaries_generated.go" "$tmp/facade_generated_test.go"
 cat >"$tmp/ahp_generated_test.go" <<'EOF'
 package ahp
 

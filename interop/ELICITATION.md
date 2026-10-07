@@ -93,3 +93,43 @@ The published requested-schema vocabulary is intentionally closed, unlike
 upstream extension-open objects; MCP params/results remain open. See the
 [interaction payload specification](../spec/draft/interaction-payloads.md) and
 [public boundary APIs](../docs/accepted-boundary-apis.md).
+
+### Public-client stream handoff
+
+The controller starts a fresh sender for each operation. It retains original
+upload bytes, but never imports an opaque reference into an SDK registry. Each
+client plan now includes `contentSources`, an array of
+`{ "descriptor": { "ref", "size", "sha256" }, "bytes": "<base64>" }` entries.
+These are only previously successful, integrity-checked upload confirmations.
+Existing reference-oriented adapters may ignore this additive field.
+
+A stream-oriented adapter must match a selected body descriptor **exactly** to a
+source (including size and digest), create a new raw byte stream for the public
+client, and let that client upload it. Missing sources and incorrect metadata
+must not be repaired. Negative interception operations carry `step.bypass: true`
+to preserve intentionally invalid wire data rather than normalize it.
+
+If a public client allocates a fresh receiver reference, its result entry must
+also contain `contentUploads`, an array of
+`{ "sourceRef": "<input descriptor ref>", "descriptor": { "ref", "size", "sha256" } }`.
+These descriptors must come from the actual successful upload HTTP response,
+not aliases or synthesized confirmations. A trusted fetch wrapper can record
+upload response clones without changing the public client's request/response
+behavior; match response integrity to original bytes. Do not send extra uploads
+merely to construct this report.
+
+The controller verifies integrity, immutable reference identity, source
+membership and selection before substituting **only reference strings** in the
+planned message. It then compares the receiver-created receipts exactly,
+including that message, raw bytes, semantic summary, correlation and provenance.
+Thus sender claims cannot substitute for receiver evidence. No protocol schema
+or scenario intent changes are needed.
+
+For an isolated four-SDK workspace, run:
+
+```sh
+python3 interop/elicitation_matrix.py --root /path/to/workspace \
+  --output /tmp/elicitation-allpairs.json
+```
+
+Omit sender/receiver filters for the full 16-pair matrix.

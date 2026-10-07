@@ -585,7 +585,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "duplicate-reply-ignored",
@@ -708,7 +712,8 @@
         {
           "op": "send",
           "key": "a",
-          "slot": "duplicate"
+          "slot": "duplicate",
+          "bypassSDK": true
         },
         {
           "op": "wait",
@@ -1013,7 +1018,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "two-staged-reverse-acceptance",
@@ -1276,7 +1285,11 @@
         },
         "observations": [],
         "uploadStatuses": []
-      }
+      },
+      "transports": [
+        "http"
+      ],
+      "inapplicableReason": "stdio permits only one outstanding intercept request per persistent backend (spec/draft/base/transports/stdio.md); this schedule requires two."
     },
     {
       "id": "first-staged-response-wins",
@@ -1395,7 +1408,8 @@
         {
           "op": "send",
           "key": "a",
-          "slot": "duplicate"
+          "slot": "duplicate",
+          "bypassSDK": true
         },
         {
           "op": "wait",
@@ -6050,7 +6064,7 @@
           }
         ],
         "interrupt": true,
-        "holdObservers": true
+        "holdObservers": false
       },
       "requests": {
         "a": {
@@ -6168,11 +6182,7 @@
           "observation-chain-interrupt:a"
         ],
         "failures": [],
-        "observations": [
-          "observation-chain-interrupt:b",
-          "observation-chain-interrupt:c",
-          "observation-chain-interrupt:audit"
-        ],
+        "observations": [],
         "input": {
           "value": "original"
         }
@@ -6240,109 +6250,7 @@
             }
           }
         ],
-        "observations": [
-          {
-            "jsonrpc": "2.0",
-            "method": "hooks/observe",
-            "params": {
-              "protocolVersion": "draft",
-              "event": {
-                "id": "observation-chain-interrupt",
-                "source": "urn:ahp:interop",
-                "type": "tool.before",
-                "time": "2026-01-01T00:00:00Z",
-                "session": {
-                  "id": "interop"
-                },
-                "call": {
-                  "id": "call-1"
-                },
-                "path": "native",
-                "tool": {
-                  "origin": "native",
-                  "name": "task",
-                  "kind": "task",
-                  "input": {
-                    "value": "original"
-                  }
-                },
-                "items": []
-              }
-            }
-          },
-          {
-            "jsonrpc": "2.0",
-            "method": "hooks/observe",
-            "params": {
-              "protocolVersion": "draft",
-              "event": {
-                "id": "observation-chain-interrupt",
-                "source": "urn:ahp:interop",
-                "type": "tool.before",
-                "time": "2026-01-01T00:00:00Z",
-                "session": {
-                  "id": "interop"
-                },
-                "call": {
-                  "id": "call-1"
-                },
-                "path": "native",
-                "tool": {
-                  "origin": "native",
-                  "name": "task",
-                  "kind": "task",
-                  "input": {
-                    "value": "original"
-                  }
-                },
-                "items": [
-                  {
-                    "id": "observation-chain-interrupt:item",
-                    "kind": "text",
-                    "mediaType": "text/plain",
-                    "selection": "metadata"
-                  }
-                ]
-              }
-            }
-          },
-          {
-            "jsonrpc": "2.0",
-            "method": "hooks/observe",
-            "params": {
-              "protocolVersion": "draft",
-              "event": {
-                "id": "observation-chain-interrupt",
-                "source": "urn:ahp:interop",
-                "type": "tool.before",
-                "time": "2026-01-01T00:00:00Z",
-                "session": {
-                  "id": "interop"
-                },
-                "call": {
-                  "id": "call-1"
-                },
-                "path": "native",
-                "tool": {
-                  "origin": "native",
-                  "name": "task",
-                  "kind": "task",
-                  "input": {
-                    "value": "original"
-                  }
-                },
-                "items": [
-                  {
-                    "id": "observation-chain-interrupt:item",
-                    "kind": "text",
-                    "mediaType": "text/plain",
-                    "selection": "metadata"
-                  }
-                ]
-              }
-            }
-          }
-        ]
+        "observations": []
       }
     },
     {

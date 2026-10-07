@@ -2,7 +2,7 @@
 
 `ahp-codegen` is the official schema-driven SDK model generator. It reads the schema manifest directly; stable SDK names live in that manifest so schema and generation changes are reviewed together. Every named schema-document root receives parse and encode entrypoints. If generated output conflicts with its source schema, the schema takes precedence. Implementations may use this generator, another generator, or handwritten models.
 
-Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, and generator version.
+Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, generator version, and exact source repository commit. `tools/generate_sdk.py` records its checkout HEAD as `sourceCommit`; commit generator changes before publishing regenerated SDK artifacts. Use `--python-sdk <root>`, `--go-sdk <root>`, or `--rust-sdk <root>` to regenerate one SDK, and append `--check` to verify identical output. Rust keeps matching locks in its root and `src/` directories.
 
 ## Compatibility model
 
@@ -58,3 +58,237 @@ selector is required in each branch and known literal values are unique. Codecs
 select a known literal exactly; other tags are preserved as unknown variants.
 Canonical validation still controls allowed extension syntax and required data.
 This is not structural candidate scoring or a replacement for schema validation.
+
+## Generated Go semantic API
+
+Go SDK generation requires Go 1.27 or newer. `--language go` still emits the
+unchanged root wire models/codecs. `--language go-facade --output <directory>`
+emits the semantic packages and named client boundary methods. The synchronization
+driver invokes both and formats with the Go 1.27 toolchain:
+
+```sh
+python3 tools/generate_sdk.py --go-sdk /path/to/go-sdk
+python3 tools/generate_sdk.py --go-sdk /path/to/go-sdk --check
+```
+
+The facade consumes the wire emitter's resolved schema names, fields, literals,
+and union arms. Role metadata determines package ownership and positional argument
+ordering; schema fields determine constructors, options, and conversions. Required
+literals are populated, but required enum choices (including stdio lifecycle) have
+no invented defaults. Property `default` annotations are carried as private
+`Property.constructor_default` IR metadata (`serde(skip)`), copied into Go rendered
+fields, and consumed only by facade constructors. They do not enter serialized
+validation descriptors or change parsers or other-language generation. Constructors
+materialize actual annotated defaults before applying options; optional defaults
+set `Optional.Present`, while required fields with defaults become typed options
+rather than required positional arguments. Unannotated fields retain their normal
+required/optional policy. Defaults are rendered as typed Go scalar expressions at
+generation time, with no runtime decoding or panic path. Supported annotations are
+booleans, strings, numbers, and homogeneous scalar enums/literals; this covers all
+current canonical defaults. Unsupported composite/reference/null defaults and
+incompatible scalar values fail generation with the affected field name. No mutable
+default storage is shared. Parsers still preserve missing fields exactly.
+Functional options set explicit presence; repeated setters
+use the final value. Required collections support typed replacement options.
+
+`registration.New` returns a wire registration value. Transport and subscription
+constructors return the registration union arms, and effect constructors return
+`*ahp.Effect`. Dependencies remain acyclic: semantic data packages depend on root
+wire models; `event` additionally uses `tool`; generated client methods depend on
+`event` and the handwritten runtime seam. No data package imports client/server.
+
+All 32 concrete draft event selectors receive host-input projections and named
+methods. Observation-only methods have no interception options. `ToolBefore[T]`
+accepts flattened `event.ToolBeforeInput[T]` (`CallID`, `Name`, `Input`,
+`Path`, `Origin`); the runtime decodes accepted effective input separately.
+Composite facts without a concrete wire struct remain raw JSON in projections.
+Source/type/manifest are SDK-owned; absent ID/time and optional fields are omitted.
+
+Duration constructors convert nanoseconds to exact decimal milliseconds without
+rounding, overflow, or fabricated defaults. Infallible data constructors preserve
+fractional/nonpositive values for canonical boundary validation to reject.
+`NewInterceptDuration`/`NewUploadDuration` and `Milliseconds` offer eager checked
+conversion; `NewInterceptMilliseconds`/`NewUploadMilliseconds` accept explicit wire
+numbers. Data construction never bypasses canonical context validation.
+
+The driver emits `internal/canonical/schemas.json` from the same schema documents,
+in the same order and with the same bytes as root `schemas.json`; both are covered
+by the existing source lock's manifest digest/document hashes and `--check`.
+Smoke tests compile constructors, generic inference, and all boundary methods,
+and exercise duration edge cases and presence-preserving projection JSON.
+
+## Python semantic facade
+
+`python-facade` emits runtime keyword-only dictionary constructors for every
+resolved object root, definition, and nested object, separately from `generated.py`
+wire parsing. Required fields remain required; optional fields preserve absence,
+explicit null, and schema defaults. Literal tags and protocol version are constructor
+conveniences only. Unknown fields remain intact and constructors do not replace
+canonical validation.
+
+Generated `_models` exports the complete model surface; `event`, `tool`, `effect`,
+`capability`, `transport`, and `subscription` expose semantic aliases. Runtime-owned
+`registration.py` can re-export `_models.registration` without losing its validator.
+`tool.Call`, `tool.Input`, `tool.Origin`, and `tool.Path.NATIVE` support host event
+construction. Path is an open schema string, not an alias for tool origin; `NATIVE`
+is the documented canonical example, not a closed list of all paths.
+
+`_boundaries.BoundaryMixin` supplies all 32 async named boundaries. The handwritten
+`Hooks` class implements `dispatch(event_name, input, **kwargs)` and inherits this
+mixin. Host input projections omit SDK-owned envelope fields.
+
+Capability grants are generated from the capabilities schema's effect vocabulary
+and nested target dimensions. For example,
+`capability.Declaration(modes=[capability.Mode.INTERCEPT], grants=[capability.Allow(),
+capability.ModifyInput(replace=True)])` produces the canonical declaration without
+repeating `modify` as both an effect and target key. Grants combine explicit authority;
+delivery modes and elicitation form/URL grants are never inferred. Canonical mappings
+remain usable directly. Conflicting scalar grant metadata raises `ValueError`.
+
+The driver targets `python-sdk/src/agenthooksprotocol`, formats every generated
+Python file with the pinned formatter, and records the immutable generator source
+commit in the lock. It never overwrites the package initializer or runtime modules.
+## Go Hooks and typed capability options
+
+The canonical generated boundary receiver is `*client.Hooks` for all 32 draft
+selectors. The handwritten runtime owns `New`, `Options.Events`, mode constants,
+and the deprecated `Client` compatibility alias. The generated client example
+compiles their seam with `map[string]client.EventCapabilities` and typed modes.
+
+`capability.New([]string{"modify"}, capability.WithInputModification(true, false))`
+selects the schema-derived open string union arm without exposing union assembly.
+`WithEffects(...string)` replaces that effect list. Each modification target in
+`Capabilities.modify` receives a `With<Target>Modification(replace, merge bool)`
+option; declarations determine the arguments, not validation predicate branches.
+Boolean values are encoded directly with `strconv.FormatBool` into fresh raw
+backing bytes because the unchanged root wire model uses raw JSON for composite
+constraints. There is no runtime JSON decoding, panic, or implicit validation.
+
+`WithElicitationForm()` and `WithElicitationURL()` each set an explicit empty-object
+grant. Absent or empty elicitation capability objects grant neither mode. Nested
+options preserve sibling grants and overwrite only their own target; full-object
+options remain available for advanced use. These advanced raw options never automatically add effects,
+modes, flow grants, or injection grants. Boundary-specific capability constructors
+retain their advanced wire signatures. All target helpers come from the schema
+object graph; no handwritten list of event boundaries or modification targets is
+maintained.
+
+
+## Shared host ergonomics
+
+`src/ergonomics.rs` is SDK-only semantic metadata, not a second wire schema.
+All four emitters use its host-input projection. Required `call` and `tool`
+wrappers are flattened (`call.id` becomes `callId`, `tool.name/input/origin`
+become `name/input/origin`); other nested host facts retain their identity.
+Application-owned arguments are never flattened. Optional wrappers retain their
+presence and conditional requirements. Host `id` and `time` are optional,
+`parentEventId` is preserved, and source/type/protocol version and the configured
+session-start manifest remain runtime-owned. The mapping rejects flat-name
+collisions and unresolved required wrappers. Assembled requests still require
+canonical validation before delivery.
+
+Content-source slots are discovered by following canonical `ContentItem`
+references, including array indices and nested facts. Examples include
+`instructions`, `summary`, `items`, and `fileChangesBefore`. Native readable
+sources remain out of band: only the runtime can select, snapshot, upload and
+publish descriptors during the owned call. Slot metadata neither reads a source
+nor grants body access. Raw wire content descriptors are unchanged.
+
+Delivery diagnostic codes preserve the existing Go vocabulary across SDKs:
+`protocol_rejection`, `remote_rpc`, `transport`, `cancelled`,
+`deadline_exceeded`, `preparation`, and `capacity`. These are causes, separate
+from delivery stage. A malformed JSON-RPC envelope is protocol rejection, not a
+legitimate remote RPC error. Runtime integration owns attribution, failure policy,
+synthetic-denial evidence and redaction; generated codes introduce no wire error
+codes and no second error framework.
+
+Generated capability composition is separate from advanced raw constructors.
+`intercept()` deliberately advertises both intercept and observe, while
+`observe()` advertises observation only. Effects and their explicit target grants
+are constructed together; form and URL elicitation each require an explicit
+grant. Raw omitted fields retain their exact original semantics. Builders are
+reusable without shared mutable declarations. Boundary compatibility and
+per-call narrowing remain runtime admission checks, not proof that the host
+implements an advertised effect.
+
+Initial-state helpers explicitly construct a supplied native decision for this
+occurrence. They are not backend allow/deny effects or default approval. No
+candidate is canonical `candidate: null`; a supplied JSON-null candidate is
+`candidate: {value: null}`. Provenance is ordinary descriptive metadata, not
+execution evidence. Settled permission and accepted-input accessors remain
+runtime-owned and must not imply authorization merely from successful decoding.
+
+### Isolated staging and verification
+
+Do not regenerate into SDK repositories while their runtimes are being edited.
+After committing generator changes, stage all outputs and source locks with:
+
+```sh
+python3 -m pip install ruff==0.12.12
+python3 tools/generate_sdk.py --output-dir /tmp/ahp-codegen-stage
+cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
+python3 -m unittest tools.tests.test_sdk_generation
+```
+
+The staging tree has `typescript/`, `python/`, `go/`, and `rust/` directories.
+TypeScript and Rust ergonomic exports accompany their ordinary generated wire
+file; Python and Go also emit semantic modules/packages. The regular per-SDK
+driver flags install the same artifacts when their owner is ready. Run generation
+again after any generator commit so `sourceCommit` names the committed source,
+not an earlier checkout with uncommitted generator changes.
+
+### Runtime integration interfaces
+
+- **Go:** `event.ToolBeforeInput[T]` has flattened facts and a canonical
+  `MarshalJSON`; every event input implements
+  `AHPContentSources() map[string]*content.Source`. Named source fields use
+  `*content.Source` or index-preserving `[]*content.Source` and never appear in
+  JSON. Paths are event-relative (`/instructions`, `/items/1`). The handwritten
+  `content` leaf package avoids an event/client import cycle. The runtime must
+  collect bindings before serialization in either delivery mode. `capability.Event`
+  and `capability.Mode` can be runtime aliases. Generic receiver methods require
+  the declared Go 1.27 toolchain.
+- **Python:** `event.*Input.to_wire()` returns canonical host facts. Immutable
+  `bind_<slot>_source` methods retain sources outside the mapping and expose
+  `content_sources`. `_boundaries.CONTENT_SOURCE_SLOTS` maps event-qualified slot
+  keys to event name and canonical path tuple; `*` denotes the concrete array
+  index supplied by the binder. Collect bindings before `to_wire()`. `state`,
+  `permission`, `candidate`, and `diagnostics` are generated semantic modules;
+  the package initializer remains handwritten.
+- **TypeScript:** `EventInputs` maps event selectors to flattened input types;
+  `toEventInput(type, input)` performs the generated canonical projection.
+  `contentSlots[event].slot(index?, source)` constructs named out-of-band binding
+  records. Runtime exports can expose these generated helpers without maintaining
+  another event-field or content-slot inventory.
+- **Rust:** `ergonomic_inputs::*Input` has required-fact constructors, optional
+  field setters and fallible `to_event_value()`. Named `<boundary>_sources`
+  modules create out-of-band generic source bindings. The generated
+  `ahp_ergonomic_hook_methods!` macro calls runtime `input_for(name, input,
+  Input::to_event_value)` and returns `hooks::InputBoundary<'_, Input>`. It retains
+  the input and projector without serializing until the operation is polled, so
+  projection consumes the operation budget. The generated tool boundary is named
+  `tool_before_event` to coexist with the handwritten typed primary `tool_before`.
+  Existing low-level wire boundary macros remain available. `capability::Event`
+  reexports `EventType`; schema-derived `EffectType` and `ModifyTarget` expose
+  canonical serde tags and `as_str()` without duplicating wire effect models.
+
+These seams do not replace capability compatibility/narrowing checks, canonical
+request validation, content authorization, result settlement or shutdown. Those
+remain handwritten runtime responsibilities and require SDK tests in addition to
+generator consumer checks.
+
+Known event selectors are available as TypeScript `EventType`/`events`, Rust
+`EventType` (canonical serde tags and `as_str()`), Python `event.Type`, and Go
+`event.Type`/constants. These describe known SDK selectors; raw wire extension
+strings remain supported through low-level APIs. TypeScript host tool-input
+projections preserve application generics (`ToolBeforeInput<T = unknown>`),
+without casting accepted result input back to the proposed type. Rust
+`state::Candidate::try_new`, `effects::try_return`, and target `try_replace`/
+`try_merge` helpers preserve ordinary serializer errors for native values.
+
+Capability continuation counts are nonnegative interoperable integers. Generated
+Go and Python composition reject negative or out-of-range counts before producing
+a declaration (Python also rejects booleans/fractions and missing continue counts).
+TypeScript already enforces this range; Rust uses unsigned counts and rejects
+values above the safe range. Raw manifests still undergo ordinary canonical
+validation; structural parsing alone does not prove numeric validity.

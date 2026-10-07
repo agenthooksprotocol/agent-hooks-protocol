@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Cross-language lifecycle controller: scripts/proofs only, never applies effects."""
 import argparse
+import base64
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
@@ -18,6 +19,7 @@ import subprocess
 import tempfile
 import time
 from auth import Issuer, configuration
+from adapter_builds import prepared_go_manifest
 from matrix import MODES
 from observation_wire import ObservationValidator
 from matrix import load, write, control, ready, stop, equal, kill_group
@@ -27,6 +29,25 @@ ROOT = HERE.parent.parent
 LANGUAGES = ('python', 'go', 'rust', 'typescript')
 UPLOAD_TOKEN = 'TEST-ONLY-independent-upload-token'
 UPLOAD_ENV = 'AHP_INTEROP_UPLOAD_TOKEN'
+
+def content_sources(scenarios):
+    """Retain only exact bytes from successful fixture preparations."""
+    sources = {}
+    for scenario in scenarios:
+        uploads = [step for step in scenario['steps'] if step['op'] == 'upload']
+        for step, status in zip(uploads, scenario['expected'].get('uploadStatuses', [])):
+            if status != 201:
+                continue
+            raw = base64.b64decode(step['bodyBase64'], validate=True) if 'bodyBase64' in step else step['body'].encode()
+            descriptor = {key: step[key] for key in ('ref', 'size', 'sha256')}
+            if descriptor['size'] != len(raw) or descriptor['sha256'] != hashlib.sha256(raw).hexdigest():
+                raise ValueError('fixture source integrity mismatch')
+            source = {'descriptor': descriptor, 'bytes': base64.b64encode(raw).decode()}
+            if descriptor['ref'] in sources and sources[descriptor['ref']] != source:
+                raise ValueError('fixture source alias mutated')
+            sources[descriptor['ref']] = source
+    return list(sources.values())
+
 
 def verify(scenarios, report, receipts, language, exit_code=0):
     """Fail closed on reports AND receiver-origin rendezvous evidence."""
@@ -99,7 +120,38 @@ def verify(scenarios, report, receipts, language, exit_code=0):
     for e in discarded_expected:
         emitted=positions('emitted',e['id']); discarded=positions('discarded',e['id'])
         if not emitted or not discarded or emitted[0]>=discarded[0]:errors.append('stray discard lacks reader rendezvous')
-    uploads = [e for e in entries if e.get('kind') == 'upload']
+    confirmations = report.get('contentUploads', [])
+    if not isinstance(confirmations, list) or any(not isinstance(c, dict) for c in confirmations):
+        return errors + ['malformed content upload confirmations']
+    consumed = set()
+    deliveries = {}
+    for confirmation in confirmations:
+        descriptor = confirmation.get('descriptor')
+        method, event_id = confirmation.get('method'), confirmation.get('eventId')
+        if (method not in ('hooks/intercept', 'hooks/observe') or
+                not isinstance(descriptor, dict) or set(descriptor) != {'ref', 'size', 'sha256'} or
+                not isinstance(descriptor['ref'], str) or not descriptor['ref'] or
+                type(descriptor['size']) is not int or not isinstance(confirmation.get('sourceRef'), str)):
+            errors.append('malformed content upload confirmation')
+            continue
+        matches = [i for i, entry in enumerate(entries)
+                   if entry.get('kind') == ('received' if method == 'hooks/intercept' else 'observed')
+                   and entry.get('message', {}).get('method') == method
+                   and entry.get('message', {}).get('params', {}).get('event', {}).get('id') == event_id
+                   and any(equal(item.get('body'), descriptor) for item in entry.get('message', {}).get('params', {}).get('event', {}).get('items', []))]
+        if len(matches) != 1:
+            errors.append('content upload delivery identity mismatch')
+            continue
+        delivery = matches[0]
+        candidates = [i for i, entry in enumerate(entries[:delivery])
+                      if i not in consumed and entry.get('kind') == 'upload' and entry.get('status') == 201
+                      and all(equal(entry.get(k), descriptor[k]) for k in descriptor)]
+        if not candidates:
+            errors.append('content upload lacks exact prior receiver confirmation')
+            continue
+        consumed.add(candidates[-1])
+        deliveries.setdefault((method, event_id), []).append(confirmation)
+    uploads = [e for i, e in enumerate(entries) if e.get('kind') == 'upload' and i not in consumed]
     upload_steps = [(st,status) for s in scenarios for st,status in zip([x for x in s['steps'] if x['op']=='upload'],s['expected']['uploadStatuses'])]
     if len(uploads) != len(upload_steps): errors.append('upload multiplicity mismatch')
     refs = {}
@@ -126,6 +178,36 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             body = result['body']
             if body.get('ref') in refs: body['ref'] = refs[body['ref']]
         return result
+    source_descriptors = {source['descriptor']['ref']: source['descriptor'] for source in content_sources(scenarios)}
+    for alias, ref in refs.items():
+        if alias in source_descriptors:
+            source_descriptors[ref] = {**source_descriptors[alias], 'ref': ref}
+    immutable_descriptors = dict(source_descriptors)
+    matched_confirmations = Counter()
+    def delivery_message(message):
+        message = deepcopy(message)
+        key = (message['method'], message['params']['event']['id'])
+        seen = set()
+        for confirmation in deliveries.get(key, []):
+            source = confirmation['sourceRef']
+            descriptor = confirmation['descriptor']
+            original = source_descriptors.get(source)
+            if source in seen or original is None or any(not equal(original[k], descriptor[k]) for k in ('size', 'sha256')):
+                errors.append('unknown/duplicate source or content upload integrity mismatch')
+                continue
+            seen.add(source)
+            wanted = {**original, 'ref': refs.get(source, source)}
+            items = message['params']['event'].get('items', [])
+            selected = [item for item in items if equal(item.get('body'), wanted)]
+            if not selected:
+                continue
+            matched_confirmations[json.dumps(confirmation, sort_keys=True)] += 1
+            if descriptor['ref'] in immutable_descriptors and any(not equal(immutable_descriptors[descriptor['ref']][k], descriptor[k]) for k in ('size', 'sha256')):
+                errors.append('receiver reused immutable reference for changed bytes')
+            immutable_descriptors[descriptor['ref']] = descriptor
+            for item in selected:
+                item['body'] = deepcopy(descriptor)
+        return message
     scenarios = resolve(scenarios)
     expected_observations=[]
     cancelled_observations=set()
@@ -141,11 +223,14 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             event['tool']['input']=deepcopy(s['expected']['states'].get(id,{}).get('input',event['tool']['input']))
             if 'items' in st: event['items']=deepcopy(st['items'])
             message={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
-            expected_observations.append({'kind':'observed','eventId':event['id'],'event':event,'message':message})
+            message=delivery_message(message)
+            expected_observations.append({'kind':'observed','eventId':event['id'],'event':message['params']['event'],'message':message})
     boundary_requests={(request['params']['event']['source'],request['params']['event']['id']):request['id'] for s in scenarios for request in s['requests'].values()}
     observed=[e for e in entries if e.get('kind')=='observed']
     if not equal(observed,expected_observations): errors.append('settled observation payload/identity/subscription mismatch')
-    requests={r['id']:r for s in scenarios for r in s['requests'].values()}
+    requests={r['id']:delivery_message(r) for s in scenarios for r in s['requests'].values()}
+    if any(matched_confirmations[json.dumps(c, sort_keys=True)] != 1 for c in confirmations):
+        errors.append('content upload source not selected exactly once in delivery')
     for i,receipt in enumerate(entries):
         if receipt.get('kind')!='received':continue
         message=receipt.get('message')
@@ -206,6 +291,12 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             if not ar or not br or not breply or not br[0]<ar[0]<breply[0]:errors.append('old reply did not race next pending request')
     return errors
 
+def accepted_observation(response):
+    """An accepted HTTP notification has no JSON-RPC response body."""
+    status, body = response
+    return status in (202, 204) and body == b''
+
+
 def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
     """Raw byte upload and real event receiver probes; never semantic controls."""
     event_auth = event_auth or {'mode':'none'}
@@ -249,7 +340,7 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
         event=deepcopy(original)
         event['items']=[{'id':'receiver-probe-item','kind':'text','mediaType':'application/octet-stream','selection':'body','body':descriptor or body}]
         note={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
-        return post(endpoint+'/observe',json.dumps(note).encode(),event_headers,context)[0]
+        return post(endpoint+'/observe',json.dumps(note).encode(),event_headers,context)
     changed_status,changed_payload=upload(b'changed bytes')
     try: changed=json.loads(changed_payload)
     except (ValueError,UnicodeError): changed=None
@@ -258,17 +349,18 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
              (201 if changed_ok else changed_status if changed_status!=201 else 0,201,'changed bytes receive new immutable ref'),
              (upload(raw,token=None)[0],401,'missing independent upload credential'),
              (upload(raw,token='wrong')[0],401,'wrong independent upload credential'),
-             (observe(),200,'original binary ref readable'),
-             (observe(dict(body,ref='never-uploaded')),409,'missing readiness rejected'),
-             (observe(dict(body,size=body['size']+1)),409,'wrong descriptor size rejected'),
-             (observe(dict(body,sha256='0'*64)),409,'wrong descriptor hash rejected'),
-             (observe(),200,'negative reads did not mutate bytes')]
-    return [label+f': expected {expected}, got {got}' for got,expected,label in results if got!=expected],len(results)
+             (observe(), 'accepted', 'original binary ref readable'),
+             (observe(dict(body,ref='never-uploaded'))[0],409,'missing readiness rejected'),
+             (observe(dict(body,size=body['size']+1))[0],409,'wrong descriptor size rejected'),
+             (observe(dict(body,sha256='0'*64))[0],409,'wrong descriptor hash rejected'),
+             (observe(), 'accepted', 'negative reads did not mutate bytes')]
+    return [label+f': expected {expected}, got {got}' for got,expected,label in results if not (accepted_observation(got) if expected=='accepted' else got==expected)],len(results)
 
 def discover(root):
     result={}
     for lang in LANGUAGES:
-        cwd=root/(lang+'-sdk'); manifest=load(cwd/'interop/adapter.json')
+        cwd=root/(lang+'-sdk')
+        manifest=prepared_go_manifest(load(cwd/'interop/adapter.json'), ('lifecycleClient','lifecycleServer'))
         for key in ('lifecycleClient','lifecycleServer'):
             if not isinstance(manifest.get(key),list) or not manifest[key] or not all(isinstance(x,str) for x in manifest[key]):
                 raise ValueError(f'{lang}: missing actual {key} command')
@@ -321,6 +413,20 @@ def cleanup(processes, child_file, readiness_file):
             except Exception as error:errors.append('cleanup final group: '+type(error).__name__)
     return errors
 
+def transport_scenarios(scenarios, transport):
+    """Keep transport exclusions explicit, separate from successful executions."""
+    selected, inapplicable = [], []
+    for scenario in scenarios:
+        if transport in scenario.get('transports', ['http', 'stdio']):
+            selected.append(scenario)
+        else:
+            inapplicable.append({'id': scenario['id'], 'status': 'inapplicable',
+                                 'transport': transport,
+                                 'reason': scenario.get('inapplicableReason',
+                                     'scenario requires ' + '/'.join(scenario['transports']) + ' transport')})
+    return selected, inapplicable
+
+
 def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,mode="none",issuer=None,suite="lifecycle",verifier=None,upload_override=None,receiver_checks=True):
     label=f'{client_lang}->{server_lang}/{transport}/{mode}'
     if transport=='stdio' and mode!='none':
@@ -330,10 +436,11 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
     row={'group':label,'passed':False,'scenarios':0,'errors':[],'diagnostics':''}
     with tempfile.TemporaryDirectory(prefix='ahp-lifecycle-') as directory:
         d=Path(directory); readiness=d/'ready.json'; server_config=d/'server.json'; report_path=d/'report.json'
-        selected=[s for s in load(scenario_file)['scenarios'] if transport in s.get('transports',['http','stdio'])]
+        selected,inapplicable=transport_scenarios(load(scenario_file)['scenarios'],transport)
         scenario_file=d/'scenarios.json'; write(scenario_file,{'version':1,'scenarios':selected})
         write(server_config,{'suite':suite,'transport':transport,'readinessFile':str(readiness),'scenarioFile':str(scenario_file),'auth':configuration(mode,HERE/'fixtures','server',issuer),'uploadAuth':{'token':UPLOAD_TOKEN}})
         cfg={'suite':suite,'transport':transport,'scenarioFile':str(scenario_file),'reportFile':str(report_path),'childPidFile':str(d/'child.json'),'auth':configuration(mode,HERE/'fixtures','client',issuer),'upload':{'auth':{'type':'bearer','tokenEnv':UPLOAD_ENV},'timeoutMs':5000,'maxBytes':1048576}}
+        cfg['contentSources']=content_sources(selected)
         environment=os.environ.copy(); environment[UPLOAD_ENV]=UPLOAD_TOKEN; environment['AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN']='TEST-ONLY-unauthorized-upload-token'
         try:
             with (d/'server.log').open('w+') as server_log, (d/'client.log').open('w+') as client_log:
@@ -375,6 +482,7 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
             cleanup_errors=cleanup(processes,d/'child.json',readiness)
             if cleanup_errors:
                 row['errors'].extend(cleanup_errors);row['passed']=False
+        row['inapplicable']=inapplicable
         return row
 
 def main():

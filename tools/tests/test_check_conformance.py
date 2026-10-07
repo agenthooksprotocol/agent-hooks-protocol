@@ -71,7 +71,10 @@ class SnapshotCheckerTests(unittest.TestCase):
             source = REPOSITORY_ROOT / name
             destination = self.root / name
             if source.is_dir():
-                shutil.copytree(source, destination)
+                shutil.copytree(
+                    source, destination,
+                    ignore=shutil.ignore_patterns('target', '__pycache__', '.pytest_cache'),
+                )
         # Include linked harness documentation without copying generated reports.
         (self.root / "interop").mkdir()
         for source in (REPOSITORY_ROOT / "interop").glob("*.md"):
@@ -483,11 +486,25 @@ class AllSnapshotsCheckerTests(unittest.TestCase):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
+        # Fixture commits must not leave detached maintenance writing into a
+        # repository while TemporaryDirectory removes it during teardown.
+        for key, value in (("gc.auto", "0"), ("maintenance.auto", "false")):
+            subprocess.run(
+                ["git", "-C", str(self.root), "config", key, value],
+                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
         (self.root / "README.md").write_text("# Test repository\n", encoding="utf-8")
         self.commit_all("test: initialize repository")
 
     def tearDown(self) -> None:
         self.temporary_directory.cleanup()
+
+    def test_fixture_disables_detached_automatic_maintenance(self) -> None:
+        for key, value in (("gc.auto", "0"), ("maintenance.auto", "false")):
+            actual = subprocess.check_output(
+                ["git", "-C", str(self.root), "config", "--get", key], text=True
+            ).strip()
+            self.assertEqual(value, actual)
 
     def add_snapshot(self, root_name: str, snapshot: str) -> None:
         (self.root / root_name / snapshot).mkdir()

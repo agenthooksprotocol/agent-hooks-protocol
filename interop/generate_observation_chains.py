@@ -29,7 +29,8 @@ def scenarios(base):
         elif case=='native':calls=0;final='original'
         responses=[{'jsonrpc':'2.0','id':ident,'result':{'protocolVersion':'draft','effects':value}} for value in sequence]
         called=subs[:calls]
-        remaining=subs[calls:]
+        # Cancellation ends the owning call; it does not start best-effort observers.
+        remaining=[] if case=='interrupt' else subs[calls:]
         messages=[]
         for i,sub in enumerate(called):
             request=deepcopy(original)
@@ -41,6 +42,6 @@ def scenarios(base):
             event=deepcopy(original['params']['event']);event['tool']['input']={'value':final}
             if sub['content']=='omit':event['items']=[]
             observations.append({'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}})
-        rows.append({'id':ident,'chain':{'subscriptions':subs,'interrupt':case=='interrupt','holdObservers':case=='interrupt'},'requests':{'a':original},'responses':{'a':responses[-1]},'responseSequences':{'a':responses},'steps':[],
+        rows.append({'id':ident,'chain':{'subscriptions':subs,'interrupt':case=='interrupt','holdObservers':False},'requests':{'a':original},'responses':{'a':responses[-1]},'responseSequences':{'a':responses},'steps':[],
           'expected':{'called':[s['id'] for s in called],'failures':failures,'observations':[s['id'] for s in remaining],'input':{'value':final}},'chainProof':{'requests':messages,'observations':observations}})
     return rows

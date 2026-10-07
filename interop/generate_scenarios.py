@@ -146,11 +146,16 @@ def build():
         add(name, [msg, bad], error="schema-invalid")
     for name, bad in [("zero", modify({"task": 0})), ("fraction", modify({"task": 1.5})),
                       ("boolean", modify({"task": True})), ("missing", modify({}, "replace"))]:
-        add(f"invalid-task-{name}-rejects-staged-message", [msg, bad],
+        row = add(f"invalid-task-{name}-rejects-staged-message", [msg, bad],
             error="application-invalid", candidate=CANDIDATE, permission="allow", tags=["state", "modify"])
-    add("later-invalid-modify-rolls-back-earlier-modify",
+        row["hostExpected"] = {"decision": "allow", "executed": False,
+                               "input": {} if name == "missing" else {**INPUT, **bad["value"]},
+                               "messages": [msg["text"]]}
+    row = add("later-invalid-modify-rolls-back-earlier-modify",
         [modify({"task": 2}), msg, modify({"task": -1})], error="application-invalid",
         candidate=CANDIDATE, permission="allow", tags=["state", "modify"])
+    row["hostExpected"] = {"decision": "allow", "executed": False,
+                           "input": {**INPUT, "task": -1}, "messages": [msg["text"]]}
     add("modify-unadvertised-target", [msg, effect("modify", target="output", operation="replace", value={})],
         error="capability-invalid")
     for kind, returned in [("deny", deny), ("allow", allow), ("ask", ask), ("message", msg), ("return", ret),
@@ -211,6 +216,9 @@ def build():
         del event["tool"]
         event.pop("call"); event.pop("path")
         event.update(type="turn.finish.before", turn={"id": "turn-1"}, continuationCount=0, outcome="completed", items=[])
+        if "hostExpected" in row:
+            assert row.get("expectError") is True and "application-invalid" in row["tags"], name
+            assert row["hostExpected"]["executed"] is False, name
         if "expected" in row:
             del row["expected"]["input"]
             continues = [e for e in effects
@@ -271,6 +279,9 @@ def validate(document):
         assert row["request"]["id"] == row["request"]["params"]["event"]["id"] == name
         assert ("expected" in row) != (row.get("expectError") is True), name
         assert all(isinstance(tag, str) for tag in row["tags"]), name
+        if "hostExpected" in row:
+            assert row.get("expectError") is True and "application-invalid" in row["tags"], name
+            assert row["hostExpected"]["executed"] is False, name
         if "expected" in row:
             expected = row["expected"]
             assert set(expected) <= {"decision", "executed", "input", "messages", "result", "flow", "injections",

@@ -1,3 +1,5 @@
+pub mod facade;
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
@@ -901,7 +903,7 @@ def _discriminator_value(schema: _SchemaNode, property: str) -> str | None:
 
 
 def _to_safe_json(value: object) -> JsonValue:
-    if value is None or type(value) in (str, bool, int):
+    if value is None or isinstance(value, str) or type(value) in (bool, int):
         return cast(JsonPrimitive, value)
     if type(value) is float:
         if not math.isfinite(value):
@@ -1039,6 +1041,7 @@ mod tests {
                     shape: Shape::Object {
                         properties: vec![
                             Property {
+                                constructor_default: None,
                                 wire_name: "type".into(),
                                 required: true,
                                 shape: Shape::Literal {
@@ -1046,6 +1049,7 @@ mod tests {
                                 },
                             },
                             Property {
+                                constructor_default: None,
                                 wire_name: "required/value".into(),
                                 required: true,
                                 shape: Shape::String,
@@ -1061,6 +1065,7 @@ mod tests {
                     shape: Shape::Object {
                         properties: vec![
                             Property {
+                                constructor_default: None,
                                 wire_name: "transport".into(),
                                 required: true,
                                 shape: Shape::Union {
@@ -1072,6 +1077,7 @@ mod tests {
                                 },
                             },
                             Property {
+                                constructor_default: None,
                                 wire_name: "kind".into(),
                                 required: false,
                                 shape: Shape::Enum {
@@ -1080,10 +1086,12 @@ mod tests {
                                 },
                             },
                             Property {
+                                constructor_default: None,
                                 wire_name: "meta-data".into(),
                                 required: false,
                                 shape: Shape::Object {
                                     properties: vec![Property {
+                                        constructor_default: None,
                                         wire_name: "trace/id".into(),
                                         required: true,
                                         shape: Shape::String,
@@ -1219,6 +1227,7 @@ mod tests {
                     },
                     Shape::Object {
                         properties: vec![Property {
+                            constructor_default: None,
                             wire_name: "extra".into(),
                             required: true,
                             shape: Shape::Integer,
@@ -1253,6 +1262,7 @@ mod tests {
                     name: "Node".into(),
                     source: "recursive.json#/$defs/node".into(),
                     shape: object(vec![Property {
+                        constructor_default: None,
                         wire_name: "next".into(),
                         required: false,
                         shape: Shape::Ref {
@@ -1264,6 +1274,7 @@ mod tests {
                     name: "Left".into(),
                     source: "recursive.json#/$defs/left".into(),
                     shape: object(vec![Property {
+                        constructor_default: None,
                         wire_name: "right".into(),
                         required: false,
                         shape: Shape::Ref {
@@ -1275,6 +1286,7 @@ mod tests {
                     name: "Right".into(),
                     source: "recursive.json#/$defs/right".into(),
                     shape: object(vec![Property {
+                        constructor_default: None,
                         wire_name: "left".into(),
                         required: false,
                         shape: Shape::Ref {
@@ -1322,6 +1334,7 @@ mod tests {
                     source: "identifiers.json#/$defs/foo".into(),
                     shape: Shape::Object {
                         properties: vec![Property {
+                            constructor_default: None,
                             wire_name: "child".into(),
                             required: true,
                             shape: Shape::Object {

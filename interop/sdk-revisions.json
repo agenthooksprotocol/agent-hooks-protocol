@@ -1,25 +1,25 @@
 {
-  "version": 1,
-  "sdks": {
-    "python": {
-      "repository": "agenthooksprotocol/python-sdk",
-      "revision": "151fe7c3237418b67ade1dcb1113a9d6947d655e",
-      "path": "python-sdk"
+    "sdks": {
+        "go": {
+            "path": "go-sdk",
+            "repository": "agenthooksprotocol/go-sdk",
+            "revision": "1a506c536513dbd1dd15160230fa87c8b4373d56"
+        },
+        "python": {
+            "path": "python-sdk",
+            "repository": "agenthooksprotocol/python-sdk",
+            "revision": "86785ecdc0a45cfd48cab3bcfb2d7173ac4865ad"
+        },
+        "rust": {
+            "path": "rust-sdk",
+            "repository": "agenthooksprotocol/rust-sdk",
+            "revision": "782881d12ccdc7de4023afe805973a9766cd9562"
+        },
+        "typescript": {
+            "path": "typescript-sdk",
+            "repository": "agenthooksprotocol/typescript-sdk",
+            "revision": "4711fabeaaaf76532158ae05f40636174ea64856"
+        }
     },
-    "typescript": {
-      "repository": "agenthooksprotocol/typescript-sdk",
-      "revision": "ec1e2411390287a206d88031dee1dc355baf34d6",
-      "path": "typescript-sdk"
-    },
-    "go": {
-      "repository": "agenthooksprotocol/go-sdk",
-      "revision": "348dd947b1fd274bf0785a6c1d3a4bb068fd3179",
-      "path": "go-sdk"
-    },
-    "rust": {
-      "repository": "agenthooksprotocol/rust-sdk",
-      "revision": "0c4579bce64108f2521870b1f9e58b07d9c38629",
-      "path": "rust-sdk"
-    }
-  }
+    "version": 1
 }

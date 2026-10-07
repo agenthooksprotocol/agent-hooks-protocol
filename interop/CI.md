@@ -14,7 +14,7 @@ the pull request's proposed merge tree, not the default branch's generator.
 1. Read `interop/sdk-revisions.json` and check out all four SDKs at full commit
    SHAs. Repository names and checkout paths are validated against the expected
    SDKs; floating branches and tags are rejected.
-2. Set up Python 3.11, Node 20 with pnpm 10.18.3, Go 1.24, and Rust 1.88.0 with
+2. Set up Python 3.11, Node 20 with pnpm 10.18.3, Go 1.27, and Rust 1.88.0 with
    rustfmt. Install the Python harness's JSON Schema dependency.
 3. Run `python3 tools/generate_sdk.py --all` from the proposed spec. This writes
    generated codecs, canonical schemas, and source locks into those siblings.
@@ -22,7 +22,7 @@ the pull request's proposed merge tree, not the default branch's generator.
    vet, and test Go; and build all Rust targets and run Rust tests with its
    committed lockfile. TypeScript uses `pnpm install --frozen-lockfile` and the
    repository's ordered workspace build, not guessed `dist` paths.
-5. Run `python3 tools/run_sdk_integration.py --reports-dir PATH --jobs 4`.
+5. Run `python3 tools/run_sdk_integration.py --reports-dir PATH --jobs 4 --suite-group GROUP` in each of the disjoint `core` and `extended` shards. The aggregate **SDK integration** job requires both shards to succeed; local runs may omit the group to run all suites.
    The runner builds Go elicitation, compaction, and compaction-wire adapters
    from the sibling sources into a fresh temporary directory, exports that
    directory only to its test processes, and removes it on exit. Build failures

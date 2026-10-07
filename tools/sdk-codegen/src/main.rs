@@ -1,4 +1,6 @@
+mod capability_ergonomics;
 mod compiler;
+mod ergonomics;
 mod langs;
 mod model;
 
@@ -56,13 +58,29 @@ fn run() -> Result<()> {
     if emit_ir && language.is_some() {
         bail!("--emit-ir and --language are mutually exclusive");
     }
+    if language.as_deref() == Some("python-facade") {
+        let directory = output.context("--output directory is required for python-facade")?;
+        for (relative, contents) in langs::python::facade::emit(&ir)? {
+            let path = Path::new(&directory).join(relative);
+            write_output(path.to_str(), &contents)?;
+        }
+        return Ok(());
+    }
+    if language.as_deref() == Some("go-facade") {
+        let directory = output.context("--output directory is required for go-facade")?;
+        for (relative, contents) in langs::go::facade::emit(&ir)? {
+            let path = Path::new(&directory).join(relative);
+            write_output(path.to_str(), &contents)?;
+        }
+        return Ok(());
+    }
     let contents = if emit_ir {
         format!("{}\n", serde_json::to_string_pretty(&ir)?)
     } else {
         match language.as_deref() {
             Some("go") => langs::go::emit(&ir)?,
             Some("python") => langs::python::emit(&ir)?,
-            Some("rust") => langs::rust::emit(&ir)?,
+            Some("rust") => langs::rust::emit_from_repository(&ir, &repository)?,
             Some("typescript") => langs::typescript::emit(&ir)?,
             Some(other) => {
                 bail!("unsupported language {other:?}; available: go, python, rust, typescript")
@@ -107,7 +125,7 @@ fn print_help() {
     println!(
         "ahp-codegen\n\n\
          Usage:\n  ahp-codegen check --revision <revision> [--repository <path>]\n  \
-         ahp-codegen generate --revision <revision> (--language <go|python|rust|typescript> | --emit-ir) \
+         ahp-codegen generate --revision <revision> (--language <go|go-facade|python|python-facade|rust|typescript> | --emit-ir) \
          [--output <path>] [--repository <path>]"
     );
 }

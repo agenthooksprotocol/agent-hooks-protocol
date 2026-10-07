@@ -14,6 +14,7 @@ import threading
 import time
 import urllib.request
 from auth import Issuer, configuration
+from adapter_builds import prepared_go_manifest
 
 HERE = Path(__file__).resolve().parent
 MODES = ('none', 'bearer', 'oauth', 'mtls', 'workload')
@@ -22,14 +23,15 @@ def load(path):
     return json.loads(Path(path).read_text())
 
 def load_adapter(path):
-    adapter = dict(load(path), cwd=str(path.parent.parent))
+    adapter = dict(prepared_go_manifest(load(path), ('client', 'server')),
+                   cwd=str(path.parent.parent))
     binary = os.environ.get('AHP_RUST_INTEROP')
     if adapter['language'] == 'rust' and binary:
         # Only replace the pinned Cargo launcher, never reinterpret arbitrary
         # adapter arguments. Compilation is an orchestration prerequisite, not
         # part of the SDK's bounded stdio discovery exchange.
         for role in ('client', 'server'):
-            expected = ['cargo', 'run', '--quiet', '--bin', 'interop', '--', role]
+            expected = ['cargo', 'run', '--quiet', '--features', 'interop', '--bin', 'interop', '--', role]
             if adapter[role] != expected:
                 raise ValueError('unexpected Rust interop launcher')
             adapter[role] = [binary, role]
@@ -142,13 +144,27 @@ def verify(scenarios, report, receipts, language, exit_code):
         expected = scenario.get('expected', {'expectError': True})
         if scenario.get('expectError'):
             # A missing/null output is not evidence of fail-closed rejection.
-            passed = passed and equal(actual, {'rejected': True})
+            host_case = 'application-invalid' in scenario.get('tags', []) and 'hostExpected' in scenario
+            host_report = any(k in result for k in ('sdkAccepted', 'hostAccepted', 'rejectionLayer'))
+            if host_report:
+                # Tool business schemas belong to the host, not the protocol.
+                # Keep the SDK's effective event/messages, but prove no execution.
+                expected = scenario.get('hostExpected', expected)
+                passed = (passed and host_case and result.get('sdkAccepted') is True
+                          and result.get('hostAccepted') is False
+                          and result.get('rejectionLayer') == 'host-input-schema'
+                          and equal(actual, expected) and actual.get('executed') is False)
+            else:
+                # Foreign adapters may install an application validator in their
+                # SDK transaction. Their genuine atomic rejection remains valid.
+                passed = passed and equal(actual, {'rejected': True})
         else:
             passed = passed and isinstance(actual, dict) and all(k in actual and equal(v, actual[k]) for k, v in expected.items())
             if isinstance(actual,dict) and any(k in actual and k not in expected for k in OPTIONAL_SEMANTIC_FIELDS):
                 passed=False
         rows.append(dict(id=scenario['id'], expected=expected, actual=actual,
-                         status='passed' if passed else 'failed', adapterStatus=result.get('status', 'missing')))
+                         status='passed' if passed else 'failed', adapterStatus=result.get('status', 'missing'),
+                         **{k: result[k] for k in ('sdkAccepted', 'hostAccepted', 'rejectionLayer') if k in result}))
     invalidate(rows, errors)
     return rows, sorted(set(errors))
 

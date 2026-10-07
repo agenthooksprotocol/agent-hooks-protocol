@@ -1,0 +1,63 @@
+use agenthooksprotocol::{ergonomic_inputs::ToolBeforeInput, effects, state, Permission, DeliveryDiagnosticCode};
+use serde_json::{json, Value};
+
+#[test]
+fn typed_host_projection_preserves_application_input_and_distinct_facts() {
+    #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+    struct Args { path: String }
+    let input: ToolBeforeInput<Args> = serde_json::from_value(json!({
+        "callId":"c", "name":"read", "input":{"path":"app-owned"},
+        "path":"/tools/read", "origin":"native", "callSynthesized":false,
+        "parentEventId":"parent"
+    })).unwrap();
+    assert_eq!(input.to_event_value().unwrap(),json!({
+        "type":"tool.before", "call":{"id":"c","synthesized":false},
+        "tool":{"name":"read","input":{"path":"app-owned"},"origin":"native"},
+        "path":"/tools/read", "parentEventId":"parent"
+    }));
+    assert_eq!(input.input.path,"app-owned");
+}
+
+#[test]
+fn initial_snapshot_and_effects_are_canonical() {
+    assert_eq!(serde_json::to_value(state::initial(Permission::None)).unwrap(),json!({"permission":"none","candidate":null}));
+    let initial: state::InitialState = serde_json::from_value(json!({"permission":"allow","candidate":null,"flow":"stop","instructions":["keep"],"future":7})).unwrap();
+    let initial = initial.candidate(state::Candidate::new(json!({"answer":1})).provenance([("producer".into(),json!("hook"))].into()));
+    let value: Value = serde_json::to_value(initial).unwrap();
+    assert_eq!(value,json!({"permission":"allow","candidate":{"value":{"answer":1},"provenance":{"producer":"hook"}},"flow":"stop","instructions":["keep"],"future":7}));
+    assert_eq!(serde_json::to_value(effects::modify_input::replace(json!({"next":true}))).unwrap(),json!({"type":"modify","target":"input","operation":"replace","value":{"next":true}}));
+    assert_eq!(serde_json::to_value(effects::deny("reason".into())).unwrap(),json!({"type":"deny","reason":"reason"}));
+    assert_eq!(serde_json::to_value(effects::return_(json!(1))).unwrap(),json!({"type":"return","value":1}));
+    assert_eq!(serde_json::to_value(DeliveryDiagnosticCode::RemoteRpc).unwrap(),json!("remote_rpc"));
+}
+
+#[test]
+fn native_candidate_and_effect_values_propagate_encoding_errors() {
+    #[derive(serde::Serialize)]
+    struct Answer { count: u32 }
+    struct Failing;
+    impl serde::Serialize for Failing {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom("deliberate encoding failure"))
+        }
+    }
+    let candidate = state::Candidate::try_new(Answer { count: 3 }).unwrap();
+    assert_eq!(candidate.value, json!({"count": 3}));
+    assert!(state::Candidate::try_new(Failing).is_err());
+    assert!(effects::try_return(Failing).is_err());
+    assert!(effects::modify_input::try_replace(Failing).is_err());
+    assert!(effects::modify_input::try_merge(Failing).is_err());
+    assert_eq!(serde_json::to_value(effects::try_return(Answer { count: 3 }).unwrap()).unwrap(), json!({"type": "return", "value": {"count": 3}}));
+    assert_eq!(serde_json::to_value(effects::modify_input::try_replace(Answer { count: 3 }).unwrap()).unwrap(), json!({"type": "modify", "target": "input", "operation": "replace", "value": {"count": 3}}));
+    let absent = serde_json::to_value(state::initial(Permission::Allow)).unwrap();
+    let supplied = serde_json::to_value(state::initial(Permission::Allow).candidate(state::Candidate::try_new(None::<Answer>).unwrap())).unwrap();
+    assert_eq!(absent["candidate"], Value::Null);
+    assert_eq!(supplied["candidate"], json!({"value": null}));
+}
+
+#[test]
+fn known_event_type_preserves_canonical_selector() {
+    let event = agenthooksprotocol::EventType::ToolBefore;
+    assert_eq!(event.as_str(), "tool.before");
+    assert_eq!(serde_json::to_value(event).unwrap(), serde_json::json!("tool.before"));
+}

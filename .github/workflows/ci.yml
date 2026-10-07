@@ -49,9 +49,16 @@ jobs:
             --output "$RUNNER_TEMP/ahp_generated.py"
           python3 tools/sdk-codegen/tests/python-smoke.py \
             "$RUNNER_TEMP/ahp_generated.py" "$GITHUB_WORKSPACE"
+          mkdir -p "$RUNNER_TEMP/ahp_python_facade"
+          cp "$RUNNER_TEMP/ahp_generated.py" "$RUNNER_TEMP/ahp_python_facade/generated.py"
+          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+            generate --revision draft --language python-facade \
+            --output "$RUNNER_TEMP/ahp_python_facade"
+          python3 tools/sdk-codegen/tests/python-facade-smoke.py \
+            "$RUNNER_TEMP/ahp_python_facade"
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24.x"
+          go-version: "1.27.x"
       - name: Test generated Go
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \

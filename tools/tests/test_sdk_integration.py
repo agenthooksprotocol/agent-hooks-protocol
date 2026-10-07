@@ -27,13 +27,28 @@ class SDKIntegrationTests(unittest.TestCase):
                 key: ['adapter', key] for key in runner.MANIFEST_COMMANDS
             }}))
 
-    def invoke(self, popen):
+    def invoke(self, popen, *args):
         output = io.StringIO()
         with patch.object(runner, 'ROOT', self.root), patch.object(
             runner.subprocess, 'Popen', popen
         ), patch.object(runner, 'prepare_adapters', return_value=[{'status': 'passed'}]), redirect_stdout(output):
-            code = runner.main(['--reports-dir', str(self.reports), '--jobs', '7', '--timeout', '12'])
+            code = runner.main(['--reports-dir', str(self.reports), '--jobs', '7', '--timeout', '12', *args])
         return code, json.loads((self.reports / 'summary.json').read_text()), output.getvalue()
+
+    def test_jobs_prefer_affinity_and_respect_requested_maximum(self):
+        with patch.object(runner.os, 'sched_getaffinity', return_value={2, 4}, create=True), patch.object(runner.os, 'cpu_count', return_value=64):
+            self.assertEqual(runner.effective_jobs(7), 2)
+            self.assertEqual(runner.effective_jobs(1), 1)
+            code, summary, output = self.invoke(Mock(return_value=Mock(wait=Mock(return_value=0))))
+            self.assertEqual(code, 0)
+            self.assertEqual(summary['effective_jobs'], 2)
+            self.assertEqual(summary['requested_jobs'], 7)
+            self.assertIn('2 effective', output)
+
+    def test_jobs_fallback_is_bounded(self):
+        for count, expected in ((3, 3), (None, 1), (0, 1)):
+            with patch.object(runner.os, 'sched_getaffinity', side_effect=OSError, create=True), patch.object(runner.os, 'cpu_count', return_value=count):
+                self.assertEqual(runner.effective_jobs(7), expected)
 
     def test_declared_build_commands_use_run_owned_directory(self):
         directory = self.root / 'isolated-bin'
@@ -41,9 +56,10 @@ class SDKIntegrationTests(unittest.TestCase):
         with patch.object(runner, 'run_command', return_value={'status': 'passed'}) as run:
             with redirect_stdout(io.StringIO()):
                 results = runner.prepare_adapters(self.root, directory, self.reports, 12)
-        self.assertEqual(len(results), 4)
+        self.assertEqual(len(results), 7)
         self.assertEqual(tuple(row['name'] for row in results),
-                         ('go-elicitation', 'go-compaction', 'go-compaction-wire', 'rust-interop'))
+                         ('go-elicitation', 'go-compaction', 'go-compaction-wire',
+                          'go-interop', 'go-lifecycle-client', 'go-lifecycle-server', 'rust-interop'))
         for call, name in zip(run.call_args_list, runner.GO_ADAPTERS):
             self.assertEqual(call.args, (
                 ['go', 'build', '-o', str(directory / name), './cmd/' + name],
@@ -51,7 +67,7 @@ class SDKIntegrationTests(unittest.TestCase):
 
         sdk = self.root.parent / 'rust-sdk'
         self.assertEqual(run.call_args_list[-1].args, (
-            ['cargo', 'build', '--locked', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
+            ['cargo', 'build', '--locked', '--features', 'interop', '--bin', 'interop', '--target-dir', str(sdk / 'target')],
             sdk, self.reports / 'build-rust-interop.log', 12))
 
     def test_failed_preparation_blocks_suites_and_clears_stale_reports(self):
@@ -89,6 +105,39 @@ class SDKIntegrationTests(unittest.TestCase):
             self.assertEqual(suites[name][0], [sys.executable, str(self.root / 'interop' / script),
                 *flags, '--report' if name == 'auth' else '--output', str(self.reports / f'{name}.json')])
 
+    def test_suite_partition_is_disjoint_and_exhaustive(self):
+        all_suites = runner.suite_commands(self.root, self.reports, 7)
+        core = runner.suite_commands(self.root, self.reports, 7, 'core')
+        extended = runner.suite_commands(self.root, self.reports, 7, 'extended')
+        self.assertEqual(len(all_suites), 11)
+        self.assertEqual(core + extended, all_suites)
+        self.assertFalse({row[0] for row in core} & {row[0] for row in extended})
+        self.assertEqual([row[0] for row in core],
+                         ['tools-unit', 'interop-unit', 'matrix', 'lifecycle', 'catalogue'])
+        self.assertEqual([row[0] for row in extended],
+                         ['elicitation', 'observation', 'compaction', 'compaction-wire',
+                          'auth', 'sender-isolation'])
+
+    def test_suite_groups_write_expected_summaries(self):
+        for group in ('all', 'core', 'extended'):
+            with self.subTest(group=group):
+                popen = Mock(return_value=Mock(wait=Mock(return_value=0)))
+                code, summary, _ = self.invoke(popen, '--suite-group', group)
+                expected = runner.suite_commands(self.root, self.reports, 7, group)
+                self.assertEqual(code, 0)
+                self.assertEqual(summary['suite_group'], group)
+                self.assertEqual(summary['status'], 'passed')
+                self.assertEqual([row['name'] for row in summary['suites']],
+                                 [row[0] for row in expected])
+                self.assertTrue(all(row['status'] == 'passed' for row in summary['suites']))
+                self.assertEqual(popen.call_count, len(expected))
+
+    def test_invalid_suite_group_is_rejected(self):
+        with patch('sys.stderr', io.StringIO()), self.assertRaises(SystemExit) as error:
+            runner.main(['--reports-dir', str(self.reports), '--suite-group', 'unknown'])
+        self.assertEqual(error.exception.code, 2)
+        self.assertFalse(self.reports.exists())
+
     def test_success_logs_and_lean_stdout(self):
         directories = set()
         def execute(command, **kwargs):
@@ -103,8 +152,9 @@ class SDKIntegrationTests(unittest.TestCase):
         code, summary, output = self.invoke(popen)
         self.assertEqual(code, 0)
         self.assertEqual(summary['manifest_errors'], [])
+        self.assertEqual(summary['suite_group'], 'all')
         self.assertEqual(popen.call_count, 11)
-        self.assertEqual(len(output.splitlines()), 12)
+        self.assertEqual(len(output.splitlines()), 13)
         self.assertNotIn('verbose adapter details', output)
         self.assertEqual(len(list(self.reports.glob('*.log'))), 11)
         self.assertEqual(len(directories), 1)

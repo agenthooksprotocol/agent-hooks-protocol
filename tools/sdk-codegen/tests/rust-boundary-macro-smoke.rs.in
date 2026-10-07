@@ -1,0 +1,72 @@
+
+#[cfg(test)]
+pub mod generated { pub use super::*; }
+#[cfg(test)]
+pub mod hooks {
+    // This is the SDK's lazy input_for contract: retain input+projector until poll.
+    pub struct InputBoundary<'a, T> {
+        pub name: &'static str,
+        input: Option<T>,
+        project: fn(&T) -> Result<serde_json::Value, serde_json::Error>,
+        marker: std::marker::PhantomData<&'a ()>,
+    }
+    impl<T> Unpin for InputBoundary<'_, T> {}
+    impl<T> std::future::Future for InputBoundary<'_, T> {
+        type Output = Result<serde_json::Value, serde_json::Error>;
+        fn poll(self: std::pin::Pin<&mut Self>, _: &mut std::task::Context<'_>) -> std::task::Poll<Self::Output> {
+            let this = self.get_mut();
+            let input = this.input.take().expect("operation polled once");
+            std::task::Poll::Ready((this.project)(&input))
+        }
+    }
+    impl<'a, T> InputBoundary<'a, T> {
+        pub fn new(name: &'static str, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> Self {
+            Self { name, input: Some(input), project, marker: std::marker::PhantomData }
+        }
+    }
+}
+#[cfg(test)]
+pub struct TestHooks;
+#[cfg(test)]
+impl TestHooks {
+    fn input_for<T>(&self, name: &'static str, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> hooks::InputBoundary<'_, T> {
+        hooks::InputBoundary::new(name, input, project)
+    }
+    // Handwritten primary API must coexist with the generated event boundary.
+    fn tool_before(&self) -> bool { true }
+    ahp_ergonomic_hook_methods!();
+}
+#[test]
+fn named_macro_projects_only_when_polled_without_flat_wire_leakage() {
+    use std::{cell::Cell, future::Future, rc::Rc, pin::Pin, task::{Context, Poll, Waker}};
+    struct Probe(Rc<Cell<usize>>); // No Deserialize implementation is required.
+    impl serde::Serialize for Probe {
+        fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.0.set(self.0.get() + 1);
+            serde::Serialize::serialize(&serde_json::json!({"x":1}), serializer)
+        }
+    }
+    let h = TestHooks;
+    assert!(h.tool_before());
+    let count = Rc::new(Cell::new(0));
+    let make_input = || ergonomic_inputs::ToolBeforeInput::new("c".into(), "/tool".into(), Probe(count.clone()), "read".into(), ToolBeforeInputOrigin::Native).with_parent_event_id("parent".into());
+    drop(h.tool_before_event(make_input()));
+    assert_eq!(count.get(), 0, "dropping an unpolled operation must not serialize");
+    let mut call: hooks::InputBoundary<'_, ergonomic_inputs::ToolBeforeInput<Probe>> = h.tool_before_event(make_input());
+    assert_eq!(call.name, "tool.before");
+    assert_eq!(count.get(), 0, "constructing a boundary must not serialize");
+    let Poll::Ready(result) = Pin::new(&mut call).poll(&mut Context::from_waker(Waker::noop())) else { panic!("projection is ready"); };
+    let value = result.unwrap();
+    assert_eq!(count.get(), 1);
+    assert_eq!(value["tool"]["input"]["x"], 1);
+    assert_eq!(value["call"]["id"], "c");
+    assert_eq!(value["parentEventId"], "parent");
+    assert!(value.get("callId").is_none());
+}
+#[test]
+fn content_sources_bind_without_serialization() {
+    struct Source;
+    let binding = ergonomic_inputs::tool_before_sources::items(2, Source);
+    assert_eq!(binding.path, ["items", "2"]);
+    let _source = binding.source;
+}
