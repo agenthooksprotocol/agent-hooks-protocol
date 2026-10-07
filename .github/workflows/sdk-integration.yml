@@ -3,10 +3,6 @@ name: SDK integration
 # No path filters: this status is safe to require on every pull request.
 on:
   pull_request:
-  push:
-    branches: [main]
-  repository_dispatch:
-    types: [sdk-released]
   workflow_dispatch:
 
 permissions:
@@ -17,7 +13,43 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Check compatibility scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.scope.outputs.needed }}
+    steps:
+      - uses: actions/checkout@v5
+        if: ${{ github.event_name == 'pull_request' }}
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect relevant contract changes
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python3 - <<'PYCODE'
+          import os, subprocess
+          needed = os.environ['EVENT'] == 'workflow_dispatch'
+          if not needed:
+              paths = subprocess.check_output([
+                  'git', 'diff', '--name-only', '--no-renames', '-z',
+                  os.environ['BASE'] + '...' + os.environ['HEAD'],
+              ]).decode().split('\0')
+              prefixes = ('spec/', 'schema/', 'fixtures/', 'conformance/', 'interop/', 'tools/')
+              workflows = ('.github/workflows/sdk-integration.yml', '.github/workflows/ci.yml', '.github/workflows/sync-sdks.yml')
+              needed = any(path.startswith(prefixes) or path in workflows for path in paths)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print('needed=' + str(needed).lower(), file=output)
+          PYCODE
+
   resolve-sdks:
+    needs: [scope]
+    if: ${{ needs.scope.outputs.needed == 'true' }}
     name: Resolve SDK revisions
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -35,8 +67,7 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE: ${{ github.event_name == 'repository_dispatch' && 'release' || 'main' }}
-        run: python3 tools/resolve_sdk_revisions.py --source "$SOURCE" --output "$RUNNER_TEMP/sdk-revisions.json"
+        run: python3 tools/resolve_sdk_revisions.py --output "$RUNNER_TEMP/sdk-revisions.json"
       - name: Upload resolved SDK revisions
         uses: actions/upload-artifact@v4
         with:
@@ -184,16 +215,26 @@ jobs:
 
   sdk-integration:
     name: SDK integration
-    needs: [resolve-sdks, sdk-integration-shards]
+    needs: [scope, resolve-sdks, sdk-integration-shards]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every SDK integration shard to succeed
         env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          NEEDED: ${{ needs.scope.outputs.needed }}
           RESOLVE_RESULT: ${{ needs.resolve-sdks.result }}
           SHARDS_RESULT: ${{ needs.sdk-integration-shards.result }}
         run: |
-          # Matrix success requires every shard; failure, cancellation, or skip fails.
-          test "$RESOLVE_RESULT" = success
-          test "$SHARDS_RESULT" = success
+          # A failed scope check must never turn into a successful skip.
+          test "$SCOPE_RESULT" = success
+          if [[ "$NEEDED" == false ]]; then
+            test "$RESOLVE_RESULT" = skipped
+            test "$SHARDS_RESULT" = skipped
+            echo 'No compatibility-relevant changes; SDK integration is not needed.'
+          else
+            test "$NEEDED" = true
+            test "$RESOLVE_RESULT" = success
+            test "$SHARDS_RESULT" = success
+          fi
