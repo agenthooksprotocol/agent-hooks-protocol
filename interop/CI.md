@@ -63,6 +63,30 @@ versions include patch-floating selectors and most package ecosystems here do
 not have complete dependency locks, so SDK commit pinning is not a claim of fully
 hermetic dependency resolution.
 
+### Automatic release pins
+
+The **Update SDK release pins** workflow runs hourly and on manual dispatch. It
+opens or updates one signed-off PR on `automation/sdk-release-pins`, changing only
+`interop/sdk-revisions.json`. The PR runs the existing SDK integration CI; the
+workflow never merges it or writes directly to `main`.
+
+The updater selects the highest stable `vX.Y.Z` GitHub release for each SDK
+(`agenthooksprotocol-vX.Y.Z` for TypeScript), excluding drafts and prereleases.
+It resolves lightweight or annotated tags to exact commits and requires a
+successful push-to-`main` `release.yml` run at that SHA. TypeScript, Python, and
+Rust also require a successful `publish` job; Go requires `release-please`.
+Pending or failed releases leave pins unchanged until a later scheduled run.
+Pins already ahead of or diverged from the release are preserved. API failures
+abort before any manifest write. This is release metadata selection, not a
+registry probe, installation check, or workflow retry.
+
+Public SDK metadata is read with the read-only workflow token. PR creation uses
+`SDK_SYNC_APP_ID` and `SDK_SYNC_APP_PRIVATE_KEY`; the app must be installed on this
+contract repository with Contents and Pull requests write permissions. The
+installation token is restricted to this repository and those two permissions,
+so bot PRs trigger ordinary pull-request CI. No SDK publishing credentials are
+needed.
+
 ## Local reproduction
 
 Use the same sibling directory layout and dependency commands from the workflow.

@@ -1,0 +1,66 @@
+name: Update SDK release pins
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-release-pins-automation/sdk-release-pins
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Verify app configuration
+        env:
+          APP_ID: ${{ vars.SDK_SYNC_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.SDK_SYNC_APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$APP_ID" || -z "$APP_PRIVATE_KEY" ]]; then
+            echo 'SDK_SYNC_APP_ID and SDK_SYNC_APP_PRIVATE_KEY must be configured.' >&2
+            exit 1
+          fi
+      - name: Select successful SDK releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/update_sdk_release_pins.py
+      - name: Generate installation token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.SDK_SYNC_APP_ID }}
+          private-key: ${{ secrets.SDK_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Open or update release pin pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          base: main
+          branch: automation/sdk-release-pins
+          signoff: true
+          add-paths: interop/sdk-revisions.json
+          commit-message: "chore: update SDK release pins"
+          title: "chore: update SDK release pins"
+          body: |
+            ## Summary
+
+            Advance integration pins to the latest stable SDK releases with successful
+            push-to-main `release.yml` runs at the exact resolved release-tag commits.
+            Eligible tags are `vX.Y.Z`, or `agenthooksprotocol-vX.Y.Z` for TypeScript;
+            npm, Python, and Rust require successful `publish` jobs, and Go requires
+            a successful `release-please` job. Pins ahead of or diverged from those
+            releases are preserved. Existing pull-request SDK integration CI validates
+            the proposed pins before review and merge.
