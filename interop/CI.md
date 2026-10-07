@@ -1,9 +1,11 @@
 # Required SDK integration check
 
 Configure branch protection (or a repository ruleset) to require the **SDK
-integration** job from `.github/workflows/sdk-integration.yml`. The workflow runs
-on every pull request and push without path filters, and can be dispatched
-manually. Adding this file does not itself change repository branch protection.
+integration** job from `.github/workflows/sdk-integration.yml`. It runs on every
+pull request, pushes to `main`, manual dispatch, and `sdk-released` repository
+dispatch events. Branch pushes do not duplicate the pull-request integration
+run. There are no path filters or scheduled polls. Adding this file does not
+itself change repository branch protection.
 
 ## What runs
 
@@ -11,9 +13,13 @@ The proposed spec checkout is `agent-hooks-protocol/`; `python-sdk/`,
 `typescript-sdk/`, `go-sdk/`, and `rust-sdk/` are its siblings. GitHub checks out
 the pull request's proposed merge tree, not the default branch's generator.
 
-1. Read `interop/sdk-revisions.json` and check out all four SDKs at full commit
-   SHAs. Repository names and checkout paths are validated against the expected
-   SDKs; floating branches and tags are rejected.
+1. A single **Resolve SDK revisions** job snapshots all four SDK `main` heads
+   through the GitHub API before the matrix starts. For `sdk-released` events,
+   it resolves the latest stable releases instead (see below). Both shards use
+   the same immutable outputs, never separate floating-ref lookups. Repository
+   names, paths, and full 40-character SHAs are strictly validated. The runtime
+   `sdk-revisions.json` is uploaded both by the resolver and in each shard's
+   reports. The runner checks SDK checkout HEADs against that runtime manifest.
 2. Set up Python 3.11, Node 20 with pnpm 10.18.3, Go 1.27, and Rust 1.88.0 with
    rustfmt. Install the Python harness's JSON Schema dependency.
 3. Run `python3 tools/generate_sdk.py --all` from the proposed spec. This writes
@@ -48,64 +54,52 @@ work. Jobs have a 60-minute limit, individual expensive steps have limits, and
 new runs cancel older runs for the same ref. Forced termination can prevent an
 artifact upload from completing even though its step uses `always()`.
 
-## Pin maintenance
+## Revision selection and release events
 
-Update `revision` values in `interop/sdk-revisions.json` to published SDK commits
-and review the resulting integration reports. Keep full 40-character SHAs.
-Coordinated protocol changes can pin implementation commits from SDK pull
-requests before those requests merge. CI uses only committed SDK contents.
+Pull requests, pushes to `main`, and manual runs use the latest SDK `main`
+commits observed at the start of the resolver job. These commits need not be
+released. The checked-in `interop/sdk-revisions.json` provides the fixed
+repository/path configuration; its historical revisions are not CI pins. No
+workflow updates that file or opens a pin-update PR.
 
-The workflow uses ordinary `pull_request`, read-only `contents` permissions,
-non-persistent checkout credentials, no publishing credentials or repository
-secrets, and no `pull_request_target`. It intentionally executes proposed code
-only on a GitHub-hosted runner. Dependency installs need network access. Language
-versions include patch-floating selectors and most package ecosystems here do
-not have complete dependency locks, so SDK commit pinning is not a claim of fully
-hermetic dependency resolution.
-
-### Automatic release pins
-
-The **Update SDK release pins** workflow runs on `repository_dispatch` events
-with type `sdk-released`, or on manual dispatch. There is no scheduled polling.
-Each SDK sends its notification from a separate `workflow_run` workflow after
-its release workflow completes successfully, not from inside the release run.
-The receiver opens or updates one signed-off PR on `automation/sdk-release-pins`, changing only
-`interop/sdk-revisions.json`. The PR runs the existing SDK integration CI; the
-workflow never merges it or writes directly to `main`.
-
-The updater selects the highest stable `vX.Y.Z` GitHub release for each SDK
+For `repository_dispatch` type `sdk-released`, the resolver reads all four SDKs
+and selects the highest stable `vX.Y.Z` GitHub release for each SDK
 (`agenthooksprotocol-vX.Y.Z` for TypeScript), excluding drafts and prereleases.
-It resolves lightweight or annotated tags to exact commits and requires a
-successful push-to-`main` `release.yml` run at that SHA. TypeScript, Python, and
-Rust also require a successful `publish` job; Go requires `release-please`.
-Each event reads all four SDKs to coalesce releases into the same PR. Dispatch
-payloads are not trusted as release evidence: repositories come from the strict
-manifest allowlist, and release tags, commits, runs, and jobs are checked through
-the GitHub API. Pending or failed releases leave pins unchanged until another
-release notification or manual dispatch. Pins already ahead of or diverged from
-the release are preserved. API failures
-abort before any manifest write. This is release metadata selection, not a
-registry probe, installation check, or workflow retry.
+Lightweight and annotated tags resolve to immutable commits. Each requires a
+successful push-to-`main` `release.yml` run at that SHA, including a successful
+`publish` job for TypeScript, Python, and Rust or `release-please` for Go. Missing
+or unfinished release evidence fails resolution instead of silently falling
+back to unrelated revisions. SDK senders notify from separate `workflow_run`
+workflows after successful release completion. Dispatch payloads are not trusted
+as evidence: the resolver verifies GitHub metadata for the allowlisted SDKs.
 
-Public SDK metadata is read with the read-only workflow token. PR creation uses
-`SDK_SYNC_APP_ID` and `SDK_SYNC_APP_PRIVATE_KEY`; the app must be installed on this
-contract repository with Contents and Pull requests write permissions. The
-installation token is restricted to this repository and those two permissions,
-so bot PRs trigger ordinary pull-request CI. No SDK publishing credentials are
-needed.
+The receiver uses only the read-only workflow token, ordinary `pull_request`,
+and non-persistent checkout credentials. It needs no app token, publishing
+credentials, or write permissions and uses no registry probes or publication
+checks. Proposed code executes only on GitHub-hosted runners. Dependency installs
+need network access. Language versions include patch-floating selectors and
+some ecosystems lack complete dependency locks; snapshotting SDK commits does
+not claim fully hermetic dependency resolution.
 
 ## Local reproduction
 
-Use the same sibling directory layout and dependency commands from the workflow.
-Check out the manifest's commits in **disposable clean SDK clones**, not working
-trees containing unpublished work. Then, from the spec root:
+Download `sdk-revisions.json` from the resolver artifact or either shard's
+reports. Check out those exact commits in **disposable clean SDK clones** with
+the same sibling layout, and check out the corresponding proposed spec revision.
+Install dependencies as in the workflow, then run from the spec root:
 
 ```sh
 python3 tools/generate_sdk.py --all
 # Install/build/test each sibling as in the workflow before running the matrices.
-python3 tools/run_sdk_integration.py --reports-dir ../reports --jobs 4
+python3 tools/run_sdk_integration.py --sdk-revisions /path/to/sdk-revisions.json \
+  --reports-dir ../reports --jobs 4
 ```
 
+`--sdk-revisions` validates and records the supplied snapshot; it never fetches
+latest refs or changes SDK checkouts. Omit it for local exploratory runs against
+your current sibling checkouts. Retrying failed shards reuses the resolver's
+existing outputs; rerunning the entire workflow resolves a new snapshot.
+
 Regeneration deliberately modifies the SDK clones. Do not use `--check` instead:
-this job tests the proposed protocol against pinned SDK implementations, rather
-than testing whether those SDK commits already include the proposed artifacts.
+this job tests the proposed protocol against the resolved SDK implementations,
+rather than whether those commits already include the proposed artifacts.

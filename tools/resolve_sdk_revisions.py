@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Advance integration pins using public GitHub release/workflow metadata only."""
+"""Resolve one immutable SDK snapshot from public GitHub metadata."""
 
+import argparse
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
-import tempfile
 from urllib.parse import quote
 
 
@@ -84,50 +84,44 @@ def release_succeeded(repo, language, sha):
     return False
 
 
-def update(manifest):
+def resolve(manifest, source):
     validate_manifest(manifest)
     for language, sdk in manifest["sdks"].items():
         repo = sdk["repository"]
-        tag = latest_release(repo, language)
-        if tag is None:
-            print(f"{language}: no stable release; keeping pin")
-            continue
-        candidate = tag_commit(repo, tag)
-        if candidate == sdk["revision"]:
-            print(f"{language}: already pinned to {tag}")
-            continue
-        if not release_succeeded(repo, language, candidate):
-            print(f"{language}: {tag} lacks successful release/publish jobs; keeping pin")
-            continue
-        comparison = api(f"repos/{repo}/compare/{sdk['revision']}...{candidate}")
-        status = comparison["status"]
-        if status in {"behind", "diverged", "identical"}:
-            print(f"{language}: {tag} is {status} relative to pin; keeping pin")
-            continue
-        if status != "ahead":
-            raise ValueError(f"Unexpected comparison status for {repo}: {status}")
-        sdk["revision"] = candidate
-        print(f"{language}: {tag} -> {candidate}")
+        if source == "main":
+            obj = api(f"repos/{repo}/git/ref/heads/main")["object"]
+            if obj["type"] != "commit" or not SHA.fullmatch(obj["sha"]):
+                raise ValueError(f"Invalid main commit for {repo}")
+            revision = obj["sha"]
+            ref = "main"
+        else:
+            ref = latest_release(repo, language)
+            if ref is None:
+                raise ValueError(f"No stable release for {repo}")
+            revision = tag_commit(repo, ref)
+            if not release_succeeded(repo, language, revision):
+                raise ValueError(f"Release has not completed successfully: {repo}:{ref}")
+        sdk["revision"] = revision
+        print(f"{repo}:{ref} -> {revision}")
     return manifest
 
 
 def main():
-    original = MANIFEST.read_text()
-    manifest = update(json.loads(original))
-    updated = json.dumps(manifest, indent=4) + "\n"
-    if json.loads(original) == manifest:
-        return
-    # Do not touch the manifest until every SDK's API reads and checks succeed.
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(mode="w", dir=MANIFEST.parent, delete=False) as out:
-            temporary = Path(out.name)
-            out.write(updated)
-        temporary.chmod(MANIFEST.stat().st_mode & 0o777)
-        os.replace(temporary, MANIFEST)
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", choices=("main", "release"), default="main")
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    if args.output.resolve() == MANIFEST.resolve():
+        parser.error("output must not overwrite the checked-in manifest")
+    manifest = resolve(json.loads(MANIFEST.read_text()), args.source)
+    # All reads must succeed before publishing this run's immutable snapshot.
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(manifest, indent=4) + "\n")
+    if "GITHUB_OUTPUT" in os.environ:
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            print("manifest=" + json.dumps(manifest, separators=(",", ":")), file=output)
+            for language, sdk in manifest["sdks"].items():
+                print(f"{language}={sdk['revision']}", file=output)
 
 
 if __name__ == "__main__":

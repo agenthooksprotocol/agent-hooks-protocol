@@ -4,17 +4,49 @@ name: SDK integration
 on:
   pull_request:
   push:
+    branches: [main]
+  repository_dispatch:
+    types: [sdk-released]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sdk-integration-${{ github.workflow }}-${{ github.ref }}
+  group: sdk-integration-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  resolve-sdks:
+    name: Resolve SDK revisions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      manifest: ${{ steps.resolve.outputs.manifest }}
+      python: ${{ steps.resolve.outputs.python }}
+      typescript: ${{ steps.resolve.outputs.typescript }}
+      go: ${{ steps.resolve.outputs.go }}
+      rust: ${{ steps.resolve.outputs.rust }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Snapshot SDK commits once for all shards
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE: ${{ github.event_name == 'repository_dispatch' && 'release' || 'main' }}
+        run: python3 tools/resolve_sdk_revisions.py --source "$SOURCE" --output "$RUNNER_TEMP/sdk-revisions.json"
+      - name: Upload resolved SDK revisions
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-revisions-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sdk-revisions.json
+          if-no-files-found: error
+          retention-days: 14
+
   sdk-integration-shards:
+    needs: [resolve-sdks]
     name: SDK integration (${{ matrix.suite-group }})
     strategy:
       fail-fast: false
@@ -32,50 +64,38 @@ jobs:
         with:
           path: agent-hooks-protocol
           persist-credentials: false
-      - name: Load immutable SDK revisions
-        id: revisions
+      - name: Record shared SDK revision snapshot
+        env:
+          SDK_REVISIONS: ${{ needs.resolve-sdks.outputs.manifest }}
         run: |
           mkdir -p "$GITHUB_WORKSPACE/reports"
-          cp interop/sdk-revisions.json "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
-          python3 - <<'PYCODE'
-          import json, os, re
-          from pathlib import Path
-          manifest = json.loads(Path('interop/sdk-revisions.json').read_text())
-          assert manifest['version'] == 1
-          assert set(manifest['sdks']) == {'python', 'typescript', 'go', 'rust'}
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for language, sdk in manifest['sdks'].items():
-                  assert sdk['path'] == f'{language}-sdk'
-                  assert sdk['repository'] == f'agenthooksprotocol/{language}-sdk'
-                  assert re.fullmatch(r'[0-9a-f]{40}', sdk['revision'])
-                  print(f"{language}={sdk['revision']}", file=output)
-          PYCODE
-      - name: Check out pinned python SDK
+          printf '%s\n' "$SDK_REVISIONS" > "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
+      - name: Check out resolved python SDK
         uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/python-sdk
-          ref: ${{ steps.revisions.outputs.python }}
+          ref: ${{ needs.resolve-sdks.outputs.python }}
           path: python-sdk
           persist-credentials: false
-      - name: Check out pinned typescript SDK
+      - name: Check out resolved typescript SDK
         uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/typescript-sdk
-          ref: ${{ steps.revisions.outputs.typescript }}
+          ref: ${{ needs.resolve-sdks.outputs.typescript }}
           path: typescript-sdk
           persist-credentials: false
-      - name: Check out pinned go SDK
+      - name: Check out resolved go SDK
         uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/go-sdk
-          ref: ${{ steps.revisions.outputs.go }}
+          ref: ${{ needs.resolve-sdks.outputs.go }}
           path: go-sdk
           persist-credentials: false
-      - name: Check out pinned rust SDK
+      - name: Check out resolved rust SDK
         uses: actions/checkout@v5
         with:
           repository: agenthooksprotocol/rust-sdk
-          ref: ${{ steps.revisions.outputs.rust }}
+          ref: ${{ needs.resolve-sdks.outputs.rust }}
           path: rust-sdk
           persist-credentials: false
       - uses: actions/setup-python@v6
@@ -150,6 +170,7 @@ jobs:
         timeout-minutes: 30
         run: |
           python3 tools/run_sdk_integration.py \
+            --sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json" \
             --reports-dir "$GITHUB_WORKSPACE/reports" --jobs 4 --suite-group "${{ matrix.suite-group }}" \
             2>&1 | tee "$GITHUB_WORKSPACE/reports/integration.log"
       - name: Upload SDK integration reports
@@ -163,14 +184,16 @@ jobs:
 
   sdk-integration:
     name: SDK integration
-    needs: [sdk-integration-shards]
+    needs: [resolve-sdks, sdk-integration-shards]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every SDK integration shard to succeed
         env:
+          RESOLVE_RESULT: ${{ needs.resolve-sdks.result }}
           SHARDS_RESULT: ${{ needs.sdk-integration-shards.result }}
         run: |
           # Matrix success requires every shard; failure, cancellation, or skip fails.
+          test "$RESOLVE_RESULT" = success
           test "$SHARDS_RESULT" = success
