@@ -33,7 +33,7 @@ Reviewers can ask for changes, additional evidence, or an AHP proposal. Approval
 
 ## Coordinating spec and SDK changes
 
-Spec pull requests must pass the required SDK integration check against immutable SDK commits pinned in `interop/sdk-revisions.json`. Develop SDK changes in parallel pull requests and pin their published commits; SDK pull requests do not need to merge first. See [SDK integration](interop/CI.md) for pin maintenance, checks, and local reproduction.
+Spec pull requests must pass the required SDK integration check against SDK `main` commits resolved once at the start of each run. Release notifications instead check the latest stable SDK releases. Every shard uses the same immutable revision snapshot, retained in the workflow artifacts. See [SDK integration](interop/CI.md) for revision selection, checks, and reproduction with an explicit snapshot.
 
 ## Working with protocol snapshots
 

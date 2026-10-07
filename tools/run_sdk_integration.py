@@ -148,9 +148,27 @@ def prepare_adapters(root, directory, reports, timeout):
     return results
 
 
+def record_sdk_revisions(path: Path, root: Path, reports: Path):
+    """Verify checkout HEADs against an explicit snapshot and retain provenance."""
+    from resolve_sdk_revisions import validate_manifest
+
+    manifest = json.loads(path.read_text())
+    validate_manifest(manifest)
+    for language, sdk in manifest['sdks'].items():
+        actual = subprocess.check_output(
+            ['git', '-C', str(root.parent / sdk['path']), 'rev-parse', 'HEAD'],
+            text=True,
+        ).strip()
+        if actual != sdk['revision']:
+            raise ValueError(f"{language}: checkout {actual} does not match {sdk['revision']}")
+    (reports / 'sdk-revisions.json').write_text(json.dumps(manifest, indent=4) + '\n')
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports-dir', type=Path, required=True)
+    parser.add_argument('--sdk-revisions', type=Path,
+                        help='verify checkout HEADs and record this explicit snapshot')
     parser.add_argument('--suite-group', choices=('all', *SUITE_GROUPS), default='all',
                         help='suite partition to run (default: all)')
     parser.add_argument('--jobs', type=positive_int, default=4)
@@ -161,6 +179,8 @@ def main(argv=None):
     print(f'Integration jobs: {jobs} effective (requested maximum: {args.jobs})', flush=True)
     reports = args.reports_dir.resolve()
     reports.mkdir(parents=True, exist_ok=True)
+    if args.sdk_revisions is not None:
+        record_sdk_revisions(args.sdk_revisions, ROOT, reports)
     errors = validate_manifests(ROOT)
     # Remove stale reports even when preparation fails before any suite starts.
     for name, _, _ in suite_commands(ROOT, reports, jobs):
