@@ -92,8 +92,9 @@ class SdkGenerationTests(unittest.TestCase):
             contents = (ROOT / '.github/workflows' / name).read_text()
             self.assertIn('ruff==0.12.12', contents)
             self.assertIn('actions/setup-node@', contents)
-        self.assertIn('output: packages/sdk/src/draft/generated.ts', workflow)
-        self.assertIn('${{ matrix.directory }}/ahp-codegen.lock.json', workflow)
+        self.assertIn('python3 protocol/tools/install_generated_sdk.py', workflow)
+        self.assertIn('add-paths: ${{ steps.install.outputs.paths }}', workflow)
+        self.assertNotIn('**/generated.go', workflow)
 
     def test_pinned_sources_disable_line_ending_conversion(self):
         result = subprocess.check_output(['git', 'check-attr', 'text', '--', 'upstream/mcp/2025-11-25/schema.json', 'upstream/mcp/2025-11-25/schema.ts'], cwd=ROOT, text=True)

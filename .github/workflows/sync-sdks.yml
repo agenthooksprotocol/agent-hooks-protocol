@@ -8,6 +8,7 @@ on:
       - "conformance/draft/manifest.json"
       - "tools/sdk-codegen/**"
       - "tools/generate_sdk.py"
+      - "tools/install_generated_sdk.py"
       - ".github/workflows/sync-sdks.yml"
 
 permissions:
@@ -84,25 +85,18 @@ jobs:
         include:
           - language: typescript
             repository: typescript-sdk
-            artifact: typescript/generated.ts
-            output: packages/sdk/src/draft/generated.ts
-            directory: packages/sdk/src/draft
           - language: python
             repository: python-sdk
-            artifact: python/generated.py
-            output: src/agent_hooks_protocol/generated.py
-            directory: src/agent_hooks_protocol
           - language: go
             repository: go-sdk
-            artifact: go/generated.go
-            output: generated.go
-            directory: .
           - language: rust
             repository: rust-sdk
-            artifact: rust/generated.rs
-            output: src/generated.rs
-            directory: src
     steps:
+      - name: Check out protocol sync helper
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          path: protocol
+          persist-credentials: false
       - name: Download generated SDKs
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -123,20 +117,18 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           path: sdk
           persist-credentials: false
-      - name: Install generated files
+      - name: Install generated files and synchronize protocol pin
+        id: install
         env:
-          OUTPUT: ${{ matrix.output }}
           LANGUAGE: ${{ matrix.language }}
         run: |
-          destination=$(dirname "sdk/$OUTPUT")
-          source="generated/$LANGUAGE"
-          while IFS= read -r -d '' artifact; do
-            relative=${artifact#"$source/"}
-            install -D "$artifact" "$destination/$relative"
-          done < <(find "$source" -type f -print0)
-          if [[ "$LANGUAGE" == rust ]]; then
-            install -D "$source/ahp-codegen.lock.json" sdk/ahp-codegen.lock.json
-          fi
+          paths=$(python3 protocol/tools/install_generated_sdk.py \
+            --source "generated/$LANGUAGE" --sdk sdk --language "$LANGUAGE")
+          {
+            echo 'paths<<GENERATED_PATHS'
+            printf '%s\n' "$paths"
+            echo GENERATED_PATHS
+          } >> "$GITHUB_OUTPUT"
       - name: Open or update SDK pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
@@ -145,16 +137,7 @@ jobs:
           base: main
           branch: automation/schema-sync
           delete-branch: true
-          add-paths: |
-            ${{ matrix.output }}
-            ${{ matrix.directory }}/schemas.*
-            ${{ matrix.directory }}/ahp-codegen.lock.json
-            ahp-codegen.lock.json
-            **/generated.go
-            client/boundaries_generated.go
-            client/facade_generated_test.go
-            facade_generated_test.go
-            internal/canonical/schemas.json
+          add-paths: ${{ steps.install.outputs.paths }}
           commit-message: "chore: sync generated schemas from ${{ github.sha }}"
           title: "chore: sync generated AHP schemas"
           body: |
