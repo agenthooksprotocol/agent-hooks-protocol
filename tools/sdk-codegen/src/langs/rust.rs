@@ -705,13 +705,76 @@ impl<'a> EmitContext<'a> {
         Ok(output)
     }
 
+    /// Resolve tagged references only for naming. Payload types and codec shapes
+    /// remain the original alternatives, including their reference boundaries.
+    fn union_names(&self, variants: &[Shape]) -> Vec<String> {
+        fn resolve(
+            context: &EmitContext<'_>,
+            shape: &Shape,
+            visiting: &mut BTreeSet<String>,
+        ) -> Shape {
+            match shape {
+                Shape::Ref { name } if visiting.insert(name.clone()) => {
+                    let resolved = context
+                        .named_shapes
+                        .get(name.as_str())
+                        .map(|shape| resolve(context, shape, visiting))
+                        .unwrap_or_else(|| shape.clone());
+                    visiting.remove(name);
+                    resolved
+                }
+                Shape::Intersection { variants } => Shape::Intersection {
+                    variants: variants
+                        .iter()
+                        .map(|shape| resolve(context, shape, visiting))
+                        .collect(),
+                },
+                Shape::Object {
+                    properties,
+                    forbidden_property_sets,
+                    additional,
+                } => Shape::Object {
+                    properties: properties
+                        .iter()
+                        .map(|property| {
+                            let mut property = property.clone();
+                            if let Some(value) =
+                                context.fixed_value(&property.shape, &mut BTreeSet::new())
+                            {
+                                property.shape = Shape::Literal {
+                                    value: value.clone(),
+                                };
+                            }
+                            property
+                        })
+                        .collect(),
+                    forbidden_property_sets: forbidden_property_sets.clone(),
+                    additional: additional.clone(),
+                },
+                _ => shape.clone(),
+            }
+        }
+        let naming_shapes = variants
+            .iter()
+            .map(|shape| {
+                let resolved = resolve(self, shape, &mut BTreeSet::new());
+                if super::naming::tagged_label(&resolved).is_some() {
+                    resolved
+                } else {
+                    shape.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        super::naming::union_names(&naming_shapes)
+    }
+
     fn emit_union(
         &mut self,
         name: &str,
         variants: &[Shape],
         discriminator: Option<&str>,
     ) -> Result<String> {
-        let names = super::naming::union_names(variants);
+        let names = self.union_names(variants);
         let mut rendered = Vec::new();
         for (shape, variant) in variants.iter().zip(names) {
             if matches!(shape, Shape::Never) {
@@ -1705,6 +1768,80 @@ fn push_error(
 mod tests {
     use super::*;
     use crate::model::{AdditionalProperties, NamedType, PublicRoot, UnionMode};
+
+    #[test]
+    fn tagged_reference_arms_preserve_existing_semantic_names_and_payloads() {
+        let object = |tag: &str| Shape::Object {
+            properties: vec![Property {
+                wire_name: "type".into(),
+                required: true,
+                shape: Shape::Literal { value: tag.into() },
+                constructor_default: None,
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![],
+            types: vec![
+                NamedType {
+                    name: "HttpTransport".into(),
+                    source: "test".into(),
+                    shape: object("http"),
+                },
+                NamedType {
+                    name: "DenyEffect".into(),
+                    source: "test".into(),
+                    shape: object("deny"),
+                },
+                NamedType {
+                    name: "TurnStartEvent".into(),
+                    source: "test".into(),
+                    shape: object("turn.start"),
+                },
+                NamedType {
+                    name: "AuthenticationBearer".into(),
+                    source: "test".into(),
+                    shape: object("bearer"),
+                },
+            ],
+        };
+        let mut variants = vec![
+            Shape::Ref {
+                name: "HttpTransport".into(),
+            },
+            Shape::Ref {
+                name: "DenyEffect".into(),
+            },
+            Shape::Ref {
+                name: "TurnStartEvent".into(),
+            },
+            Shape::Intersection {
+                variants: vec![
+                    Shape::Ref {
+                        name: "AuthenticationBearer".into(),
+                    },
+                    Shape::Any,
+                ],
+            },
+        ];
+        let mut context = EmitContext::new(&ir);
+        assert_eq!(
+            context.union_names(&variants),
+            ["Http", "Deny", "TurnStart", "Bearer"]
+        );
+        let output = context.emit_union("Test", &variants, None).unwrap();
+        assert!(output.contains("Http(Box<HttpTransport>)"));
+        assert!(output.contains("Deny(Box<DenyEffect>)"));
+        assert!(output.contains("TurnStart(Box<TurnStartEvent>)"));
+        variants.reverse();
+        assert_eq!(
+            context.union_names(&variants),
+            ["Bearer", "TurnStart", "Deny", "Http"]
+        );
+    }
 
     #[test]
     fn public_union_and_enum_names_survive_reordering_and_collisions() {

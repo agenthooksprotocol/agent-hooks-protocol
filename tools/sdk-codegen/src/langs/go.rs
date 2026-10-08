@@ -412,6 +412,7 @@ impl<'a> Generator<'a> {
         } else {
             writeln!(declaration, "type {name} {base}\n")?;
             for (value, suffix) in values.iter().zip(super::naming::literal_names(&values)) {
+                let suffix = go_semantic_identifier(&suffix);
                 let constant = self.allocate_package_name(&format!("{name}{suffix}"));
                 let rendered = match value {
                     serde_json::Value::String(value) => go_string(value)?,
@@ -444,6 +445,7 @@ impl<'a> Generator<'a> {
         let mut fields = Vec::with_capacity(variants.len());
         let mut field_names = BTreeSet::from(["Unknown".to_owned()]);
         for (variant, base) in variants.iter().zip(super::naming::union_names(variants)) {
+            let base = go_semantic_identifier(&base);
             let field_name = allocate_local_name(&base, &mut field_names);
             let field_type = self.render_type(variant, &format!("{name}{field_name}"))?;
             fields.push((field_name, field_type));
@@ -675,6 +677,17 @@ fn allocate_local_name(base: &str, used: &mut BTreeSet<String>) -> String {
         }
     }
     unreachable!()
+}
+
+// Apply Go initialisms to semantic labels without rewriting the shared helper's
+// structural collision identity (or its duplicate/disambiguation suffix).
+fn go_semantic_identifier(value: &str) -> String {
+    if let Some((stem, suffix)) = value.rsplit_once("Shape") {
+        if suffix.len() >= 16 && suffix.as_bytes()[..16].iter().all(u8::is_ascii_hexdigit) {
+            return format!("{}Shape{suffix}", go_identifier(stem));
+        }
+    }
+    go_identifier(value)
 }
 
 fn go_identifier(value: &str) -> String {
@@ -1338,6 +1351,39 @@ mod tests {
             assert!(source.contains("decoded.Unknown = append(json.RawMessage(nil), data...)"));
             variants.reverse();
         }
+    }
+
+    #[test]
+    fn semantic_literal_names_preserve_go_initialisms_and_collision_identity() {
+        let mut ir = sample_ir();
+        ir.types.push(NamedType {
+            name: "HttpTransportType".into(),
+            source: "http.json#".into(),
+            shape: Shape::Literal {
+                value: serde_json::json!("http"),
+            },
+        });
+        let output = emit(&ir).unwrap();
+        assert!(output.contains("const HttpTransportTypeHTTP HttpTransportType = \"http\""));
+        assert_eq!(
+            go_semantic_identifier("HttpShape0123456789abcdefDuplicate2"),
+            "HTTPShape0123456789abcdefDuplicate2"
+        );
+        let mut values = vec![serde_json::json!("http"), serde_json::json!("HTTP")];
+        let names = super::super::naming::literal_names(&values)
+            .iter()
+            .map(|name| go_semantic_identifier(name))
+            .collect::<Vec<_>>();
+        assert!(names.iter().all(|name| name.starts_with("HTTPShape")));
+        assert_ne!(names[0], names[1]);
+        values.reverse();
+        assert_eq!(
+            super::super::naming::literal_names(&values)
+                .iter()
+                .map(|name| go_semantic_identifier(name))
+                .collect::<Vec<_>>(),
+            names.into_iter().rev().collect::<Vec<_>>()
+        );
     }
 
     #[test]

@@ -120,20 +120,9 @@ fn identity(shape: &Shape) -> String {
     value.to_string()
 }
 
-fn label(shape: &Shape) -> String {
+/// Discriminator-derived label, including tagged intersection components.
+pub(super) fn tagged_label(shape: &Shape) -> Option<String> {
     match shape {
-        Shape::Any => "Any".into(),
-        Shape::Never => "Never".into(),
-        Shape::Null => "Null".into(),
-        Shape::Boolean => "Boolean".into(),
-        Shape::Integer => "Integer".into(),
-        Shape::Number => "Number".into(),
-        Shape::String => "String".into(),
-        Shape::Ref { name } => pascal(name),
-        Shape::Literal { value } => literal(value),
-        Shape::Enum { values, .. } if values.iter().all(Value::is_string) => "Known".into(),
-        Shape::Enum { .. } => "KnownValues".into(),
-        Shape::Array { items } => format!("{}Array", label(items)),
         Shape::Object { properties, .. } => {
             let literals = properties
                 .iter()
@@ -174,8 +163,43 @@ fn label(shape: &Shape) -> String {
                 {
                     result.push_str("Gap");
                 }
-                return result;
+                return Some(result);
             }
+            None
+        }
+        Shape::Intersection { variants } => {
+            let labels = variants
+                .iter()
+                .filter_map(tagged_label)
+                .collect::<BTreeSet<_>>();
+            if labels.is_empty() {
+                None
+            } else {
+                Some(labels.into_iter().collect::<Vec<_>>().join("And"))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn label(shape: &Shape) -> String {
+    if let Some(label) = tagged_label(shape) {
+        return label;
+    }
+    match shape {
+        Shape::Any => "Any".into(),
+        Shape::Never => "Never".into(),
+        Shape::Null => "Null".into(),
+        Shape::Boolean => "Boolean".into(),
+        Shape::Integer => "Integer".into(),
+        Shape::Number => "Number".into(),
+        Shape::String => "String".into(),
+        Shape::Ref { name } => pascal(name),
+        Shape::Literal { value } => literal(value),
+        Shape::Enum { values, .. } if values.iter().all(Value::is_string) => "Known".into(),
+        Shape::Enum { .. } => "KnownValues".into(),
+        Shape::Array { items } => format!("{}Array", label(items)),
+        Shape::Object { properties, .. } => {
             let required = properties.iter().any(|p| p.required);
             let names = properties
                 .iter()
@@ -363,6 +387,36 @@ mod tests {
         assert_eq!(
             literal_names(&values),
             names.into_iter().rev().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn tagged_intersections_prefer_discriminators_to_structural_names() {
+        let tag = object(
+            "type",
+            Shape::Literal {
+                value: "bearer".into(),
+            },
+        );
+        let token = Shape::Union {
+            mode: crate::model::UnionMode::OneOf,
+            discriminator: None,
+            variants: vec![
+                object("tokenEnv", Shape::String),
+                object("tokenRef", Shape::String),
+            ],
+        };
+        let mut components = vec![tag, token];
+        let bearer = Shape::Intersection {
+            variants: components.clone(),
+        };
+        assert_eq!(union_names(&[bearer]), ["Bearer"]);
+        components.reverse();
+        assert_eq!(
+            union_names(&[Shape::Intersection {
+                variants: components
+            }]),
+            ["Bearer"]
         );
     }
 
