@@ -263,7 +263,7 @@ mod tests {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = compiler::compile(&repository, "draft").unwrap();
         assert_eq!(ir.schema_revision, "draft");
-        assert_eq!(ir.roots.len(), 26);
+        assert_eq!(ir.roots.len(), 28);
         assert!(ir.types.iter().any(|item| item.name == "InterceptRequest"));
         // Union selectors must be exact literals, not an open enum that also
         // accepts supplied_result and creates an ambiguous known execution.

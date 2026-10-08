@@ -81,6 +81,9 @@ pub fn emit(ir: &Ir) -> Result<String> {
 }
 
 fn render(shape: &Shape, depth: usize) -> Result<String> {
+    if let Some(reference) = shape.constrained_reference() {
+        return render(reference, depth);
+    }
     Ok(match shape {
         Shape::Any => "JsonValue".into(),
         Shape::Never => "never".into(),

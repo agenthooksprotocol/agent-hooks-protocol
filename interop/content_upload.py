@@ -30,8 +30,14 @@ def validate(name, value):
         raise ValueError('; '.join(errors))
 
 
-def reference(ref, body):
+def receipt(ref, body):
     result = dict(ref=ref, size=len(body), sha256=hashlib.sha256(body).hexdigest())
+    validate('content-upload-receipt', result)
+    return result
+
+
+def reference(ref):
+    result = {'ref': ref}
     validate('content-reference', result)
     return result
 
@@ -63,8 +69,8 @@ def post(endpoint, body, headers, timeout=5, expected_status=204):
 def upload(config, scope, metadata, body):
     """Upload bytes; scope is local context, never caller wire authority."""
     validate('content-upload', config)
-    validate('content-reference', metadata)
-    if reference(metadata['ref'], body) != metadata:
+    validate('content-upload-receipt', metadata)
+    if receipt(metadata['ref'], body) != metadata:
         raise ValueError('Local hash/size mismatch')
     if len(body) > config['maxBytes']:
         raise ValueError('Upload exceeds local bound; do not truncate')
@@ -76,8 +82,8 @@ def upload(config, scope, metadata, body):
             raise ValueError('Invalid upload credential')
         headers['Authorization'] = 'Bearer ' + token
     canonical = post(config['endpoint'], body, headers, config['timeoutMs'] / 1000, expected_status=201)
-    validate('content-reference', canonical)
-    if canonical != reference(canonical['ref'], body):
+    validate('content-upload-receipt', canonical)
+    if canonical != receipt(canonical['ref'], body):
         raise ValueError('Receiver confirmation hash/size mismatch')
     return canonical
 
@@ -105,7 +111,9 @@ def selected_item(descriptor, selection, body, ref, authorized=True):
         elif body is None:
             item['gap'] = {'reason': 'source_unavailable'}
         else:
-            item['body'] = reference(ref, body)
+            item['body'] = reference(ref)
+            item.pop('size', None)
+            item.pop('sha256', None)
     validate('content-item', item)
     return item
 
@@ -122,7 +130,9 @@ def deliver(message, scope, config, bodies, endpoint, event_token):
     for item in message['params']['event'].get('items', []):
         if 'body' in item:
             metadata = item['body']
-            item['body'] = upload(config, scope, metadata, bodies[metadata['ref']])
+            body = bodies[metadata['ref']]
+            canonical = upload(config, scope, receipt(metadata['ref'], body), body)
+            item['body'] = reference(canonical['ref'])
     validate(name, message)
     headers = {'Content-Type': 'application/json'}
     if event_token is not None:
@@ -137,6 +147,7 @@ class Receiver:
         self.event_tokens = event_tokens
         self.max_bytes = max_bytes
         self.contents = {}
+        self.receipts = {}
         self.events = []
         self.trace = []
         self.lock = threading.Lock()
@@ -199,11 +210,12 @@ class Receiver:
                                 raise ValueError('Raw octets required')
                             ref = 'urn:uuid:' + str(uuid.uuid4())
                             metadata = {'ref': ref, 'size': size, 'sha256': self.headers.get('AHP-Content-SHA256')}
-                            validate('content-reference', metadata)
-                            if metadata != reference(ref, body):
+                            validate('content-upload-receipt', metadata)
+                            if metadata != receipt(ref, body):
                                 raise ValueError('Integrity mismatch')
                             key = (scope, ref)
                             owner.contents[key] = body
+                            owner.receipts[key] = metadata
                             owner.trace.append(('upload', scope, ref))
                             return self.reply(201, metadata)
                         else:
@@ -217,8 +229,8 @@ class Receiver:
                                 stored = owner.contents.get((scope, metadata['ref']))
                                 if stored is None:
                                     return self.reply(404)
-                                if reference(metadata['ref'], stored) != metadata:
-                                    raise ValueError('Event integrity mismatch')
+                                if receipt(metadata['ref'], stored) != owner.receipts[(scope, metadata['ref'])]:
+                                    raise ValueError('Stored content integrity mismatch')
                             owner.events.append(message)
                             owner.trace.append(('event', scope, message['params']['event']['id']))
                     return self.reply(204)

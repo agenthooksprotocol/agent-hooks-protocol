@@ -413,3 +413,20 @@ modify grant without the `modify` family returns false; a `modify` family alone
 does not grant any modification operation. Continue to use the existing grant
 builders and host/request validation for operation constraints. This convenience
 API is currently Go-only; no new operation-query API is introduced.
+
+### Shared constrained references
+
+The `Event` root is the shared public event type for intercept and observe. A
+method-specific subset is expressed as `$ref: event.schema.json` with a sibling
+`oneOf` containing the permitted original event references. Codegen retains both
+constraints in its validation descriptor, but projects that constrained reference
+to the same named public model in all four targets, without a wrapper or adapter.
+Known events excluded by the subset are rejected; truly unknown event tags retain
+forward-compatible unknown-variant diagnostics. Do not replace this constraint
+with an open string enum or a nested object predicate.
+
+Explicit `not: {required: [...]}` predicates, including unconditional `allOf`
+branches, are carried as forbidden-property sets. Thus `ContentReference` rejects
+receipt-only `size` and `sha256` by presence (including null), while unrelated
+unknown extra fields retain the existing forward-compatible parser behavior.
+`ContentUploadReceipt` is a distinct root for upload size and digest metadata.

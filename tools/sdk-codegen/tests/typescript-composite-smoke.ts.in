@@ -48,3 +48,13 @@ const invalidArgs: KnownStdio = { transport: 'stdio', command: 'mcp', args: [42]
 // @ts-expect-error all three stdio location predicates remain applicable.
 const missingCwd: KnownStdio = { transport: 'stdio', command: 'mcp', args: [] };
 void [httpUrl, sseUrl, command, args, cwd, address, addressForm, reason, invalidGap, invalidArgs, missingCwd];
+
+import type { Event, ObserveNotification } from './ahp.generated';
+const sameEvent = (event: Event): Event => event;
+declare const sharedRequest: InterceptRequest;
+declare const sharedObservation: ObserveNotification;
+sameEvent(sharedRequest.params.event);
+sameEvent(sharedObservation.params.event);
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+const interceptUsesEvent: Equal<InterceptRequest['params']['event'], Event> = true;
+const observeUsesEvent: Equal<ObserveNotification['params']['event'], Event> = true;

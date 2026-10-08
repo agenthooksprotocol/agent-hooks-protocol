@@ -84,6 +84,18 @@ fn boundary_literals(
     visiting: &mut BTreeSet<String>,
     names: &mut BTreeSet<String>,
 ) {
+    if let Shape::Intersection { variants } = shape {
+        if variants
+            .iter()
+            .any(|variant| matches!(variant, Shape::Never))
+        {
+            return;
+        }
+        if shape.constrained_reference().is_some() {
+            boundary_literals(ir, &variants[1], path, visiting, names);
+            return;
+        }
+    }
     match shape {
         Shape::Ref { name } => {
             if visiting.insert(name.clone()) {
@@ -268,9 +280,11 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
             | "interaction-event"
             | "task-workspace-event"
             | "catalogue-event" => "event",
-            "content-item" | "content-reference" | "content-selection" | "content-upload" => {
-                "content"
-            }
+            "content-item"
+            | "content-reference"
+            | "content-selection"
+            | "content-upload"
+            | "content-upload-receipt" => "content",
             "effects" | "effect" | "deny-effect" => "effect",
             "jsonrpc" | "json-rpc" | "json-rpc-message" => "transport",
             other => other,
@@ -615,6 +629,9 @@ impl<'a> EmitContext<'a> {
     }
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render_type(reference, hint);
+        }
         Ok(match shape {
             Shape::Any | Shape::Never => "JsonValue".into(),
             Shape::Null => "()".into(),

@@ -178,6 +178,34 @@ use agenthooksprotocol::{
 };
 use serde_json::{Value, json};
 
+#[allow(dead_code)]
+fn shared_event_type(request: &agenthooksprotocol::InterceptRequest, observation: &agenthooksprotocol::ObserveNotification) {
+    fn consume(_: &agenthooksprotocol::Event) {}
+    consume(&request.params.event);
+    consume(&observation.params.event);
+}
+
+#[test]
+fn shared_event_and_content_reference_contracts() {
+    use agenthooksprotocol::{parse_content_reference_value, parse_content_upload_receipt_value};
+    for key in ["size", "sha256"] {
+        for value in [Value::Null, json!(0), json!("hash")] {
+            let mut reference = json!({"ref":"opaque"});
+            reference[key] = value;
+            assert!(matches!(parse_content_reference_value(reference), ParseResult::Failure { .. }));
+        }
+    }
+    success(parse_content_reference_value(json!({"ref":"opaque", "future":true})));
+    let (receipt, _, _) = success(parse_content_upload_receipt_value(json!({"ref":"opaque", "size":0, "sha256":"a".repeat(64)})));
+    let _: agenthooksprotocol::content::ContentUploadReceipt = receipt;
+    let mut request = fixture("fixtures/draft/http/intercept-request.valid.json");
+    request["params"]["event"] = json!({"type":"session.end", "id":"id", "source":"test", "time":"2026-01-01T00:00:00Z"});
+    assert!(matches!(parse_intercept_request(&request.to_string()), ParseResult::Failure { .. }));
+    request["params"]["event"] = json!({"type":"future.event", "extension":true});
+    let (_, _, diagnostics) = success(parse_intercept_request(&request.to_string()));
+    assert!(diagnostics.iter().any(|d| d.code == DiagnosticCode::UnknownVariant));
+}
+
 #[test]
 fn recursively_referenced_models_compile_and_parse() {
     let projected = recursive::EvidenceAny::new().with_evidence("proof").with_location("file.rs");

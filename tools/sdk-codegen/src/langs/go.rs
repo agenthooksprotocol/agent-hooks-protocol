@@ -714,6 +714,9 @@ impl<'a> Generator<'a> {
     }
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render_type(reference, hint);
+        }
         if let Some(payload) = self.nullable_payload(shape) {
             let payload_type = self.render_nullable_payload(payload, &format!("{hint}Value"))?;
             let rendered = format!("Nullable[{payload_type}]");

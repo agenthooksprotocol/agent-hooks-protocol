@@ -114,6 +114,28 @@ func hasDiagnostic(diagnostics []ParseDiagnostic, code DiagnosticCode) bool {
 	return false
 }
 
+func sharedEventType(request InterceptRequest, observation ObserveNotification) *Event {
+    var event *Event = request.Params.Event
+    event = observation.Params.Event
+    return event
+}
+
+func TestSharedEventAndContentReferenceContracts(t *testing.T) {
+    for _, key := range []string{"size", "sha256"} {
+        for _, value := range []any{nil, 0, "hash"} {
+            if ParseContentReference(inputJSON(t, map[string]any{"ref":"opaque", key:value})).OK { t.Fatalf("forbidden %s accepted", key) }
+        }
+    }
+    if !ParseContentReference([]byte(`{"ref":"opaque","future":true}`)).OK { t.Fatal("generic extras closed") }
+    if !ParseContentUploadReceipt([]byte(`{"ref":"opaque","size":0,"sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)).OK { t.Fatal("receipt rejected") }
+    request := fixture(t, "fixtures/draft/http/intercept-request.valid.json")
+    request["params"].(map[string]any)["event"] = map[string]any{"type":"session.end", "id":"id", "source":"test", "time":"2026-01-01T00:00:00Z"}
+    if ParseInterceptRequest(inputJSON(t, request)).OK { t.Fatal("known observe-only event accepted") }
+    request["params"].(map[string]any)["event"] = map[string]any{"type":"future.event", "extension":true}
+    parsed := ParseInterceptRequest(inputJSON(t, request))
+    if !parsed.OK || !hasDiagnostic(parsed.Diagnostics, DiagnosticUnknownVariant) { t.Fatalf("unknown event lost: %#v", parsed.Diagnostics) }
+}
+
 func typedEffects(capabilities Capabilities) []CapabilitiesEffectsItem {
 	return capabilities.Effects
 }

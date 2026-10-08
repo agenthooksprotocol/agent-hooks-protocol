@@ -120,8 +120,11 @@ class McpElicitationTests(unittest.TestCase):
             payload=json.loads(raw)
             event=json.loads((ROOT/f'fixtures/draft/http/catalogue-user.elicitation.{kind}.valid.json').read_text())['params']['event']
             reference=event['elicitation'][kind]['body']
-            self.assertEqual(len(raw), reference['size'])
-            self.assertEqual(hashlib.sha256(raw).hexdigest(), reference['sha256'])
+            self.assertEqual({'ref'}, set(reference))
+            receipt = {**reference, 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
+            receipt_path = ROOT/'schema/draft/content-upload-receipt.schema.json'
+            receipt_schema = json.loads(receipt_path.read_text())
+            self.assertEqual([], self.validator.validate(receipt, receipt_schema, receipt_path))
             self.assertEqual([], self.errors(payload, kind))
             if kind == 'request':
                 self.assertNotIn('mode', payload)  # Normalized metadata does not mutate MCP bytes.

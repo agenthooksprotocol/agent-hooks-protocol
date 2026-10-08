@@ -138,7 +138,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
                    if entry.get('kind') == ('received' if method == 'hooks/intercept' else 'observed')
                    and entry.get('message', {}).get('method') == method
                    and entry.get('message', {}).get('params', {}).get('event', {}).get('id') == event_id
-                   and any(equal(item.get('body'), descriptor) for item in entry.get('message', {}).get('params', {}).get('event', {}).get('items', []))]
+                   and any(equal(item.get('body'), {'ref':descriptor['ref']}) for item in entry.get('message', {}).get('params', {}).get('event', {}).get('items', []))]
         if len(matches) != 1:
             errors.append('content upload delivery identity mismatch')
             continue
@@ -196,7 +196,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
                 errors.append('unknown/duplicate source or content upload integrity mismatch')
                 continue
             seen.add(source)
-            wanted = {**original, 'ref': refs.get(source, source)}
+            wanted = {'ref': refs.get(source, source)}
             items = message['params']['event'].get('items', [])
             selected = [item for item in items if equal(item.get('body'), wanted)]
             if not selected:
@@ -206,7 +206,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
                 errors.append('receiver reused immutable reference for changed bytes')
             immutable_descriptors[descriptor['ref']] = descriptor
             for item in selected:
-                item['body'] = deepcopy(descriptor)
+                item['body'] = {'ref': descriptor['ref']}
         return message
     scenarios = resolve(scenarios)
     expected_observations=[]
@@ -241,7 +241,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             params=message.get('params',{})
             for item in params.get('event',{}).get('items',[]):
                 body=item.get('body')
-                if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and all(equal(u.get(k),body.get(k)) for k in ('ref','size','sha256')) for u in entries[:i]):
+                if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and equal(u.get('ref'),body.get('ref')) for u in entries[:i]):
                     errors.append('intercept dispatched before authorized exact upload readiness')
     for receipt in observed:
         errors.extend(validator.errors(receipt.get('message')))
@@ -259,7 +259,7 @@ def verify(scenarios, report, receipts, language, exit_code=0):
             errors.append('observation dispatched before planned cancellation')
         for item in e.get('event',{}).get('items',[]):
             body=item.get('body')
-            if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and all(equal(u.get(k),body.get(k)) for k in ('ref','size','sha256')) for u in entries[:i]):
+            if body is not None and not any(u.get('kind')=='upload' and u.get('status')==201 and equal(u.get('ref'),body.get('ref')) for u in entries[:i]):
                 errors.append('body dispatched before authorized exact upload readiness')
     for s in scenarios:
         # Check the race partial order from actual receipt/reply/mark records,
@@ -334,11 +334,11 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
     try: body=json.loads(payload)
     except (ValueError,UnicodeError): body=None
     if status!=201 or not isinstance(body,dict) or set(body)!={'ref','size','sha256'} or not isinstance(body.get('ref'),str) or not body['ref'] or any(not equal(body.get(k),v) for k,v in metadata(raw).items()):
-        return ['upload must return 201 with receiver-assigned content-reference'],1
+        return ['upload must return 201 with receiver-assigned content-upload-receipt'],1
     original=deepcopy(base_request['params']['event']); original['id']='receiver-probe-event'
     def observe(descriptor=None):
         event=deepcopy(original)
-        event['items']=[{'id':'receiver-probe-item','kind':'text','mediaType':'application/octet-stream','selection':'body','body':descriptor or body}]
+        event['items']=[{'id':'receiver-probe-item','kind':'text','mediaType':'application/octet-stream','selection':'body','body':descriptor if descriptor is not None else {'ref':body['ref']}}]
         note={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
         return post(endpoint+'/observe',json.dumps(note).encode(),event_headers,context)
     changed_status,changed_payload=upload(b'changed bytes')
@@ -350,9 +350,9 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
              (upload(raw,token=None)[0],401,'missing independent upload credential'),
              (upload(raw,token='wrong')[0],401,'wrong independent upload credential'),
              (observe(), 'accepted', 'original binary ref readable'),
-             (observe(dict(body,ref='never-uploaded'))[0],409,'missing readiness rejected'),
-             (observe(dict(body,size=body['size']+1))[0],409,'wrong descriptor size rejected'),
-             (observe(dict(body,sha256='0'*64))[0],409,'wrong descriptor hash rejected'),
+             (observe({'ref':'never-uploaded'})[0],409,'missing readiness rejected'),
+             (observe(dict(body,size=body['size']+1))[0],400,'event size metadata rejected'),
+             (observe(dict(body,sha256='0'*64))[0],400,'event hash metadata rejected'),
              (observe(), 'accepted', 'negative reads did not mutate bytes')]
     return [label+f': expected {expected}, got {got}' for got,expected,label in results if not (accepted_observation(got) if expected=='accepted' else got==expected)],len(results)
 

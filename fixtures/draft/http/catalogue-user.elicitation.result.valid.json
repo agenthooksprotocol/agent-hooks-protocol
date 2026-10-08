@@ -17,9 +17,7 @@
           "mediaType": "application/json",
           "selection": "body",
           "body": {
-            "ref": "mcp-result",
-            "size": 65,
-            "sha256": "15117934cbc62d573ba44ae02db083771a750f06a02ec86b41ab6313a05eb0fd"
+            "ref": "mcp-result"
           }
         },
         "action": "accept"

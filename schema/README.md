@@ -15,8 +15,13 @@ python3 tools/check_conformance.py
 The checker implements the JSON Schema subset documented in [`../tools/README.md`](../tools/README.md). A full Draft 2020-12 validator may also be used.
 
 Upload configuration is defined by `content-upload.schema.json`; the HTTP 201
-upload response uses `content-reference.schema.json` directly. References are
+upload response uses `content-upload-receipt.schema.json` (`ref`, `size`, and
+`sha256`). Event bodies use `content-reference.schema.json` (`ref` only). References are
 receiver-allocated, immutable, and authorized by credential-derived scope.
 Subscriptions remain harness-local. Registration, capability, and control
 configuration ignore unknown fields while validating recognized fields. Unknown
 effect types and operation values still reject a response atomically.
+
+`event.schema.json` defines the shared `Event` union for interception and
+observation. The intercept request separately restricts event types to its
+supported subset; observation-only events do not become interceptable.

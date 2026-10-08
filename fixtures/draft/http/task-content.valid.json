@@ -26,9 +26,7 @@
           "mediaType": "text/plain",
           "selection": "body",
           "body": {
-            "ref": "upload1",
-            "size": 3,
-            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            "ref": "upload1"
           }
         }
       ]

@@ -132,7 +132,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
     assert not wire.parse_execution_event(compact)["ok"]
     visible["gap"] = {"reason": "unavailable"}
     assert wire.parse_execution_event(compact)["ok"]
-    visible["body"] = {"ref": "urn:test:content", "sha256": "a" * 64, "size": 0}
+    visible["body"] = {"ref": "urn:test:content"}
     assert not wire.parse_execution_event(compact)["ok"]  # mutually exclusive evidence
     assert typing.get_type_hints(models.ExecutionEventTool.__init__)["input"] == dict[str, typing.Any]
 
@@ -199,6 +199,11 @@ def main() -> None:
     sys.modules[package.__name__] = package
     models = importlib.import_module("facade_contract._models")
     wire = importlib.import_module("facade_contract.generated")
+    assert typing.get_type_hints(models.InterceptRequestParams.__init__)["event"] == models.Event
+    assert typing.get_type_hints(models.ObserveNotificationParams.__init__)["event"] == models.Event
+    receipt = models.ContentUploadReceipt(ref="opaque", size=0, sha256="a" * 64)
+    assert wire.parse_content_upload_receipt(receipt)["ok"]
+    assert wire.parse_content_reference(models.ContentReference(ref="opaque"))["ok"]
     check_structured_consumers(directory, models, wire)
     event = importlib.import_module("facade_contract.event")
     effect = importlib.import_module("facade_contract.effect")

@@ -1,6 +1,5 @@
 """Canonical AHP wire, not the separate host-orchestration transport tests."""
 import copy
-import hashlib
 import json
 import subprocess
 import sys
@@ -12,7 +11,7 @@ from compaction_wire_matrix import LANGUAGES, cases, check, probe, run_pair, wir
 
 class WireValidationTests(unittest.TestCase):
     def fixture(self):
-        ref={'ref':'receiver-assigned-opaque-ref', 'sha256':hashlib.sha256(b'x').hexdigest(), 'size':1}
+        ref={'ref':'receiver-assigned-opaque-ref'}
         event={'type':'compaction.before','id':'case:before','instructions':{'id':'case:instructions','selection':'body','mediaType':'text/plain','body':ref},'trigger':'manual'}
         request={'method':'hooks/intercept','id':'case:before','params':{'event':event,'capabilities':{'modify':{'instructions':{'replace':True,'merge':False}}}}}
         reply={'jsonrpc':'2.0','id':'case:before','result':{'protocolVersion':'draft'}}
@@ -46,7 +45,7 @@ class WireValidationTests(unittest.TestCase):
                 outputs[0]['result'][key]=0
                 with self.assertRaises(AssertionError):check(outputs,receipts,expected)
 
-    def test_body_size_is_not_boolean(self):
+    def test_body_rejects_size_metadata(self):
         outputs,receipts,expected=self.fixture()
         for entry in (outputs[0]['trace'][0],receipts[0]):
             entry['request']['params']['event']['instructions']['body']['size']=True

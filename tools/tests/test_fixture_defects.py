@@ -16,8 +16,8 @@ import check_conformance as checker
 # protocol fields must already be present, never supplied by the test.
 DELETE = object()
 REPAIRS = {
-    'content-negative-size': ('params.event.items.0.body.size', 3),
-    'content-bad-hash': ('params.event.items.0.body.sha256', 'a' * 64),
+    'content-negative-size': ('params.event.items.0.body.size', DELETE),
+    'content-bad-hash': ('params.event.items.0.body.sha256', DELETE),
     'model-item-role-missing': ('params.event.items.0.role', 'assistant'),
     'intercept-request-id-mismatch': ('id', 'evt_http_inner'),
     'model-response-input-target': ('params.capabilities.modify', {'response': {'replace': True, 'merge': False}}),

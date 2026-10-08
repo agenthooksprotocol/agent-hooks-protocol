@@ -323,6 +323,9 @@ impl Renderer<'_> {
         public: bool,
         output: &mut String,
     ) -> Result<()> {
+        if shape.constrained_reference().is_some() {
+            return Ok(());
+        }
         if let Some(projected) = self.composed_union(shape) {
             return self.emit_declarations(&projected, hint, public, output);
         }
@@ -418,6 +421,9 @@ impl Renderer<'_> {
     }
 
     fn render(&self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render(reference, hint);
+        }
         if let Some(projected) = self.composed_union(shape) {
             return self.render(&projected, hint);
         }

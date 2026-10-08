@@ -5,7 +5,7 @@ Each native sender runs its public compaction runtime. Callback replies arrive
 from a different SDK's canonically validating receiver and drive subsequent wire
 events and final downstream application. HTTP uploads precede BOTH transports.
 """
-import argparse, copy, hashlib, json, os, secrets, selectors, signal, subprocess, tempfile
+import argparse, copy, json, os, secrets, selectors, signal, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from adapter_builds import go_command
@@ -106,7 +106,8 @@ def check(outputs,receipts,expected):
             target='instructions' if boundary=='before' else 'summary';item=event[target];body=receipt['bodies'][item['id']]
             serial.append(body)
             require(wire_equal(item['selection'], 'body') and wire_equal(item['mediaType'], 'text/plain'))
-            raw=body.encode();ref=item['body'];require(wire_equal(ref['size'], len(raw)) and wire_equal(ref['sha256'], hashlib.sha256(raw).hexdigest()))
+            raw=body.encode();ref=item['body'];require(set(ref)=={'ref'}, 'event body must be reference-only')
+            require('size' not in item and 'sha256' not in item, 'body selection must not disclose metadata')
             require(isinstance(ref['ref'], str) and bool(ref['ref']), 'invalid opaque ref')
             key=(entry['subscription'],ref['ref'])
             require(key not in immutable or immutable[key]==raw, 'receiver ref mutated')

@@ -137,9 +137,10 @@ recognized fields remain validated. Unknown effects and operation values still
 reject the entire response atomically.
 
 POST exact bytes with their length and SHA-256, without a caller-selected ref.
-The receiver returns HTTP **201 Created** with the canonical JSON content-reference
-`{ref, size, sha256}`. Validate the descriptor and verify size/hash before putting
-the returned ref into an event. A retry may allocate another immutable ref;
+The receiver returns HTTP **201 Created** with the canonical JSON content-upload receipt
+`{ref, size, sha256}`. Validate the receipt and verify size/hash before putting
+only `{ref}` into an event body. Ready body-selected items do not repeat
+size/hash metadata. A retry may allocate another immutable ref;
 reference-conflict probing and caller-reference idempotence are not part of the
 binding. Upload credentials never implicitly inherit event credentials, and
 upload confirmation is not event acknowledgement or proof of durable storage.

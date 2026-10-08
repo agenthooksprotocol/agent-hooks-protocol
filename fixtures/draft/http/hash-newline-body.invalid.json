@@ -38,7 +38,6 @@
           "selection": "body",
           "body": {
             "ref": "bytes",
-            "size": 0,
             "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
           }
         }

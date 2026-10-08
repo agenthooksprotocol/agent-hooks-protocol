@@ -207,6 +207,18 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     }
     body.push_str(&aliases);
     body.push('\n');
+    if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
+        writeln!(
+            body,
+            "Event = {}\n",
+            annotation(ir, &event.shape, "Event", "")?
+        )?;
+        export(
+            modules.entry("event".into()).or_default(),
+            "Event".into(),
+            "Event".into(),
+        )?;
+    }
     content_slots_source.push_str("}\n");
     boundaries.push_str(&content_slots_source);
     if count == 0 {
@@ -273,6 +285,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
+    if ir.types.iter().any(|named| named.name == "Event") {
+        public.push("Event".into());
+    }
     public.extend(
         modules
             .get("event")
@@ -420,6 +435,9 @@ fn literal_labels(values: &[Value]) -> Result<Vec<String>> {
 }
 
 fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) -> Result<()> {
+    if let Some(reference) = shape.constrained_reference() {
+        return collect(ir, name, reference, shapes);
+    }
     let names = HashMap::new();
     let renderer = Renderer { ir, names: &names };
     let projected = renderer.composed_union(shape);
@@ -638,6 +656,9 @@ fn field_hint(owner: &str, field: &str) -> Result<String> {
 // This is a constructor projection, not a validator. Keep arbitrary JSON Any,
 // but follow every schema-expressible object, array and alternative recursively.
 fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<String> {
+    if let Some(reference) = shape.constrained_reference() {
+        return annotation(ir, reference, hint, namespace);
+    }
     let names = HashMap::new();
     let renderer = Renderer { ir, names: &names };
     if let Some(projected) = renderer.composed_union(shape) {
@@ -671,6 +692,7 @@ fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<Str
             additional: AdditionalProperties::Allowed,
             ..
         } if properties.is_empty() => "dict[str, Any]".into(),
+        Shape::Ref { name } if name == "Event" => format!("{namespace}Event"),
         Shape::Ref { name } => {
             let target = ir
                 .types

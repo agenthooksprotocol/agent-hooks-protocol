@@ -129,8 +129,13 @@ class DraftShapeTests(unittest.TestCase):
         for key, bad in [('endpoint', 'file:///tmp/body'), ('timeoutMs', 0), ('maxBytes', -1)]:
             self.assertTrue(self.errors({**upload, key: bad}, 'content-upload'))
         item = {'id': 'skill', 'kind': 'skill', 'mediaType': 'application/octet-stream',
-                'selection': 'body', 'body': {'ref': 'binary', 'size': 0, 'sha256': '0' * 64}}
+                'selection': 'body', 'body': {'ref': 'binary'}}
         self.assertFalse(self.errors(item, 'content-item'))
+        for field, value in [('size', 0), ('sha256', '0' * 64)]:
+            self.assertTrue(self.errors({**item, field: value}, 'content-item'))
+        metadata = {key: value for key, value in item.items() if key != 'body'}
+        metadata.update(selection='metadata', size=0, sha256='0' * 64)
+        self.assertFalse(self.errors(metadata, 'content-item'))
         self.assertTrue(self.errors({**item, 'body': {'text': 'inline'}}, 'content-item'))
         self.assertTrue(self.errors({**item, 'selection': 'metadata'}, 'content-item'))
         self.assertFalse(self.errors({'default': 'omit', 'future-category': 'metadata'}, 'content-selection'))

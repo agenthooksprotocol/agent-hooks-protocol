@@ -22,6 +22,12 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         }
     }
     capability_options(&g, packages.entry("capability".into()).or_default())?;
+    if ir.types.iter().any(|named| named.name == "Event") {
+        packages
+            .entry("event".into())
+            .or_default()
+            .push_str("type Event = ahp.Event\n");
+    }
     capability_composition(&g, packages.entry("capability".into()).or_default())?;
     state_helpers(&g, &mut packages)?;
     effect_operations(&g, packages.entry("effect".into()).or_default())?;

@@ -44,6 +44,20 @@ def main() -> None:
     sdk = load_module(pathlib.Path(sys.argv[1]).resolve())
     repository = pathlib.Path(sys.argv[2]).resolve()
 
+    # Presence (including null), not value, forbids receipt-only metadata.
+    for key in ("size", "sha256"):
+        for value in (None, 0, "a" * 64):
+            assert not sdk.parse_content_reference({"ref": "opaque", key: value})["ok"]
+    assert sdk.parse_content_reference({"ref": "opaque", "future": {"preserved": True}})["ok"]
+
+    shared_request = fixture(repository, "fixtures/draft/http/intercept-request.valid.json")
+    shared_request["params"]["event"] = {"type": "session.end", "id": "id", "source": "test", "time": "2026-01-01T00:00:00Z"}
+    assert not sdk.parse_intercept_request(shared_request)["ok"]
+    shared_request["params"]["event"] = {"type": "future.event", "extension": True}
+    future_event = sdk.parse_intercept_request(shared_request)
+    assert future_event["ok"] and "unknown_variant" in diagnostic_codes(future_event)
+    assert sdk.parse_content_upload_receipt({"ref": "opaque", "size": 0, "sha256": "a" * 64})["ok"]
+
     registration = fixture(
         repository, "fixtures/draft/registration/portable.valid.json"
     )

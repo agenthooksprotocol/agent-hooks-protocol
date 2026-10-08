@@ -146,3 +146,19 @@ console.log("generated TypeScript codec smoke tests passed");
 // Exercise the semantic surface through the same CI consumer entrypoint.
 require("./typescript-ergonomics-smoke.cjs");
 require("./capability-typescript.cjs");
+
+// Explicitly forbidden metadata is not an ordinary forward-compatible extra.
+for (const key of ["size", "sha256"]) {
+  for (const value of [null, 0, "a".repeat(64)]) {
+    if (sdk.parseContentReference({ref: "opaque", [key]: value}).ok) throw new Error(`forbidden ${key} accepted`);
+  }
+}
+if (!sdk.parseContentReference({ref: "opaque", future: {preserved: true}}).ok) throw new Error("generic reference extras were closed");
+
+const sharedRequest = fixture("fixtures/draft/http/intercept-request.valid.json");
+sharedRequest.params.event = {type:"session.end", id:"id", source:"test", time:"2026-01-01T00:00:00Z"};
+if (sdk.parseInterceptRequest(sharedRequest).ok) throw new Error("known observe-only event accepted");
+sharedRequest.params.event = {type:"future.event", extension:true};
+const futureEvent = sdk.parseInterceptRequest(sharedRequest);
+if (!futureEvent.ok || !futureEvent.diagnostics.some(d => d.code === "unknown_variant")) throw new Error("unknown event lost");
+if (!sdk.parseContentUploadReceipt({ref:"opaque", size:0, sha256:"a".repeat(64)}).ok) throw new Error("receipt rejected");

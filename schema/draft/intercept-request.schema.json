@@ -33,6 +33,7 @@
               "$ref": "common.schema.json#/$defs/protocolVersion"
             },
             "event": {
+              "$ref": "event.schema.json",
               "oneOf": [
                 {
                   "$ref": "tool-before.schema.json"
