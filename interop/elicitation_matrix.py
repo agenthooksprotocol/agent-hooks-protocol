@@ -258,7 +258,8 @@ def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=
         for original,step,expected_status,result in zip(steps[offset:end],batch,statuses[offset:end],replies):
             if step['path']=='/hooks/intercept':message=json.loads(base64.b64decode(step['bytes']))
             if result['status']!=expected_status:
-                raise AssertionError(f"{step['path']} expected {expected_status}, got {result['status']}")
+                identity = message.get("id", "unknown") if step["path"] == "/hooks/intercept" else step.get("localRef", "upload")
+                raise AssertionError(f"{step['path']} ({identity}) expected {expected_status}, got {result['status']}")
             if step['path']=='/upload' and expected_status==201:
                 descriptor=json.loads(result['body']);raw=base64.b64decode(step['bytes'])
                 if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'}:
