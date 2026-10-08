@@ -3,16 +3,66 @@
 from __future__ import annotations
 
 import asyncio
+import ast
 import importlib
 import inspect
 import json
+import re
 from pathlib import Path
 import sys
 import types
 
 
+def audit_public_names(directory: Path) -> None:
+    """Audit actual emitted names, not only hand-picked generator hints.
+
+    Private low-level TypedDict names deliberately retain FieldN path hints.
+    Those are implementation details, not public models or constructors.
+    """
+    count = 0
+    forbidden = re.compile(r"(?:Variant|Field)\d|_\d+$|[0-9a-fA-F]{12}|ObjectWith|Required[A-Z].*Optional[A-Z]")
+
+    def check(name: str, source: Path) -> None:
+        nonlocal count
+        if name.startswith("_"):
+            return
+        count += 1
+        assert len(name) <= 100, (source, "unbounded public name", name)
+        assert not forbidden.search(name), (source, "nonsemantic public name", name)
+
+    def scope(nodes: list[ast.stmt], source: Path) -> None:
+        declarations: set[str] = set()
+        for node in nodes:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                check(node.name, source)
+                assert node.name not in declarations, (source, "overwritten declaration", node.name)
+                declarations.add(node.name)
+                if isinstance(node, ast.ClassDef):
+                    scope(node.body, source)
+                else:
+                    for arg in ast.walk(node.args):
+                        if isinstance(arg, ast.arg):
+                            check(arg.arg, source)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        check(target.id, source)
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    check(alias.asname or alias.name, source)
+            elif isinstance(node, ast.If):
+                scope(node.body, source)
+                scope(node.orelse, source)
+
+    for source in sorted(directory.rglob("*.py")):
+        scope(ast.parse(source.read_text()).body, source)
+    assert count > 2000, count
+
+
 def main() -> None:
     directory = Path(sys.argv[1]).resolve()
+    audit_public_names(directory)
     package = types.ModuleType("facade_contract")
     package.__path__ = [str(directory)]
     sys.modules[package.__name__] = package
@@ -140,6 +190,21 @@ def main() -> None:
     diagnostics = importlib.import_module("facade_contract.diagnostics")
     assert state.initial(state.Permission.NONE) == {"permission": "none", "candidate": None}
     assert state.initial(state.Permission.ALLOW, candidate=candidate.value(None))["candidate"] == {"value": None}
+    # Omission, explicit null, and a present candidate carrying JSON null differ.
+    try:
+        state.State(permission="allow")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Missing candidate is not explicit null")
+    assert state.State(permission="allow", candidate=None) == {"permission": "allow", "candidate": None}
+    assert state.State(permission="allow", candidate=candidate.value(None)) == {"permission": "allow", "candidate": {"value": None}}
+    try:
+        state.Candidate()
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("A present candidate must supply its value, even when null")
     assert diagnostics.Code.REMOTE_RPC == "remote_rpc"
     base = capability.intercept()
     composed = base.deny().modify_input(replace=True).elicitation_form()

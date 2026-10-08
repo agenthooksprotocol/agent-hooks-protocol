@@ -223,7 +223,7 @@ fn grant(
 }
 
 fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
-    let method = allocate_identifier(&snake_case(name), "grant", &mut reserved_identifiers());
+    let method = public_identifier(&snake_case(name), "grant", &mut reserved_identifiers())?;
     write!(out, "    def {method}(self")?;
     if !fields.is_empty() {
         out.push_str(", *");

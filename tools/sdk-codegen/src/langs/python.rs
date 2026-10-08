@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::model::{AdditionalProperties, Ir, Property, Shape};
 
 pub fn emit(ir: &Ir) -> Result<String> {
-    let identifiers = IdentifierMap::new(ir);
+    let identifiers = IdentifierMap::new(ir)?;
     let renderer = Renderer {
         ir,
         names: &identifiers.types,
@@ -99,12 +99,12 @@ struct IdentifierMap {
 }
 
 impl IdentifierMap {
-    fn new(ir: &Ir) -> Self {
+    fn new(ir: &Ir) -> Result<Self> {
         let mut occupied = reserved_identifiers();
         let mut types = HashMap::new();
         for named in &ir.types {
             if !types.contains_key(&named.name) {
-                let identifier = allocate_identifier(&named.name, "Type", &mut occupied);
+                let identifier = public_identifier(&named.name, "Type", &mut occupied)?;
                 types.insert(named.name.clone(), identifier);
             }
         }
@@ -112,9 +112,9 @@ impl IdentifierMap {
         let mut roots = Vec::with_capacity(ir.roots.len());
         for root in &ir.roots {
             let candidate = snake_case(&root.name);
-            roots.push(allocate_root_identifier(&candidate, "root", &mut occupied));
+            roots.push(allocate_root_identifier(&candidate, "root", &mut occupied)?);
         }
-        Self { types, roots }
+        Ok(Self { types, roots })
     }
 
     fn type_name(&self, source: &str) -> &str {
@@ -125,35 +125,45 @@ impl IdentifierMap {
     }
 }
 
-fn allocate_identifier(value: &str, fallback: &str, occupied: &mut HashSet<String>) -> String {
-    let base = sanitize_identifier(value, fallback);
-    let mut identifier = base.clone();
-    let mut suffix = 2;
-    while occupied.contains(&identifier) {
-        identifier = format!("{base}_{suffix}");
-        suffix += 1;
+// Public Python keyword escapes use the conventional trailing underscore.
+// Distinct schema names must never acquire traversal-dependent numeric suffixes.
+fn public_identifier(
+    value: &str,
+    fallback: &str,
+    occupied: &mut HashSet<String>,
+) -> Result<String> {
+    let mut name = sanitize_identifier(value, fallback);
+    if reserved_identifiers().contains(&name) || matches!(name.as_str(), "self" | "extra") {
+        name.push('_');
     }
-    occupied.insert(identifier.clone());
-    identifier
+    anyhow::ensure!(
+        name.len() <= 100,
+        "public Python identifier is too long: {name}"
+    );
+    anyhow::ensure!(
+        occupied.insert(name.clone()),
+        "public Python identifier collision: {name}"
+    );
+    Ok(name)
 }
 
-fn allocate_root_identifier(value: &str, fallback: &str, occupied: &mut HashSet<String>) -> String {
-    let base = sanitize_identifier(value, fallback);
-    let mut identifier = base.clone();
-    let mut suffix = 2;
-    while occupied.contains(&identifier)
-        || occupied.contains(&format!("parse_{identifier}"))
-        || occupied.contains(&format!("encode_{identifier}"))
-        || occupied.contains(&format!("{identifier}_schema_revision"))
-    {
-        identifier = format!("{base}_{suffix}");
-        suffix += 1;
+fn allocate_root_identifier(
+    value: &str,
+    fallback: &str,
+    occupied: &mut HashSet<String>,
+) -> Result<String> {
+    let identifier = public_identifier(value, fallback, occupied)?;
+    for generated in [
+        format!("parse_{identifier}"),
+        format!("encode_{identifier}"),
+        format!("{identifier}_schema_revision"),
+    ] {
+        anyhow::ensure!(
+            occupied.insert(generated.clone()),
+            "public Python root identifier collision: {generated}"
+        );
     }
-    occupied.insert(identifier.clone());
-    occupied.insert(format!("parse_{identifier}"));
-    occupied.insert(format!("encode_{identifier}"));
-    occupied.insert(format!("{identifier}_schema_revision"));
-    identifier
+    Ok(identifier)
 }
 
 fn sanitize_identifier(value: &str, fallback: &str) -> String {
@@ -338,9 +348,20 @@ impl Renderer<'_> {
             Shape::Array { items } => {
                 self.emit_declarations(items, &format!("{hint}Item"), false, output)?
             }
-            Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-                for (variant, name) in variants.iter().zip(super::naming::union_names(variants)) {
-                    self.emit_declarations(variant, &format!("{hint}{name}"), false, output)?;
+            Shape::Union { variants, .. } => {
+                for arm in super::naming::projected_union(variants)? {
+                    self.emit_declarations(
+                        &variants[arm.source_indices[0]],
+                        &format!("{hint}{}", arm.name),
+                        false,
+                        output,
+                    )?;
+                }
+            }
+            // Intersections are constraints, not public union alternatives.
+            Shape::Intersection { variants } => {
+                for (index, variant) in variants.iter().enumerate() {
+                    self.emit_declarations(variant, &format!("{hint}Field{index}"), false, output)?;
                 }
             }
             Shape::Any
@@ -386,7 +407,7 @@ impl Renderer<'_> {
             } => {
                 let mut rendered = variants
                     .iter()
-                    .zip(super::naming::union_names(variants))
+                    .zip(super::naming::try_union_names(variants)?)
                     .map(|(variant, name)| self.render(variant, &format!("{hint}{name}")))
                     .collect::<Result<Vec<_>>>()?;
                 if discriminator.is_some() {
@@ -400,9 +421,11 @@ impl Renderer<'_> {
                 } else {
                     let rendered = variants
                         .iter()
-                        .zip(super::naming::union_names(variants))
-                        .filter(|(variant, _)| !matches!(variant, Shape::Any))
-                        .map(|(variant, name)| self.render(variant, &format!("{hint}{name}")))
+                        .enumerate()
+                        .filter(|(_, variant)| !matches!(variant, Shape::Any))
+                        .map(|(index, variant)| {
+                            self.render(variant, &format!("{hint}Field{index}"))
+                        })
                         .collect::<Result<Vec<_>>>()?;
                     if rendered.is_empty() {
                         "JsonValue".into()
@@ -1125,7 +1148,7 @@ mod tests {
     #[test]
     fn renders_legal_enums_literals_arrays_and_intersections() {
         let ir = sample_ir();
-        let identifiers = IdentifierMap::new(&ir);
+        let identifiers = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
             names: &identifiers.types,
@@ -1349,23 +1372,19 @@ mod tests {
             },
         };
 
-        let source = emit(&ir).unwrap();
-        assert!(source.contains("JsonValue_2: TypeAlias = str"));
-        assert!(source.contains("class_2: TypeAlias = str"));
-        assert!(source.contains("A_B: TypeAlias = str"));
-        assert!(source.contains("A_B_2: TypeAlias = str"));
-        assert!(source.contains("__debug___2: TypeAlias = str"));
-        assert!(source.contains("_FooField0ChildModel_2 = TypedDict("));
-        assert!(source.contains("def parse_class_3("));
-        assert!(!source.contains("def parse_a_b("));
-        assert!(source.contains("def parse_a_b_2("));
-        assert!(source.contains("def parse_a_b_3("));
+        assert!(emit(&ir).unwrap_err().to_string().contains("collision"));
+        let mut occupied = reserved_identifiers();
+        assert_eq!(
+            public_identifier("class", "Type", &mut occupied).unwrap(),
+            "class_"
+        );
+        assert!(public_identifier("class_", "Type", &mut occupied).is_err());
     }
 
     #[test]
     fn union_model_names_follow_semantics_and_preserve_unknown_fallback() {
         let ir = sample_ir();
-        let identifiers = IdentifierMap::new(&ir);
+        let identifiers = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
             names: &identifiers.types,
@@ -1382,7 +1401,7 @@ mod tests {
             forbidden_property_sets: vec![],
             additional: AdditionalProperties::Allowed,
         };
-        let variants = vec![tagged("a-b"), tagged("a_b"), tagged("unknown")];
+        let variants = vec![tagged("alpha"), tagged("beta"), tagged("future")];
         let labels = super::super::naming::union_names(&variants);
         let union = Shape::Union {
             variants: variants.clone(),

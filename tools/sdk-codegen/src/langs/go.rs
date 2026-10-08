@@ -2,7 +2,7 @@ pub mod facade;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::model::{Ir, Property, Shape};
 
@@ -110,6 +110,7 @@ struct Generator<'a> {
     declarations: Vec<String>,
     objects: BTreeMap<String, Vec<RenderedField>>,
     unions: BTreeMap<String, Vec<(String, String)>>,
+    nullables: BTreeMap<String, String>,
 }
 
 impl<'a> Generator<'a> {
@@ -144,6 +145,7 @@ impl<'a> Generator<'a> {
             declarations: Vec::new(),
             objects: BTreeMap::new(),
             unions: BTreeMap::new(),
+            nullables: BTreeMap::new(),
         }
     }
 
@@ -304,6 +306,20 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
         for field in &fields {
+            // Nullable's zero value is null, so its direct decoder must not silently
+            // turn a missing required member into an explicit null. General schema
+            // requiredness remains the ParseRoot validator's responsibility.
+            if field.required && self.is_nullable(&field.shape) {
+                writeln!(
+                    declaration,
+                    "\tif _, ok := fields[{}]; !ok {{ return fmt.Errorf({}) }}",
+                    go_string(&field.wire_name)?,
+                    go_string(&format!(
+                        "{name}.{}: missing required member",
+                        field.wire_name
+                    ))?
+                )?;
+            }
             writeln!(
                 declaration,
                 "\tif raw, ok := fields[{}]; ok {{",
@@ -411,7 +427,9 @@ impl<'a> Generator<'a> {
             )?;
         } else {
             writeln!(declaration, "type {name} {base}\n")?;
-            for (value, suffix) in values.iter().zip(super::naming::literal_names(&values)) {
+            let names = super::naming::try_literal_names(&values)
+                .with_context(|| format!("cannot name Go enum {name}"))?;
+            for (value, suffix) in values.iter().zip(names) {
                 let suffix = go_semantic_identifier(&suffix);
                 let constant = self.allocate_package_name(&format!("{name}{suffix}"));
                 let rendered = match value {
@@ -442,10 +460,19 @@ impl<'a> Generator<'a> {
         let Shape::Union { variants, .. } = shape else {
             unreachable!("union emitter requires a union");
         };
+        if let Some(payload) = self.nullable_payload(shape) {
+            let payload_type = self.render_type(payload, &format!("{name}Value"))?;
+            self.nullables.insert(name.to_owned(), payload_type.clone());
+            self.declarations.push(format!("// {name} distinguishes null from a non-null value.\ntype {name} = Nullable[{payload_type}]\n\n"));
+            return Ok(());
+        }
         let mut fields = Vec::with_capacity(variants.len());
         let mut field_names = BTreeSet::from(["Unknown".to_owned()]);
-        for (variant, base) in variants.iter().zip(super::naming::union_names(variants)) {
-            let base = go_semantic_identifier(&base);
+        let projected = super::naming::projected_union(variants)
+            .with_context(|| format!("cannot name Go union {name}"))?;
+        for arm in &projected {
+            let variant = &variants[arm.source_indices[0]];
+            let base = go_semantic_identifier(&arm.name);
             let field_name = allocate_local_name(&base, &mut field_names);
             let field_type = self.render_type(variant, &format!("{name}{field_name}"))?;
             fields.push((field_name, field_type));
@@ -495,7 +522,8 @@ impl<'a> Generator<'a> {
             go_string(&format!("{name}: value does not match the union"))?
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
-        for (index, (field_name, field_type)) in fields.iter().enumerate() {
+        for (arm, (field_name, field_type)) in projected.iter().zip(&fields) {
+            let index = arm.source_indices[0];
             writeln!(
                 declaration,
                 "\t{{\n\t\tattempt := make([]ParseDiagnostic, 0)\n\t\tcheckNode(schema.Variants[{index}], rawValue, \"\", &attempt)\n\t\tif !hasErrors(attempt) {{\n\t\t\tvar candidate {field_type}\n\t\t\tif err := json.Unmarshal(data, &candidate); err != nil {{\n\t\t\t\treturn fmt.Errorf({}, err)\n\t\t\t}}\n\t\t\tdecoded.{field_name} = Some(candidate)\n\t\t\t*value = decoded\n\t\t\treturn nil\n\t\t}}\n\t}}",
@@ -534,6 +562,12 @@ impl<'a> Generator<'a> {
     }
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(payload) = self.nullable_payload(shape) {
+            let payload_type = self.render_type(payload, &format!("{hint}Value"))?;
+            let rendered = format!("Nullable[{payload_type}]");
+            self.nullables.insert(rendered.clone(), payload_type);
+            return Ok(rendered);
+        }
         Ok(match shape {
             Shape::Any | Shape::Never | Shape::Null => "json.RawMessage".into(),
             Shape::Boolean => "bool".into(),
@@ -552,7 +586,13 @@ impl<'a> Generator<'a> {
                 self.emit_struct(&name, None, properties.clone())?;
                 name
             }
-            Shape::Ref { name } => format!("*{}", self.named_name(name)),
+            Shape::Ref { name } => {
+                if self.is_nullable(shape) {
+                    self.named_name(name)
+                } else {
+                    format!("*{}", self.named_name(name))
+                }
+            }
             Shape::Union { .. } => {
                 let name = self.allocate_type_name(hint);
                 self.emit_union(&name, None, shape)?;
@@ -570,6 +610,58 @@ impl<'a> Generator<'a> {
         })
     }
 
+    fn nullable_payload<'s>(&self, shape: &'s Shape) -> Option<&'s Shape> {
+        let payload = nullable_candidate(shape)?;
+        self.excludes_null(payload, &mut BTreeSet::new())
+            .then_some(payload)
+    }
+
+    fn excludes_null(&self, shape: &Shape, visiting: &mut BTreeSet<String>) -> bool {
+        match shape {
+            Shape::Any | Shape::Null => false,
+            Shape::Literal { value } => !value.is_null(),
+            Shape::Enum { values, .. } => values.iter().all(|value| !value.is_null()),
+            Shape::Union { variants, .. } => {
+                variants.iter().all(|v| self.excludes_null(v, visiting))
+            }
+            Shape::Intersection { variants } => {
+                variants.iter().any(|v| self.excludes_null(v, visiting))
+            }
+            Shape::Ref { name } => {
+                if !visiting.insert(name.clone()) {
+                    return false;
+                }
+                let result = self
+                    .ir
+                    .types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .is_some_and(|n| self.excludes_null(&n.shape, visiting));
+                visiting.remove(name);
+                result
+            }
+            _ => true,
+        }
+    }
+
+    fn is_nullable(&self, shape: &Shape) -> bool {
+        fn resolve(g: &Generator<'_>, shape: &Shape, visiting: &mut BTreeSet<String>) -> bool {
+            if let Shape::Ref { name } = shape {
+                if !visiting.insert(name.clone()) {
+                    return false;
+                }
+                return g
+                    .ir
+                    .types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .is_some_and(|n| resolve(g, &n.shape, visiting));
+            }
+            g.nullable_payload(shape).is_some()
+        }
+        resolve(self, shape, &mut BTreeSet::new())
+    }
+
     fn allocate_type_name(&mut self, hint: &str) -> String {
         let base = go_identifier(hint);
         self.allocate_package_name(&base)
@@ -577,6 +669,22 @@ impl<'a> Generator<'a> {
 
     fn allocate_package_name(&mut self, base: &str) -> String {
         allocate_local_name(base, &mut self.used_names)
+    }
+}
+
+// This is a public model projection only; validation retains the original union.
+fn nullable_candidate(shape: &Shape) -> Option<&Shape> {
+    let Shape::Union { variants, .. } = shape else {
+        return None;
+    };
+    if variants.len() != 2 {
+        return None;
+    }
+    match (&variants[0], &variants[1]) {
+        (Shape::Null, payload) | (payload, Shape::Null) if !matches!(payload, Shape::Null) => {
+            Some(payload)
+        }
+        _ => None,
     }
 }
 
@@ -623,6 +731,9 @@ fn runtime_names() -> BTreeSet<String> {
         "SchemaRevision",
         "ProtocolVersionValue",
         "Optional",
+        "Nullable",
+        "Null",
+        "NonNull",
         "Some",
         "DiagnosticCode",
         "DiagnosticInvalidType",
@@ -748,6 +859,40 @@ type Optional[T any] struct {
 // Some returns a present optional value.
 func Some[T any](value T) Optional[T] {
 	return Optional[T]{Value: value, Present: true}
+}
+
+// Nullable distinguishes JSON null from a non-null value, independently of presence.
+// Its zero value is null. Use Optional[Nullable[T]] for an optional nullable member.
+type Nullable[T any] struct {
+    Value T
+    Valid bool
+}
+
+// Null returns an explicit JSON null.
+func Null[T any]() Nullable[T] { return Nullable[T]{} }
+
+// NonNull returns a non-null payload. Encoding rejects payloads that encode as null.
+func NonNull[T any](value T) Nullable[T] { return Nullable[T]{Value: value, Valid: true} }
+
+func (value *Nullable[T]) UnmarshalJSON(data []byte) error {
+    if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+        *value = Null[T]()
+        return nil
+    }
+    var payload T
+    if err := json.Unmarshal(data, &payload); err != nil { return err }
+    *value = NonNull(payload)
+    return nil
+}
+
+func (value Nullable[T]) MarshalJSON() ([]byte, error) {
+    if !value.Valid { return []byte("null"), nil }
+    data, err := json.Marshal(value.Value)
+    if err != nil { return nil, err }
+    if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+        return nil, fmt.Errorf("Nullable: non-null payload encoded as null")
+    }
+    return data, nil
 }
 
 // DiagnosticCode identifies a structural parse diagnostic.
@@ -1217,6 +1362,295 @@ mod tests {
     }
 
     #[test]
+    fn nullable_models_preserve_presence_and_payloads() {
+        fn nullable(shape: Shape) -> Shape {
+            Shape::Union {
+                mode: UnionMode::AnyOf,
+                discriminator: None,
+                variants: vec![Shape::Null, shape],
+            }
+        }
+        let object = Shape::Object {
+            properties: vec![Property {
+                wire_name: "value".into(),
+                required: true,
+                shape: Shape::Any,
+                constructor_default: None,
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let payloads = vec![
+            ("Text", Shape::String),
+            ("Boolean", Shape::Boolean),
+            ("Integer", Shape::Integer),
+            ("Number", Shape::Number),
+            ("Object", object.clone()),
+            (
+                "Array",
+                Shape::Array {
+                    items: Box::new(nullable(Shape::String)),
+                },
+            ),
+            (
+                "Reference",
+                Shape::Ref {
+                    name: "Payload".into(),
+                },
+            ),
+        ];
+        let mut ir = sample_ir();
+        let mut properties = Vec::new();
+        for (name, payload) in &payloads {
+            for (prefix, required) in [("required", true), ("optional", false)] {
+                properties.push(Property {
+                    wire_name: format!("{prefix}{name}"),
+                    required,
+                    shape: nullable(payload.clone()),
+                    constructor_default: None,
+                });
+            }
+            let root = format!("Maybe{name}");
+            ir.types.push(NamedType {
+                name: root.clone(),
+                source: format!("{root}.json#"),
+                shape: nullable(payload.clone()),
+            });
+            ir.roots.push(PublicRoot {
+                name: root.clone(),
+                schema: format!("{root}.json"),
+            });
+        }
+        properties.push(Property {
+            wire_name: "optionalNamed".into(),
+            required: false,
+            shape: Shape::Ref {
+                name: "MaybeText".into(),
+            },
+            constructor_default: None,
+        });
+        ir.types[0].shape = Shape::Object {
+            properties,
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        ir.types.push(NamedType {
+            name: "Payload".into(),
+            source: "payload.json#".into(),
+            shape: object,
+        });
+        for (name, mode) in [
+            ("Ambiguous", UnionMode::OneOf),
+            ("Overlapping", UnionMode::AnyOf),
+        ] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: format!("{name}.json#"),
+                shape: Shape::Union {
+                    mode,
+                    discriminator: None,
+                    variants: vec![Shape::Null, Shape::Any],
+                },
+            });
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: format!("{name}.json"),
+            });
+        }
+        for (name, mode) in [
+            ("RepeatedAny", UnionMode::AnyOf),
+            ("RepeatedOne", UnionMode::OneOf),
+        ] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: format!("{name}.json#"),
+                shape: Shape::Union {
+                    mode,
+                    discriminator: None,
+                    variants: vec![
+                        Shape::Ref {
+                            name: "Payload".into(),
+                        },
+                        Shape::Ref {
+                            name: "Payload".into(),
+                        },
+                    ],
+                },
+            });
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: format!("{name}.json"),
+            });
+        }
+        let output = emit(&ir).unwrap();
+        assert!(output.contains("Optional[MaybeText]"));
+        assert!(!output.contains("Optional[*MaybeText]"));
+        assert!(output.contains("Optional[Nullable[string]]"));
+        assert!(output.contains("Nullable[MessageRequiredObjectValue]"));
+        assert!(output.contains("type MaybeReference = Nullable[*Payload]"));
+        let mut reversed = Ir {
+            schema_revision: ir.schema_revision.clone(),
+            protocol_version: ir.protocol_version.clone(),
+            roots: ir
+                .roots
+                .iter()
+                .map(|r| PublicRoot {
+                    name: r.name.clone(),
+                    schema: r.schema.clone(),
+                })
+                .collect(),
+            types: ir
+                .types
+                .iter()
+                .map(|n| NamedType {
+                    name: n.name.clone(),
+                    source: n.source.clone(),
+                    shape: n.shape.clone(),
+                })
+                .collect(),
+        };
+        fn reverse(shape: &mut Shape) {
+            match shape {
+                Shape::Union { variants, .. } => {
+                    variants.reverse();
+                    for v in variants {
+                        reverse(v);
+                    }
+                }
+                Shape::Object { properties, .. } => {
+                    for p in properties {
+                        reverse(&mut p.shape);
+                    }
+                }
+                Shape::Array { items } => reverse(items),
+                _ => {}
+            }
+        }
+        for named in &mut reversed.types {
+            reverse(&mut named.shape);
+        }
+        let mut a = Generator::new(&ir);
+        let mut b = Generator::new(&reversed);
+        for named in &ir.types {
+            a.emit_named(&named.name, &named.source, &named.shape)
+                .unwrap();
+        }
+        for named in &reversed.types {
+            b.emit_named(&named.name, &named.source, &named.shape)
+                .unwrap();
+        }
+        let nullable_declarations = |g: &Generator<'_>| {
+            g.declarations
+                .iter()
+                .filter(|d| !d.contains("type Ambiguous") && !d.contains("type Overlapping"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            nullable_declarations(&a),
+            nullable_declarations(&b),
+            "nullable names must not depend on union order"
+        );
+
+        // Exercise generated code without requiring a checked-in synthetic SDK.
+        let dir = std::env::temp_dir().join(format!("ahp-go-nullable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("go.mod"), "module nullabletest\n\ngo 1.24\n").unwrap();
+        std::fs::write(dir.join("generated.go"), output).unwrap();
+        std::fs::write(dir.join("nullable_test.go"), r#"package ahp
+import ("encoding/json"; "reflect"; "testing")
+func TestNullableMatrix(t *testing.T) {
+    values := map[string]any{"Text":"hello", "Boolean":true, "Integer":float64(3), "Number":1.5,
+        "Object":map[string]any{"value":nil}, "Array":[]any{nil,"hello"}, "Reference":map[string]any{"value":nil}}
+    // Every required field independently rejects absence; every optional field accepts it.
+    for _, requiredNull := range []bool{true,false} {
+      for _, optional := range []string{"absent","null","value"} {
+        doc := map[string]any{}
+        for name, payload := range values {
+          if requiredNull { doc["required"+name] = nil } else { doc["required"+name] = payload }
+          if optional == "null" { doc["optional"+name] = nil }
+          if optional == "value" { doc["optional"+name] = payload }
+        }
+        raw,_ := json.Marshal(doc)
+        parsed := ParseMessage(raw)
+        if !parsed.OK { t.Fatalf("matrix %v %s: %+v", requiredNull, optional, parsed.Diagnostics) }
+        model := reflect.ValueOf(parsed.Value)
+        for name := range values {
+          req := model.FieldByName("Required"+name)
+          opt := model.FieldByName("Optional"+name)
+          if req.FieldByName("Valid").Bool() == requiredNull { t.Fatal("required null/value collapsed",name) }
+          if opt.FieldByName("Present").Bool() != (optional != "absent") { t.Fatal("presence collapsed",name) }
+          if opt.FieldByName("Value").FieldByName("Valid").Bool() != (optional == "value") { t.Fatal("optional null/value collapsed",name) }
+        }
+        encoded,err := EncodeMessage(parsed.Value)
+        if err != nil { t.Fatal(err) }
+        var got any; json.Unmarshal(encoded,&got)
+        if !reflect.DeepEqual(got,doc) { t.Fatalf("roundtrip %s => %s",raw,encoded) }
+        for name := range values {
+          old := doc["required"+name]; delete(doc,"required"+name)
+          missing,_ := json.Marshal(doc)
+          if ParseMessage(missing).OK { t.Fatal("missing required accepted",name) }
+          var direct Message
+          if json.Unmarshal(missing,&direct) == nil { t.Fatal("direct decoder coerced missing to null",name) }
+          doc["required"+name] = old
+        }
+      }
+    }
+    for _, name := range []string{"optionalText", "optionalNamed"} {
+      var reused Message
+      base := map[string]any{}
+      for field := range values { base["required"+field] = nil }
+      base[name] = "old"; raw,_ := json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      base[name] = nil; raw,_ = json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      field := "OptionalText"; if name == "optionalNamed" { field = "OptionalNamed" }
+      state := reflect.ValueOf(reused).FieldByName(field)
+      if !state.FieldByName("Present").Bool() || state.FieldByName("Value").FieldByName("Valid").Bool() { t.Fatal("named null collapsed", name) }
+      delete(base,name); raw,_ = json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      if reflect.ValueOf(reused).FieldByName(field).FieldByName("Present").Bool() { t.Fatal("absent reuse retained old state", name) }
+    }
+    if !ParseRepeatedAny([]byte(`{"value":null}`)).OK { t.Fatal("grouped anyOf rejected") }
+    if ParseRepeatedOne([]byte(`{"value":null}`)).OK { t.Fatal("grouped public arm changed oneOf validation") }
+    if reflect.TypeOf(RepeatedAny{}).NumField() != 2 { t.Fatal("identical alternatives emitted duplicate public variants") }
+    if ParseAmbiguous([]byte(`null`)).OK { t.Fatal("oneOf ambiguity lost") }
+    ambiguous := ParseAmbiguous([]byte(`null`))
+    if len(ambiguous.Diagnostics) == 0 || ambiguous.Diagnostics[0].Code != DiagnosticAmbiguousUnion { t.Fatal("wrong ambiguity diagnostic", ambiguous.Diagnostics) }
+    if !ParseOverlapping([]byte(`null`)).OK { t.Fatal("anyOf null rejected") }
+    var directAmbiguous Ambiguous
+    if json.Unmarshal([]byte(`null`), &directAmbiguous) == nil { t.Fatal("direct oneOf decoder lost ambiguity") }
+    var directOverlapping Overlapping
+    if json.Unmarshal([]byte(`null`), &directOverlapping) != nil { t.Fatal("direct anyOf decoder rejected null") }
+    if !ParseMaybeText([]byte(`""`)).Value.Valid || !ParseMaybeBoolean([]byte(`false`)).Value.Valid || !ParseMaybeInteger([]byte(`0`)).Value.Valid { t.Fatal("zero values collapsed to null") }
+    if !ParseMaybeText([]byte(`null`)).OK || !ParseMaybeText([]byte(`"x"`)).Value.Valid { t.Fatal("root string") }
+    if ParseMaybeText([]byte(`false`)).OK { t.Fatal("wrong root primitive accepted") }
+    if !ParseMaybeBoolean([]byte(`true`)).Value.Valid || !ParseMaybeInteger([]byte(`4`)).Value.Valid || !ParseMaybeNumber([]byte(`1.5`)).Value.Valid { t.Fatal("primitive roots") }
+    if !ParseMaybeObject([]byte(`{"value":null}`)).Value.Valid || ParseMaybeObject([]byte(`null`)).Value.Valid { t.Fatal("root object") }
+    if !ParseMaybeArray([]byte(`[null,"x"]`)).Value.Valid || !ParseMaybeReference([]byte(`{"value":null}`)).Value.Valid { t.Fatal("array/ref roots") }
+    for _, value := range []any{NonNull((*Payload)(nil)), NonNull([]string(nil)), NonNull(map[string]string(nil)), NonNull(json.RawMessage("null"))} {
+      if _,err := json.Marshal(value); err == nil { t.Fatal("NonNull silently encoded null") }
+    }
+    value := NonNull("old")
+    if err := json.Unmarshal([]byte(" \n null \t"),&value); err != nil || value.Valid || value.Value != "" { t.Fatal("stale nullable payload") }
+    if data,err := json.Marshal(Null[string]()); err != nil || string(data) != "null" { t.Fatal("null constructor") }
+}
+"#).unwrap();
+        let result = std::process::Command::new("go")
+            .args(["test", "./..."])
+            .current_dir(&dir)
+            .output()
+            .expect("Go is required for the nullable codec regression");
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            result.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    #[test]
     fn output_is_deterministic_and_has_lossless_entrypoints() {
         let mut ordered = sample_ir();
         ordered.types.push(NamedType {
@@ -1354,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_literal_names_preserve_go_initialisms_and_collision_identity() {
+    fn semantic_literal_names_preserve_go_initialisms_and_reject_collisions() {
         let mut ir = sample_ir();
         ir.types.push(NamedType {
             name: "HttpTransportType".into(),
@@ -1365,24 +1799,17 @@ mod tests {
         });
         let output = emit(&ir).unwrap();
         assert!(output.contains("const HttpTransportTypeHTTP HttpTransportType = \"http\""));
-        assert_eq!(
-            go_semantic_identifier("HttpShape0123456789abcdefDuplicate2"),
-            "HTTPShape0123456789abcdefDuplicate2"
-        );
-        let mut values = vec![serde_json::json!("http"), serde_json::json!("HTTP")];
-        let names = super::super::naming::literal_names(&values)
-            .iter()
-            .map(|name| go_semantic_identifier(name))
-            .collect::<Vec<_>>();
-        assert!(names.iter().all(|name| name.starts_with("HTTPShape")));
-        assert_ne!(names[0], names[1]);
-        values.reverse();
-        assert_eq!(
-            super::super::naming::literal_names(&values)
-                .iter()
-                .map(|name| go_semantic_identifier(name))
-                .collect::<Vec<_>>(),
-            names.into_iter().rev().collect::<Vec<_>>()
+        let variants = vec![
+            Shape::Literal {
+                value: serde_json::json!("http"),
+            },
+            Shape::Literal {
+                value: serde_json::json!("HTTP"),
+            },
+        ];
+        assert!(
+            super::super::naming::projected_union(&variants).is_err(),
+            "collisions require explicit semantic disambiguation, not fingerprints"
         );
     }
 

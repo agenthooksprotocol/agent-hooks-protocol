@@ -568,17 +568,12 @@ fn state_helpers(g: &Generator<'_>, packages: &mut BTreeMap<String, String>) -> 
     packages.insert("permission".into(), body);
     let mut body = String::new();
     constructor(g, &mut body, name, "", fields)?;
-    let candidate_union = &fields
+    let candidate_type = &fields
         .iter()
         .find(|f| f.wire_name == "candidate")
         .unwrap()
         .field_type;
-    let arms = &g.unions[candidate_union];
-    let (null_arm, _) = arms.iter().find(|(_, ty)| ty == "json.RawMessage").unwrap();
-    let (object_arm, object_type) = arms
-        .iter()
-        .find(|(_, ty)| g.objects.contains_key(ty))
-        .unwrap();
+    let object_type = &g.nullables[candidate_type];
     let provenance_type = &g.objects[object_type]
         .iter()
         .find(|f| f.wire_name == "provenance")
@@ -590,19 +585,19 @@ func Initial(value permission.Permission, opts ...Option) *ahp.InterceptRequestP
     v := &ahp.InterceptRequestParamsState{Permission: value, Candidate: NoCandidate()}
     for _, opt := range opts { if opt != nil { opt(v) } }; return v
 }
-func NoCandidate() ahp.$CANDIDATE_UNION {
-    return ahp.$CANDIDATE_UNION{$NULL_ARM: ahp.Some(json.RawMessage("null"))}
+func NoCandidate() ahp.Nullable[ahp.$OBJECT_TYPE] {
+    return ahp.Null[ahp.$OBJECT_TYPE]()
 }
 // Candidate preserves payload encoding errors instead of silently dropping the value.
-func Candidate[T any](value T, provenance ...ahp.$PROVENANCE_TYPE) (ahp.$CANDIDATE_UNION, error) {
-    if len(provenance) > 1 { return ahp.$CANDIDATE_UNION{}, fmt.Errorf("candidate accepts at most one provenance") }
-    raw, err := json.Marshal(value); if err != nil { return ahp.$CANDIDATE_UNION{}, err }
+func Candidate[T any](value T, provenance ...ahp.$PROVENANCE_TYPE) (ahp.Nullable[ahp.$OBJECT_TYPE], error) {
+    if len(provenance) > 1 { return ahp.Nullable[ahp.$OBJECT_TYPE]{}, fmt.Errorf("candidate accepts at most one provenance") }
+    raw, err := json.Marshal(value); if err != nil { return ahp.Nullable[ahp.$OBJECT_TYPE]{}, err }
     candidate := ahp.$OBJECT_TYPE{Value: raw}
     if len(provenance) == 1 { candidate.Provenance = ahp.Some(provenance[0]) }
-    return ahp.$CANDIDATE_UNION{$OBJECT_ARM: ahp.Some(candidate)}, nil
+    return ahp.NonNull(candidate), nil
 }
-func WithCandidate(value ahp.$CANDIDATE_UNION) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
-"#.replace("$PROVENANCE_TYPE", provenance_type).replace("$OBJECT_TYPE", object_type).replace("$CANDIDATE_UNION", candidate_union).replace("$NULL_ARM", null_arm).replace("$OBJECT_ARM", object_arm));
+func WithCandidate(value ahp.Nullable[ahp.$OBJECT_TYPE]) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
+"#.replace("$PROVENANCE_TYPE", provenance_type).replace("$OBJECT_TYPE", object_type));
     packages.insert("state".into(), body);
     Ok(())
 }

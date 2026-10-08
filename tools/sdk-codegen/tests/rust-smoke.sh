@@ -49,10 +49,8 @@ fn main() -> anyhow::Result<()> {
     let mut arguments = std::env::args_os().skip(1);
     let recursive_output =
         std::path::PathBuf::from(arguments.next().expect("recursive output argument"));
-    let collision_output =
-        std::path::PathBuf::from(arguments.next().expect("collision output argument"));
 
-    let recursive = model::Ir {
+    let mut recursive = model::Ir {
         schema_revision: "recursive-test".into(),
         protocol_version: "1".into(),
         roots: vec![
@@ -97,7 +95,16 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::Enum { values: vec![serde_json::json!(1)], open_strings: false },
         }],
     };
-    std::fs::write(recursive_output, rust::emit(&recursive)?)?;
+    for (name, mode) in [("DuplicateAny", model::UnionMode::AnyOf), ("DuplicateOne", model::UnionMode::OneOf)] {
+        recursive.roots.push(model::PublicRoot { name: name.into(), schema: format!("{name}.json") });
+        recursive.types.push(model::NamedType {
+            name: name.into(), source: format!("{name}.json#"),
+            shape: model::Shape::Union { mode, variants: vec![model::Shape::String, model::Shape::String], discriminator: None },
+        });
+    }
+    let generated = rust::emit(&recursive)?;
+    assert!(!generated.contains("Duplicate2"));
+    std::fs::write(recursive_output, generated)?;
 
     let collision = model::Ir {
         schema_revision: "collision-test".into(),
@@ -113,7 +120,7 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::String,
         }).collect(),
     };
-    std::fs::write(collision_output, rust::emit(&collision)?)?;
+    assert!(rust::emit(&collision).unwrap_err().to_string().contains("distinct canonical schema name"));
     Ok(())
 }
 RS
@@ -121,8 +128,8 @@ RS
 # Test the complete generator crate: repository-aware emitter tests need its compiler.
 "${cargo_command[@]}" test --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml"
 "${cargo_command[@]}" run --quiet --manifest-path "$temporary/emitter/Cargo.toml" -- \
-    "$temporary/consumer/src/recursive.rs" "$temporary/consumer/src/collision.rs"
-printf '\n#[allow(dead_code)]\npub mod recursive;\n#[allow(dead_code)]\npub mod collision;\n' \
+    "$temporary/consumer/src/recursive.rs"
+printf '\n#[allow(dead_code)]\npub mod recursive;\n' \
   >>"$temporary/consumer/src/lib.rs"
 
 cat >"$temporary/consumer/Cargo.toml" <<'TOML'
@@ -154,6 +161,10 @@ use serde_json::{Value, json};
 #[test]
 fn recursively_referenced_models_compile_and_parse() {
     assert!(recursive::parse_node("{}").is_ok());
+    let any = recursive::parse_duplicate_any(r#""value""#);
+    assert!(any.is_ok());
+    assert!(matches!(any.value(), Some(recursive::DuplicateAny::String(value)) if value == "value"));
+    assert!(!recursive::parse_duplicate_one(r#""value""#).is_ok(), "public projection must not collapse oneOf validation branches");
 
     let exact_text = "1.23456789012345678901234567890123456789";
     let exact = recursive::parse_exact_number(exact_text);

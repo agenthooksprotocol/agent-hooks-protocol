@@ -108,7 +108,14 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
         Shape::Ref { name } => name.clone(),
         Shape::Intersection { variants } => variants
             .iter()
-            .map(|variant| render(variant, depth))
+            .map(|variant| {
+                let member = render(variant, depth)?;
+                Ok(if matches!(variant, Shape::Union { .. }) {
+                    format!("({member})")
+                } else {
+                    member
+                })
+            })
             .collect::<Result<Vec<_>>>()?
             .join(" & "),
         Shape::Union {
@@ -304,6 +311,26 @@ function error(diagnostics: ParseDiagnostic[], path: string, code: ParseDiagnost
 mod tests {
     use super::*;
     use crate::model::{Ir, NamedType, PublicRoot, Shape};
+
+    #[test]
+    fn intersection_members_preserve_nested_union_precedence() {
+        let shape = Shape::Intersection {
+            variants: vec![
+                Shape::String,
+                Shape::Union {
+                    mode: crate::model::UnionMode::AnyOf,
+                    variants: vec![Shape::Null, Shape::Boolean],
+                    discriminator: None,
+                },
+            ],
+        };
+        assert_eq!(render(&shape, 0).unwrap(), "string & (null | boolean)");
+        // The renderer must not rewrite validation descriptors while choosing
+        // parentheses for the target language's precedence rules.
+        let descriptor = serde_json::to_value(&shape).unwrap();
+        assert_eq!(descriptor["variants"][1]["kind"], "union");
+        assert_eq!(descriptor["variants"][1]["mode"], "anyOf");
+    }
 
     #[test]
     fn structural_unions_keep_semantic_names_when_reordered() {

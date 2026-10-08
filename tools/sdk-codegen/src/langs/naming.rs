@@ -2,83 +2,119 @@
 //! reorder alternatives: callers must keep using the original shapes for codecs.
 use std::collections::{BTreeMap, BTreeSet};
 
+use anyhow::{Result, bail};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 
 use crate::model::Shape;
 
-/// Return PascalCase labels in input order, independent of alternative order.
-/// Only ambiguous labels receive a structural digest. Identical alternatives
-/// necessarily share an identity; their repeated occurrences get local suffixes.
-/// `Unknown` is reserved for emitters' forward-compatible fallback arm.
+/// Public projection only: `source_indices` addresses every original validation
+/// alternative represented by this arm. Never replace the validation IR with it.
+/// API shared by emitters: projected_union(&[Shape]) -> Result<Vec<ProjectedArm>>.
+#[derive(Debug)]
+pub(super) struct ProjectedArm {
+    pub name: String,
+    pub source_indices: Vec<usize>,
+}
+
+pub(super) fn projected_union(variants: &[Shape]) -> Result<Vec<ProjectedArm>> {
+    let names = try_union_names(variants)?;
+    projected_union_with_names(variants, &names)
+}
+
+/// Context-aware emitters may resolve unique tags for naming, but projection
+/// identity must always come from the untouched original alternatives.
+pub(super) fn projected_union_with_names(
+    variants: &[Shape],
+    names: &[String],
+) -> Result<Vec<ProjectedArm>> {
+    anyhow::ensure!(
+        variants.len() == names.len(),
+        "one public name is required for each original alternative"
+    );
+    let mut used_names = BTreeMap::new();
+    let mut arms: Vec<ProjectedArm> = Vec::new();
+    let mut identities: BTreeMap<String, usize> = BTreeMap::new();
+    for (index, (shape, name)) in variants.iter().zip(names).enumerate() {
+        let key = identity(shape);
+        if let Some(previous) = used_names.insert(name.clone(), key.clone()) {
+            anyhow::ensure!(
+                previous == key,
+                "distinct public alternatives share name {name:?}; provide canonical schema refs or distinct tags"
+            );
+        }
+        if let Some(&arm) = identities.get(&key) {
+            arms[arm].source_indices.push(index);
+        } else {
+            identities.insert(key, arms.len());
+            arms.push(ProjectedArm {
+                name: name.clone(),
+                source_indices: vec![index],
+            });
+        }
+    }
+    Ok(arms)
+}
+
+/// Return semantic names in source order. Identical branches repeat their name;
+/// callers emitting public declarations must use `projected_union` instead.
+#[cfg(test)]
 pub(super) fn union_names(variants: &[Shape]) -> Vec<String> {
+    try_union_names(variants)
+        .expect("union naming failed: add canonical schema refs or distinct semantic tags")
+}
+
+pub(super) fn try_union_names(variants: &[Shape]) -> Result<Vec<String>> {
     let custom_string = variants
         .iter()
         .any(|s| matches!(s, Shape::Enum { values, .. } if values.iter().all(Value::is_string)));
-    let bases = variants
-        .iter()
-        .map(|s| {
-            if custom_string && matches!(s, Shape::String) {
-                "Custom".into()
-            } else {
-                label(s)
-            }
-        })
-        .collect::<Vec<String>>();
-    let mut counts = BTreeMap::new();
-    for base in &bases {
-        *counts.entry(base.clone()).or_insert(0usize) += 1;
-    }
-    let identities = variants.iter().map(identity).collect::<Vec<_>>();
     let mut allocated = BTreeMap::new();
-    let mut used = BTreeSet::from(["Unknown".to_owned(), "Self".to_owned()]);
-    // Reserve unambiguous semantic names before allocating digest names.
-    for base in &bases {
-        if counts[base] == 1 && !matches!(base.as_str(), "Unknown" | "Self") {
-            used.insert(base.clone());
+    let mut names = Vec::new();
+    for shape in variants {
+        if matches!(
+            shape,
+            Shape::Literal {
+                value: Value::Array(_) | Value::Object(_)
+            }
+        ) || matches!(shape, Shape::Literal { value: Value::String(value) } if !value.is_empty() && !value.chars().any(|c| c.is_ascii_alphanumeric()))
+        {
+            bail!(
+                "literal has no meaningful public identifier; provide a canonical schema ref or semantic discriminator"
+            );
         }
-    }
-    let keys = bases
-        .iter()
-        .cloned()
-        .zip(identities.iter().cloned())
-        .collect::<BTreeSet<_>>();
-    for (base, key) in keys {
-        let name = if counts[&base] == 1 && !matches!(base.as_str(), "Unknown" | "Self") {
-            base.clone()
+        let name = if custom_string && matches!(shape, Shape::String) {
+            "Custom".into()
         } else {
-            let digest = format!("{:x}", Sha256::digest(key.as_bytes()));
-            let stem = format!("{base}Shape{}", &digest[..16]);
-            let mut candidate = stem.clone();
-            let mut suffix = 2;
-            while !used.insert(candidate.clone()) {
-                candidate = format!("{stem}{suffix}");
-                suffix += 1;
-            }
-            candidate
+            label(shape)
         };
-        allocated.insert((base, key), name);
-    }
-    let mut occurrences = BTreeMap::new();
-    bases
-        .into_iter()
-        .zip(identities)
-        .map(|key| {
-            let name = &allocated[&key];
-            let count = occurrences.entry(key).or_insert(0usize);
-            *count += 1;
-            if *count == 1 {
-                name.clone()
-            } else {
-                format!("{name}Duplicate{count}")
+        let key = identity(shape);
+        if matches!(name.as_str(), "Unknown" | "Self" | "Union" | "Intersection")
+            || name.len() > 100
+        {
+            bail!(
+                "public union name {name:?} is reserved or too long; provide a canonical schema ref or semantic discriminator"
+            );
+        }
+        if let Some(previous) = allocated.insert(name.clone(), key.clone()) {
+            if previous != key {
+                bail!(
+                    "distinct union alternatives share public name {name:?}; provide canonical schema refs or distinct semantic discriminator/transport values"
+                );
             }
-        })
-        .collect()
+        }
+        names.push(name);
+    }
+    Ok(names)
 }
 
 /// Stable value-derived labels for enum constants, in source order.
+#[cfg(test)]
 pub(super) fn literal_names(values: &[Value]) -> Vec<String> {
-    union_names(
+    try_literal_names(values)
+        .expect("enum naming failed: provide distinct semantic values or canonical schema refs")
+}
+
+pub(super) fn try_literal_names(values: &[Value]) -> Result<Vec<String>> {
+    try_union_names(
         &values
             .iter()
             .cloned()
@@ -88,36 +124,10 @@ pub(super) fn literal_names(values: &[Value]) -> Vec<String> {
 }
 
 fn identity(shape: &Shape) -> String {
-    fn canonical(value: &mut Value) {
-        match value {
-            Value::Object(fields) => {
-                // Literal JSON arrays are ordered, unlike schema alternatives.
-                for (key, value) in fields {
-                    if key == "value" {
-                        continue;
-                    }
-                    canonical(value);
-                    if matches!(
-                        key.as_str(),
-                        "variants" | "values" | "properties" | "forbidden_property_sets"
-                    ) {
-                        if let Value::Array(items) = value {
-                            items.sort_by_key(Value::to_string);
-                        }
-                    }
-                }
-            }
-            Value::Array(items) => {
-                for item in items {
-                    canonical(item);
-                }
-            }
-            _ => {}
-        }
-    }
-    let mut value = serde_json::to_value(shape).expect("shape serialization");
-    canonical(&mut value);
-    value.to_string()
+    // Deliberately conservative: preserve nested alternative/property order,
+    // validation constraints and constructor defaults (which Serialize skips).
+    // This key is private and never becomes part of a public identifier.
+    format!("{shape:?}")
 }
 
 /// Discriminator-derived label, including tagged intersection components.
@@ -133,6 +143,16 @@ pub(super) fn tagged_label(shape: &Shape) -> Option<String> {
                     } = &p.shape
                     {
                         Some((p.wire_name.as_str(), value.as_str()))
+                    } else if let Shape::Enum {
+                        values,
+                        open_strings: false,
+                    } = &p.shape
+                    {
+                        if values.len() == 1 {
+                            values[0].as_str().map(|v| (p.wire_name.as_str(), v))
+                        } else {
+                            None
+                        }
                     } else {
                         None
                     }
@@ -146,10 +166,16 @@ pub(super) fn tagged_label(shape: &Shape) -> Option<String> {
                 "selection",
                 "action",
                 "status",
+                "transport",
             ]
             .into_iter()
             .find(|k| literals.contains_key(k))
-            {
+            .or_else(|| {
+                literals
+                    .keys()
+                    .copied()
+                    .find(|k| !matches!(*k, "jsonrpc" | "protocolVersion"))
+            }) {
                 let mut result = pascal(literals[key]);
                 for (other, value) in &literals {
                     if *other != key && !matches!(*other, "jsonrpc" | "protocolVersion") {
@@ -164,6 +190,11 @@ pub(super) fn tagged_label(shape: &Shape) -> Option<String> {
                     result.push_str("Gap");
                 }
                 return Some(result);
+            }
+            if properties.iter().any(|p| {
+                p.required && p.wire_name == "transport" && matches!(p.shape, Shape::String)
+            }) {
+                return Some("CustomTransport".into());
             }
             None
         }
@@ -200,38 +231,29 @@ fn label(shape: &Shape) -> String {
         Shape::Enum { .. } => "KnownValues".into(),
         Shape::Array { items } => format!("{}Array", label(items)),
         Shape::Object { properties, .. } => {
-            let required = properties.iter().any(|p| p.required);
-            let names = properties
-                .iter()
-                .filter(|p| !required || p.required)
-                .map(|p| pascal(&p.wire_name))
-                .collect::<BTreeSet<_>>();
-            if names.is_empty() {
-                "Object".into()
+            let required = properties.iter().filter(|p| p.required).collect::<Vec<_>>();
+            if required.len() == 1 {
+                format!("{}Object", pascal(&required[0].wire_name))
             } else {
-                format!("{}Object", names.into_iter().collect::<String>())
+                "Object".into()
             }
         }
-        Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-            let names = variants
-                .iter()
-                .map(label)
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect::<Vec<_>>();
-            names.join(if matches!(shape, Shape::Union { .. }) {
-                "Or"
-            } else {
-                "And"
-            })
-        }
+        Shape::Union { .. } => "Union".into(),
+        Shape::Intersection { .. } => "Intersection".into(),
     }
 }
 
 fn literal(value: &Value) -> String {
     match value {
         Value::String(s) if s.is_empty() => "Empty".into(),
-        Value::String(s) => pascal(s),
+        Value::String(s) => {
+            let name = pascal(s);
+            if matches!(name.as_str(), "Unknown" | "Self") {
+                format!("{name}Value")
+            } else {
+                name
+            }
+        }
         Value::Null => "Null".into(),
         Value::Bool(true) => "True".into(),
         Value::Bool(false) => "False".into(),
@@ -241,11 +263,9 @@ fn literal(value: &Value) -> String {
                 .replace('-', "Negative ")
                 .replace('.', " Point ")
         )),
-        Value::Array(_) => "LiteralArray".into(),
-        Value::Object(fields) => format!(
-            "Literal{}Object",
-            fields.keys().map(|key| pascal(key)).collect::<String>()
-        ),
+        // Composite constants have no intrinsic semantic name. Require the
+        // schema author to supply a named model rather than exposing its shape.
+        Value::Array(_) | Value::Object(_) => "Value".into(),
     }
 }
 
@@ -336,57 +356,77 @@ mod tests {
         );
     }
     #[test]
-    fn collisions_are_structural_and_order_independent() {
-        let mut shapes = vec![
-            Shape::Ref {
-                name: "foo-bar".into(),
-            },
-            Shape::Ref {
-                name: "foo_bar".into(),
-            },
-            object("result", Shape::String),
-            object("result", Shape::Integer),
-            Shape::Ref {
-                name: "Unknown".into(),
-            },
-            Shape::Null,
-        ];
-        let names = union_names(&shapes);
-        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), names.len());
-        assert!(names[..5].iter().all(|n| n.contains("Shape")));
-        assert_eq!(names[5], "Null");
-        shapes.reverse();
+    fn ambiguous_names_fail_actionably_without_hashes() {
+        for shapes in [
+            vec![
+                Shape::Ref {
+                    name: "foo-bar".into(),
+                },
+                Shape::Ref {
+                    name: "foo_bar".into(),
+                },
+            ],
+            vec![
+                object("result", Shape::String),
+                object("result", Shape::Integer),
+            ],
+        ] {
+            let error = try_union_names(&shapes).unwrap_err().to_string();
+            assert!(error.contains("canonical schema refs"));
+        }
+    }
+    #[test]
+    fn duplicate_shapes_share_one_public_arm_with_all_source_indices() {
+        let shapes = [Shape::String, Shape::Integer, Shape::String];
+        assert_eq!(union_names(&shapes), ["String", "Integer", "String"]);
+        let projection = projected_union(&shapes).unwrap();
+        assert_eq!(projection.len(), 2);
+        assert_eq!(projection[0].name, "String");
+        assert_eq!(projection[0].source_indices, [0, 2]);
+        assert_eq!(projection[1].source_indices, [1]);
+    }
+    #[test]
+    fn literal_names_are_semantic_or_rejected() {
         assert_eq!(
-            union_names(&shapes),
-            names.into_iter().rev().collect::<Vec<_>>()
+            literal_names(&[
+                serde_json::json!(-42),
+                serde_json::json!(3.5),
+                "unknown".into()
+            ]),
+            ["ValueNegative42", "Value3Point5", "UnknownValue"]
+        );
+        assert!(try_literal_names(&["foo-bar".into(), "foo_bar".into()]).is_err());
+        assert!(
+            try_literal_names(&[serde_json::json!([1, 2]), serde_json::json!([2, 1])]).is_err()
         );
     }
     #[test]
-    fn duplicate_shapes_remain_distinct() {
-        let names = union_names(&[Shape::String, Shape::String]);
-        assert_ne!(names[0], names[1]);
-        assert!(!names.iter().any(|n| n.starts_with("Variant")));
-    }
-    #[test]
-    fn literal_names_preserve_value_identity_under_reordering() {
-        let mut values = vec![
-            serde_json::json!(-42),
-            serde_json::json!(3.5),
-            serde_json::json!([1, 2]),
-            serde_json::json!([2, 1]),
-            serde_json::json!({"foo": 1}),
-            serde_json::json!({"foo": 2}),
-            serde_json::json!("foo-bar"),
-            serde_json::json!("foo_bar"),
-        ];
-        let names = literal_names(&values);
-        assert_eq!(names[0], "ValueNegative42");
-        assert_eq!(names[1], "Value3Point5");
-        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), names.len());
-        values.reverse();
+    fn legitimate_value_labels_are_not_unnamed_composites() {
+        assert_eq!(try_literal_names(&["value".into()]).unwrap(), ["Value"]);
         assert_eq!(
-            literal_names(&values),
-            names.into_iter().rev().collect::<Vec<_>>()
+            try_union_names(&[Shape::Ref {
+                name: "value".into()
+            }])
+            .unwrap(),
+            ["Value"]
+        );
+        assert!(try_literal_names(&[serde_json::json!({"value": 1})]).is_err());
+        assert!(try_literal_names(&[serde_json::json!([1])]).is_err());
+    }
+
+    #[test]
+    fn arbitrary_tags_and_custom_transport_are_semantic() {
+        assert_eq!(
+            union_names(&[
+                object(
+                    "flavor",
+                    Shape::Literal {
+                        value: "vendor-fast".into()
+                    }
+                ),
+                object("transport", Shape::String)
+            ]),
+            ["VendorFast", "CustomTransport"]
         );
     }
 
@@ -421,7 +461,7 @@ mod tests {
     }
 
     #[test]
-    fn property_order_does_not_change_identity() {
+    fn projection_identity_conservatively_preserves_constructor_field_order() {
         let mut shape = object("result", Shape::String);
         if let Shape::Object { properties, .. } = &mut shape {
             properties.push(Property {
@@ -435,7 +475,7 @@ mod tests {
         if let Shape::Object { properties, .. } = &mut reversed {
             properties.reverse();
         }
-        assert_eq!(identity(&shape), identity(&reversed));
+        assert_ne!(identity(&shape), identity(&reversed));
         assert_eq!(label(&shape), label(&reversed));
     }
 }

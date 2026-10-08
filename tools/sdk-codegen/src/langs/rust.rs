@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod ergonomics;
 use std::fmt::Write;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
 
 use crate::model::{Ir, Property, Shape};
@@ -238,7 +238,7 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     output.push_str(PRELUDE);
     emit_boundaries(ir, &mut output)?;
 
-    let mut context = EmitContext::new(ir);
+    let mut context = EmitContext::try_new(ir)?;
     context.defaults = defaults
         .into_iter()
         .map(|((name, field), value)| ((context.type_name(&name), field), value))
@@ -367,7 +367,12 @@ struct EmitContext<'a> {
 }
 
 impl<'a> EmitContext<'a> {
+    #[cfg(test)]
     fn new(ir: &'a Ir) -> Self {
+        Self::try_new(ir).unwrap()
+    }
+
+    fn try_new(ir: &'a Ir) -> Result<Self> {
         let mut used_type_names = RESERVED_TYPE_NAMES
             .iter()
             .map(|name| (*name).to_owned())
@@ -382,10 +387,10 @@ impl<'a> EmitContext<'a> {
         for original in originals {
             type_names.insert(
                 original.to_owned(),
-                unique_type_identifier(original, &mut used_type_names),
+                unique_type_identifier(original, &mut used_type_names)?,
             );
         }
-        Self {
+        Ok(Self {
             named_shapes: ir
                 .types
                 .iter()
@@ -398,7 +403,7 @@ impl<'a> EmitContext<'a> {
             ergonomic_fields: BTreeMap::new(),
             ergonomic_arms: BTreeMap::new(),
             defaults: BTreeMap::new(),
-        }
+        })
     }
 
     fn type_name(&self, original: &str) -> String {
@@ -628,7 +633,7 @@ impl<'a> EmitContext<'a> {
     }
 
     fn ensure_helper(&mut self, hint: &str, shape: &Shape) -> Result<String> {
-        let name = unique_type_identifier(hint, &mut self.used_type_names);
+        let name = unique_type_identifier(hint, &mut self.used_type_names)?;
         let declaration = self.emit_declaration(&name, shape)?;
         writeln!(self.helpers, "/// Inline schema model.")?;
         self.helpers.push_str(&declaration);
@@ -647,7 +652,7 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_enum(&self, name: &str, values: &[Value], open_strings: bool) -> Result<String> {
-        let variants = super::naming::literal_names(values)
+        let variants = super::naming::try_literal_names(values)?
             .into_iter()
             .zip(values)
             .collect::<Vec<_>>();
@@ -707,7 +712,12 @@ impl<'a> EmitContext<'a> {
 
     /// Resolve tagged references only for naming. Payload types and codec shapes
     /// remain the original alternatives, including their reference boundaries.
+    #[cfg(test)]
     fn union_names(&self, variants: &[Shape]) -> Vec<String> {
+        self.try_union_names(variants).unwrap()
+    }
+
+    fn try_union_names(&self, variants: &[Shape]) -> Result<Vec<String>> {
         fn resolve(
             context: &EmitContext<'_>,
             shape: &Shape,
@@ -754,18 +764,27 @@ impl<'a> EmitContext<'a> {
                 _ => shape.clone(),
             }
         }
+        let resolved = variants
+            .iter()
+            .map(|shape| resolve(self, shape, &mut BTreeSet::new()))
+            .collect::<Vec<_>>();
+        let mut counts = BTreeMap::new();
+        for shape in &resolved {
+            if let Some(tag) = super::naming::tagged_label(shape) {
+                *counts.entry(tag).or_insert(0usize) += 1;
+            }
+        }
         let naming_shapes = variants
             .iter()
-            .map(|shape| {
-                let resolved = resolve(self, shape, &mut BTreeSet::new());
-                if super::naming::tagged_label(&resolved).is_some() {
-                    resolved
-                } else {
-                    shape.clone()
-                }
-            })
+            .zip(resolved)
+            .map(
+                |(original, resolved)| match super::naming::tagged_label(&resolved) {
+                    Some(tag) if counts[&tag] == 1 => resolved,
+                    _ => original.clone(),
+                },
+            )
             .collect::<Vec<_>>();
-        super::naming::union_names(&naming_shapes)
+        super::naming::try_union_names(&naming_shapes)
     }
 
     fn emit_union(
@@ -774,9 +793,16 @@ impl<'a> EmitContext<'a> {
         variants: &[Shape],
         discriminator: Option<&str>,
     ) -> Result<String> {
-        let names = self.union_names(variants);
+        let names = self
+            .try_union_names(variants)
+            .with_context(|| format!("naming union {name}"))?;
+        let projection = super::naming::projected_union_with_names(variants, &names)
+            .with_context(|| format!("projecting union {name}"))?;
         let mut rendered = Vec::new();
-        for (shape, variant) in variants.iter().zip(names) {
+        for arm in projection {
+            let index = arm.source_indices[0];
+            let shape = &variants[index];
+            let variant = arm.name;
             if matches!(shape, Shape::Never) {
                 continue;
             }
@@ -1042,18 +1068,21 @@ fn unique_field_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
     candidate
 }
 
-fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
-    unique_upper_camel_identifier(type_identifier(value), used)
-}
-
-fn unique_upper_camel_identifier(base: String, used: &mut BTreeSet<String>) -> String {
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-    while !used.insert(candidate.clone()) {
-        candidate = format!("{base}{suffix}");
-        suffix += 1;
-    }
-    candidate
+fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> Result<String> {
+    anyhow::ensure!(
+        !identifier_words(value).is_empty(),
+        "public model {value:?} has no semantic identifier; provide a canonical schema name"
+    );
+    let name = type_identifier(value);
+    anyhow::ensure!(
+        name.len() <= 96,
+        "public model name {name:?} is too long; provide a concise canonical schema name"
+    );
+    anyhow::ensure!(
+        used.insert(name.clone()),
+        "public Rust model name {name:?} from {value:?} is reserved or already used; provide a distinct canonical schema name instead of an ordinal alias"
+    );
+    Ok(name)
 }
 
 fn identifier_words(value: &str) -> Vec<String> {
@@ -1856,7 +1885,7 @@ mod tests {
                 value: "foo-bar".into(),
             },
             Shape::Literal {
-                value: "foo_bar".into(),
+                value: "other".into(),
             },
             Shape::Enum {
                 values: vec!["ready".into()],
@@ -1892,18 +1921,166 @@ mod tests {
             arms,
             context.ergonomic_arms["Payload"].iter().cloned().collect()
         );
-        let mut values = vec![
-            serde_json::json!([1, 2]),
-            serde_json::json!([2, 1]),
-            serde_json::json!({"foo": 1}),
-            serde_json::json!({"foo": 2}),
-        ];
+        let mut values = vec!["ready".into(), "waiting".into(), "unknown".into()];
         let first = context.emit_enum("Choice", &values, false).unwrap();
         values.reverse();
         let second = context.emit_enum("Choice", &values, false).unwrap();
         for name in super::super::naming::literal_names(&values) {
             assert!(first.contains(&format!("    {name},")));
             assert!(second.contains(&format!("    {name},")));
+        }
+    }
+
+    #[test]
+    fn real_schema_public_declarations_are_bounded_semantic_and_order_independent() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let before = serde_json::to_value(&ir).unwrap();
+        let source = emit(&ir).unwrap();
+        assert_eq!(before, serde_json::to_value(&ir).unwrap());
+        let mut declarations = BTreeSet::new();
+        for line in source.lines() {
+            let Some(rest) = line
+                .strip_prefix("pub enum ")
+                .or_else(|| line.strip_prefix("pub struct "))
+                .or_else(|| line.strip_prefix("pub type "))
+            else {
+                continue;
+            };
+            let name = rest
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .next()
+                .unwrap();
+            assert!(name.len() <= 80, "oversized declaration {name}");
+            assert!(
+                !name.contains("Shape")
+                    && !name.contains("Duplicate")
+                    && !name.contains("ObjectOr")
+                    && !name.contains("ObjectAnd"),
+                "structural declaration {name}"
+            );
+            assert!(
+                !name.ends_with(|c: char| c.is_ascii_digit()),
+                "ordinal declaration {name}"
+            );
+            assert!(declarations.insert(name), "duplicate declaration {name}");
+        }
+        let mut in_enum = false;
+        let mut payloads = BTreeSet::new();
+        for line in source.lines() {
+            if line.starts_with("pub enum ") {
+                in_enum = true;
+                payloads.clear();
+                continue;
+            }
+            if in_enum && line == "}" {
+                in_enum = false;
+            }
+            let line = line.trim();
+            if !in_enum || line.starts_with("#") || line.starts_with("/") || line.is_empty() {
+                continue;
+            }
+            let name = line
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .next()
+                .unwrap();
+            assert!(
+                name.len() <= 80 && !name.contains("Shape") && !name.contains("Duplicate"),
+                "bad arm {name}"
+            );
+            assert!(
+                !name.starts_with("Variant") && !name.ends_with(|c: char| c.is_ascii_digit()),
+                "ordinal arm {name}"
+            );
+            if let Some((_, payload)) = line.split_once('(') {
+                assert!(
+                    payloads.insert(payload.to_owned()),
+                    "duplicate modeled payload {line}"
+                );
+            }
+        }
+        assert!(source.contains("    UnknownValue,"));
+        assert!(declarations.len() > 1000);
+        let primitive = ir
+            .types
+            .iter()
+            .find(|t| t.name == "McpElicitationPrimitiveSchemaDefinition")
+            .unwrap();
+        let Shape::Union { variants, .. } = &primitive.shape else {
+            panic!("expected elicitation union")
+        };
+        assert_eq!(variants.len(), 8);
+        let context = EmitContext::new(&ir);
+        let names = context.union_names(variants);
+        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), 8);
+        assert!(names.contains(&"McpElicitationStringSchema".into()));
+        assert!(names.contains(&"McpElicitationNumberSchema".into()));
+        for (name, shape) in names.iter().zip(variants) {
+            let Shape::Ref { name: canonical } = shape else {
+                panic!("expected canonical ref")
+            };
+            assert!(source.contains(&format!("    {name}(Box<{canonical}>),")));
+        }
+        let reversed = variants.iter().cloned().rev().collect::<Vec<_>>();
+        assert_eq!(
+            context.union_names(&reversed),
+            names.into_iter().rev().collect::<Vec<_>>()
+        );
+        let connection = source
+            .split("pub enum ExecutionEventMcpConnection {")
+            .nth(1)
+            .unwrap()
+            .split("\n}")
+            .next()
+            .unwrap();
+        for transport in ["Http", "Sse", "Stdio", "CustomTransport"] {
+            assert!(connection.contains(&format!(
+                "    {transport}(ExecutionEventMcpConnection{transport}),"
+            )));
+        }
+    }
+
+    #[test]
+    fn exact_duplicate_public_arms_do_not_change_anyof_or_oneof_descriptors() {
+        for mode in [UnionMode::AnyOf, UnionMode::OneOf] {
+            let shape = Shape::Union {
+                mode,
+                variants: vec![Shape::String, Shape::String],
+                discriminator: None,
+            };
+            let original = serde_json::to_value(&shape).unwrap();
+            let ir = Ir {
+                schema_revision: "test".into(),
+                protocol_version: "test".into(),
+                roots: vec![],
+                types: vec![NamedType {
+                    name: "DuplicateInput".into(),
+                    source: "test.json#".into(),
+                    shape,
+                }],
+            };
+            let output = emit(&ir).unwrap();
+            let declaration = output
+                .split("pub enum DuplicateInput {")
+                .nth(1)
+                .unwrap()
+                .split("\n}")
+                .next()
+                .unwrap();
+            assert_eq!(declaration.matches("String(String)").count(), 1);
+            assert_eq!(serde_json::to_value(&ir.types[0].shape).unwrap(), original);
+            // The generated runtime still checks the original branch cardinality,
+            // so a duplicate oneOf matches twice even though its public arm is shared.
+            assert!(output.contains("matches.len() > 1"));
+            assert!(output.contains("Value matches more than one union branch"));
+            let encoded = output
+                .lines()
+                .find_map(|line| line.strip_prefix("const SCHEMAS_JSON: &str = "))
+                .unwrap()
+                .trim_end_matches(';');
+            let json: String = serde_json::from_str(encoded).unwrap();
+            let descriptors: Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(descriptors["DuplicateInput"], original);
         }
     }
 
@@ -2131,7 +2308,7 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
         let union = context
             .emit_union("Ambiguous", &[Shape::String, Shape::String], None)
             .unwrap();
-        assert!(!union.contains("impl From<String>"));
+        assert!(union.contains("impl From<String>"));
         let union = context
             .emit_union("Unique", &[Shape::String, Shape::Boolean], None)
             .unwrap();
@@ -2376,18 +2553,8 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
                 })
                 .collect(),
         };
-        let source = emit(&ir).unwrap();
-        assert!(source.contains("pub type FooBar = String"));
-        assert!(source.contains("pub type FooBar2 = String"));
-        assert!(source.contains("pub type JsonValue2 = String"));
-        assert!(source.contains("pub type BTreeMap2 = String"));
-        assert!(source.contains("pub type Deserialize2 = String"));
-        assert!(source.contains("pub type String2 = String"));
-        assert!(source.contains("pub type Vec2 = String"));
-        assert!(source.contains("pub type Box2 = String"));
-        assert!(source.contains("pub type Result2 = String"));
-        assert!(source.contains("pub fn parse_root_2("));
-        assert!(source.contains("pub fn parse_root_3("));
+        let error = emit(&ir).unwrap_err().to_string();
+        assert!(error.contains("distinct canonical schema name"));
     }
 
     #[test]
@@ -2402,11 +2569,11 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
             .iter()
             .map(|name| (*name).to_owned())
             .collect::<BTreeSet<_>>();
+        assert!(unique_type_identifier("json-value", &mut types).is_err());
         assert_eq!(
-            unique_type_identifier("json-value", &mut types),
-            "JsonValue2"
+            unique_type_identifier("foo-bar", &mut types).unwrap(),
+            "FooBar"
         );
-        assert_eq!(unique_type_identifier("foo-bar", &mut types), "FooBar");
-        assert_eq!(unique_type_identifier("foo_bar", &mut types), "FooBar2");
+        assert!(unique_type_identifier("foo_bar", &mut types).is_err());
     }
 }

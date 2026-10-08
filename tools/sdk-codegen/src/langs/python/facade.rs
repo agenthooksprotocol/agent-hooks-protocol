@@ -9,14 +9,14 @@ include!("facade_tests.rs");
 mod grants;
 
 pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
-    let identifiers = IdentifierMap::new(ir);
+    let identifiers = IdentifierMap::new(ir)?;
     let renderer = Renderer {
         ir,
         names: &identifiers.types,
     };
     let mut shapes = BTreeMap::new();
     for named in &ir.types {
-        collect(&named.name, &named.shape, &mut shapes);
+        collect(&named.name, &named.shape, &mut shapes)?;
     }
     let mut body = format!(
         "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nimport json\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\n_UNSET: Any = object()\n\n"
@@ -38,16 +38,16 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             };
             if let Some((namespace, short)) = role {
                 let exports = modules.entry(namespace.into()).or_default();
-                exports.insert(name.clone(), name.clone());
+                export(exports, name.clone(), name.clone())?;
                 if !short.is_empty() {
-                    exports.insert(short, name.clone());
+                    export(exports, short, name.clone())?;
                 }
             }
             if name.ends_with("Event") && fields.iter().any(|p| p.wire_name == "source") {
                 let short = name.trim_end_matches("Event");
                 let exports = modules.entry("event".into()).or_default();
-                exports.insert(short.into(), name.clone());
-                exports.insert(name.clone(), name.clone());
+                export(exports, short.into(), name.clone())?;
+                export(exports, name.clone(), name.clone())?;
                 if let Some(Value::String(tag)) = fields
                     .iter()
                     .find(|p| p.wire_name == "type")
@@ -142,7 +142,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                             "        result = copy(self)\n        result._content_sources = {{**self.content_sources, {prefix}\"{key}{suffix}\": source}}\n        return result\n"
                         )?;
                     }
-                    exports.insert(input_name.clone(), input_name.clone());
+                    export(exports, input_name.clone(), input_name.clone())?;
                     writeln!(
                         boundaries,
                         "\n    async def {}(self, input: models.{input_name} | dict[str, Any], **kwargs: Any) -> HookResult:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, **kwargs)",
@@ -155,12 +155,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             if values.iter().all(Value::is_string) {
                 writeln!(body, "class {name}(StrEnum):")?;
                 let mut seen = HashSet::new();
-                for (value, label) in values
-                    .iter()
-                    .zip(super::super::naming::literal_names(values))
-                {
+                for (value, label) in values.iter().zip(literal_labels(values)?) {
                     let key =
-                        allocate_identifier(&snake_case(&label).to_uppercase(), "VALUE", &mut seen);
+                        public_identifier(&snake_case(&label).to_uppercase(), "VALUE", &mut seen)?;
                     writeln!(
                         body,
                         "    {key} = {}",
@@ -182,27 +179,37 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         ("Tool", "ExecutionEventTool"),
         ("Call", "ToolBeforeEventCall"),
     ] {
-        modules
-            .entry("tool".into())
-            .or_default()
-            .insert(alias.into(), model.into());
+        export(
+            modules.entry("tool".into()).or_default(),
+            alias.into(),
+            model.into(),
+        )?;
     }
-    // Enum fields retain their complete context name, with unambiguous short
-    // aliases exposed in their owning namespace.
-    for (name, shape) in &shapes {
-        if properties(&renderer, shape).is_none()
-            && !matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))
-        {
-            continue;
-        }
-        for exports in modules.values_mut() {
-            let owners = exports.values().cloned().collect::<Vec<_>>();
-            for owner in owners {
-                if let Some(short) = name.strip_prefix(&owner) {
+    // Offer a short alias only when exactly one canonical model owns it.
+    // Never let traversal order choose between unrelated nested field models.
+    for exports in modules.values_mut() {
+        let owners = exports.values().cloned().collect::<HashSet<_>>();
+        let mut candidates: BTreeMap<String, HashSet<String>> = BTreeMap::new();
+        for (name, shape) in &shapes {
+            if properties(&renderer, shape).is_none()
+                && !matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))
+            {
+                continue;
+            }
+            for owner in &owners {
+                if let Some(short) = name.strip_prefix(owner) {
                     if !short.is_empty() {
-                        exports.entry(short.into()).or_insert(name.clone());
+                        candidates
+                            .entry(short.into())
+                            .or_default()
+                            .insert(name.clone());
                     }
                 }
+            }
+        }
+        for (short, models) in candidates {
+            if models.len() == 1 && !exports.contains_key(&short) {
+                exports.insert(short, models.into_iter().next().unwrap());
             }
         }
     }
@@ -297,22 +304,48 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     Ok(files)
 }
 
-fn collect(name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) {
-    shapes.entry(name.into()).or_insert_with(|| shape.clone());
+fn export(exports: &mut BTreeMap<String, String>, alias: String, model: String) -> Result<()> {
+    if let Some(previous) = exports.get(&alias) {
+        anyhow::ensure!(
+            previous == &model,
+            "public Python alias collision: {alias} refers to both {previous} and {model}"
+        );
+    } else {
+        exports.insert(alias, model);
+    }
+    Ok(())
+}
+
+fn literal_labels(values: &[Value]) -> Result<Vec<String>> {
+    super::super::naming::try_literal_names(values)
+}
+
+fn collect(name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) -> Result<()> {
+    anyhow::ensure!(
+        name.len() <= 100,
+        "public Python model name is too long: {name}; provide a canonical schema ref"
+    );
+    if let Some(existing) = shapes.get(name) {
+        anyhow::ensure!(
+            format!("{existing:?}") == format!("{shape:?}"),
+            "public Python model collision: {name}; use distinct canonical schema names"
+        );
+        return Ok(());
+    }
+    shapes.insert(name.into(), shape.clone());
     match shape {
         Shape::Object { properties, .. } => {
-            collect_properties(name, properties.iter(), shapes);
+            collect_properties(name, properties.iter(), shapes)?;
         }
-        Shape::Array { items } => collect(&format!("{name}Item"), items, shapes),
+        Shape::Array { items } => collect(&format!("{name}Item"), items, shapes)?,
         Shape::Union { variants, .. } => {
-            for (variant, label) in variants
-                .iter()
-                .zip(super::super::naming::union_names(variants))
-            {
+            for arm in super::super::naming::projected_union(variants)? {
+                let variant = &variants[arm.source_indices[0]];
+                let label = &arm.name;
                 // Referenced alternatives already have canonical public constructors.
                 // Do not duplicate event boundaries under union-context aliases.
                 if !matches!(variant, Shape::Ref { .. }) {
-                    collect(&format!("{name}{label}"), variant, shapes);
+                    collect(&format!("{name}{label}"), variant, shapes)?;
                 }
             }
         }
@@ -330,17 +363,18 @@ fn collect(name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) {
                     })
                     .flatten(),
                 shapes,
-            );
+            )?;
         }
         _ => {}
     }
+    Ok(())
 }
 
 fn collect_properties<'a>(
     name: &str,
     properties: impl Iterator<Item = &'a Property>,
     shapes: &mut BTreeMap<String, Shape>,
-) {
+) -> Result<()> {
     // Resolve sibling spelling collisions before adding models to the global map.
     // Repeated intersection fields refer to the same wire property.
     let mut fields = BTreeMap::new();
@@ -353,12 +387,10 @@ fn collect_properties<'a>(
         .keys()
         .map(|name| Value::String((*name).into()))
         .collect::<Vec<_>>();
-    for (property, label) in fields
-        .values()
-        .zip(super::super::naming::literal_names(&values))
-    {
-        collect(&format!("{name}{label}"), &property.shape, shapes);
+    for (property, label) in fields.values().zip(literal_labels(&values)?) {
+        collect(&format!("{name}{label}"), &property.shape, shapes)?;
     }
+    Ok(())
 }
 
 fn properties(renderer: &Renderer<'_>, shape: &Shape) -> Option<Vec<Property>> {
@@ -417,8 +449,8 @@ fn constructor(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Re
     occupied.insert("extra".into());
     let params = fields
         .iter()
-        .map(|p| allocate_identifier(&snake_case(&p.wire_name), "field", &mut occupied))
-        .collect::<Vec<_>>();
+        .map(|p| public_identifier(&snake_case(&p.wire_name), "field", &mut occupied))
+        .collect::<Result<Vec<_>>>()?;
     write!(out, "    def __init__(self, ")?;
     if !fields.is_empty() {
         write!(out, "*, ")?;
@@ -523,7 +555,7 @@ fn ergonomic_modules(
     };
     let candidate_name = variants
         .iter()
-        .zip(super::super::naming::union_names(variants))
+        .zip(super::super::naming::try_union_names(variants)?)
         .find(|(shape, _)| {
             properties(renderer, shape)
                 .is_some_and(|fields| fields.iter().any(|field| field.wire_name == "value"))
@@ -571,6 +603,7 @@ fn ergonomic_modules(
     files.insert("candidate.py".into(), format!("{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom .state import Candidate as Candidate, Provenance as Provenance\n\ndef value(value: Any, *, provenance: Provenance | None = None) -> Candidate:\n    if provenance is None:\n        return Candidate(value=value)\n    return Candidate(value=value, provenance=provenance)\n"));
 
     let effect = files.get_mut("effect.py").unwrap();
+    let mut effect_names = reserved_identifiers();
     effect.push_str("\nfrom typing import Any\nfrom ._models import _UNSET\n\n");
     // Match operation helpers to the exact same target grants as declarations.
     let capabilities = renderer
@@ -600,6 +633,7 @@ fn ergonomic_modules(
                 snake_case(&operation.wire_name),
                 snake_case(&target.wire_name)
             );
+            let name = public_identifier(&name, "effect", &mut effect_names)?;
             writeln!(
                 effect,
                 "def {name}(value: Any) -> Modify:\n    return Modify(target={:?}, operation={:?}, value=value)\n",
@@ -615,24 +649,27 @@ fn ergonomic_modules(
                     .any(|p| p.wire_name == "type" && literal(renderer.ir, &p.shape).is_some())
                 {
                     let short = name.trim_start_matches("Effect");
-                    let alias = allocate_identifier(
-                        &snake_case(short),
-                        "effect",
-                        &mut reserved_identifiers(),
-                    );
+                    let alias = public_identifier(&snake_case(short), "effect", &mut effect_names)?;
                     let params = fields
                         .iter()
                         .filter(|p| literal(renderer.ir, &p.shape).is_none())
                         .collect::<Vec<_>>();
+                    let mut occupied = reserved_identifiers();
+                    let param_names = params
+                        .iter()
+                        .map(|p| {
+                            public_identifier(&snake_case(&p.wire_name), "field", &mut occupied)
+                        })
+                        .collect::<Result<Vec<_>>>()?;
                     write!(effect, "def {alias}(")?;
                     if !params.is_empty() {
                         effect.push_str("*, ");
                     }
-                    for p in &params {
+                    for (p, param) in params.iter().zip(&param_names) {
                         write!(
                             effect,
                             "{}: {}{}, ",
-                            snake_case(&p.wire_name),
+                            param,
                             annotation(renderer.ir, &p.shape),
                             if p.required { "" } else { " = _UNSET" }
                         )?;
@@ -640,12 +677,9 @@ fn ergonomic_modules(
                     writeln!(
                         effect,
                         ") -> {short}:\n    return {short}({})\n",
-                        params
+                        param_names
                             .iter()
-                            .map(|p| {
-                                let name = snake_case(&p.wire_name);
-                                format!("{name}={name}")
-                            })
+                            .map(|name| format!("{name}={name}"))
                             .collect::<Vec<_>>()
                             .join(", ")
                     )?;
@@ -661,8 +695,12 @@ fn ergonomic_modules(
                         .collect::<Vec<_>>()
                         .join("_");
                     let semantic =
-                        allocate_identifier(&semantic, "effect", &mut reserved_identifiers());
+                        public_identifier(&semantic, "effect", &mut reserved_identifiers())?;
                     if semantic != alias {
+                        anyhow::ensure!(
+                            effect_names.insert(semantic.clone()),
+                            "public Python effect alias collision: {semantic}"
+                        );
                         writeln!(effect, "{semantic} = {alias}")?;
                     }
                 }
@@ -670,6 +708,10 @@ fn ergonomic_modules(
         }
     }
     // Deny is a separately named canonical model, not an Effect-prefixed model.
+    anyhow::ensure!(
+        effect_names.insert("deny".into()),
+        "public Python effect alias collision: deny"
+    );
     effect.push_str("deny = Deny\n");
     Ok(())
 }

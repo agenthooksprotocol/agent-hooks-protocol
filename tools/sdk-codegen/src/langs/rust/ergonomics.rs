@@ -262,7 +262,7 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
     if let Some(effect) = ir.types.iter().find(|t| t.name == "Effect") {
         if let Shape::Union { variants, .. } = &effect.shape {
             out.push_str("\npub mod effects {\nuse super::*;\n");
-            for (variant, label) in variants.iter().zip(context.union_names(variants)) {
+            for (variant, label) in variants.iter().zip(context.try_union_names(variants)?) {
                 let Some(properties) =
                     collect_object_properties(variant, &context.named_shapes, &mut BTreeSet::new())
                 else {

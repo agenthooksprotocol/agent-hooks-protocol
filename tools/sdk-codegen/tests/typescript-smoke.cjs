@@ -44,6 +44,22 @@ if (!result.ok || !result.diagnostics.some((item) => item.code === "unknown_enum
   throw new Error(`unknown enum value was not preserved: ${JSON.stringify(result.diagnostics)}`);
 }
 
+// Nullable candidates preserve the outer null separately from a candidate
+// whose application-owned value is null (or another falsy JSON value).
+for (const candidate of [null, { value: null }, { value: false }, { value: 0 }, { value: "" }]) {
+  const nullableRequest = fixture("fixtures/draft/http/intercept-request.valid.json");
+  nullableRequest.params.state = { permission: "none", candidate };
+  const parsed = sdk.parseInterceptRequest(nullableRequest);
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.diagnostics));
+  const roundTrip = JSON.parse(sdk.encodeInterceptRequest(parsed.value));
+  if (JSON.stringify(roundTrip.params.state.candidate) !== JSON.stringify(candidate)) {
+    throw new Error("nullable candidate changed its outer-null/value distinction");
+  }
+}
+const absentCandidate = fixture("fixtures/draft/http/intercept-request.valid.json");
+absentCandidate.params.state = { permission: "none" };
+if (sdk.parseInterceptRequest(absentCandidate).ok) throw new Error("required nullable candidate was fabricated");
+
 const deny = fixture("fixtures/draft/http/deny-response.valid.json");
 deny.result.effects[0].code = null;
 result = sdk.parseInterceptDenyResponse(deny);

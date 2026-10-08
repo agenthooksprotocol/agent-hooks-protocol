@@ -1,0 +1,24 @@
+import type { ExecutionEventMcp, InterceptRequest } from './ahp.generated';
+
+type Connection = ExecutionEventMcp['connection'];
+// UnknownVariant intentionally remains open; probe known-branch constraints
+// separately so its forward-compatible string tag cannot mask a widening.
+type KnownHttp = Extract<Connection, { transport: 'http' }>;
+const http: Connection = { transport: 'http', url: 'https://mcp.example' };
+const gap: Connection = { transport: 'http', gaps: [{ path: 'url', reason: 'redacted' }] };
+// @ts-expect-error A required-only predicate does not replace the transport object.
+const missingTransport: Connection = { gaps: 42 };
+// @ts-expect-error gaps retains its declared array shape inside the intersection.
+const wrongGaps: KnownHttp = { transport: 'http', gaps: 42 };
+// @ts-expect-error transport is required even when a valid gaps array is present.
+const gapsWithoutTransport: Connection = { gaps: [{ path: 'url', reason: 'redacted' }] };
+// @ts-expect-error a known transport needs its location or explicit gaps.
+const missingLocation: KnownHttp = { transport: 'http' };
+
+type Candidate = NonNullable<InterceptRequest['params']['state']>['candidate'];
+const noCandidate: Candidate = null;
+const nullValueCandidate: Candidate = { value: null };
+// @ts-expect-error required nullable candidate does not include undefined.
+const absentCandidate: Candidate = undefined;
+void [http, gap, missingTransport, wrongGaps, gapsWithoutTransport, missingLocation,
+  noCandidate, nullValueCandidate, absentCandidate];

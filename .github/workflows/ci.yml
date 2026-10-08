@@ -34,7 +34,8 @@ jobs:
             generate --revision draft --language typescript \
             --output "$RUNNER_TEMP/ahp.generated.ts"
           mkdir -p "$RUNNER_TEMP/ahp-codegen"
-          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
+          cp tools/sdk-codegen/tests/typescript-composite-smoke.ts.in "$RUNNER_TEMP/ahp.composite-smoke.ts"
+          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" "$RUNNER_TEMP/ahp.composite-smoke.ts" \
             --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs \
             --skipLibCheck --noUncheckedIndexedAccess --exactOptionalPropertyTypes
           node tools/sdk-codegen/tests/typescript-smoke.cjs \

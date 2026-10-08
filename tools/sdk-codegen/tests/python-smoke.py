@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+from copy import deepcopy
 import json
 import pathlib
 import sys
@@ -126,6 +127,25 @@ def main() -> None:
     request = fixture(
         repository, "fixtures/draft/http/intercept-request.valid.json"
     )
+    # Required nullable state is not optional; candidate value can itself be null.
+    missing_candidate = deepcopy(request)
+    missing_candidate["params"]["state"] = {"permission": "allow"}
+    if sdk.parse_intercept_request(missing_candidate)["ok"]:
+        fail("missing required candidate was treated as explicit null")
+    for candidate in (None, {"value": None}):
+        nullable = deepcopy(request)
+        nullable["params"]["state"] = {"permission": "allow", "candidate": candidate}
+        parsed = sdk.parse_intercept_request(nullable)
+        if not parsed["ok"]:
+            fail(f"valid nullable candidate rejected: {parsed['diagnostics']}")
+        encoded = json.loads(sdk.encode_intercept_request(parsed["value"]))
+        if encoded["params"]["state"]["candidate"] != candidate:
+            fail("candidate null state changed during round-trip")
+    missing_value = deepcopy(request)
+    missing_value["params"]["state"] = {"permission": "allow", "candidate": {}}
+    if sdk.parse_intercept_request(missing_value)["ok"]:
+        fail("present candidate with missing value was treated as value null")
+
     integral_request = json.dumps(request, separators=(",", ":")).replace(
         json.dumps(request["id"]), "1.0", 1
     )

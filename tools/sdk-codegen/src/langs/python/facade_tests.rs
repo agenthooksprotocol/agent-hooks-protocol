@@ -9,28 +9,96 @@ mod tests {
         .unwrap()
     }
     #[test]
-    fn nested_property_collisions_are_stable_across_sibling_reordering() {
-        let fields = vec!["a-b", "a_b"]
-            .into_iter()
-            .map(|wire_name| Property {
-                wire_name: wire_name.into(),
-                required: true,
-                constructor_default: None,
-                shape: Shape::Object {
-                    properties: vec![],
-                    forbidden_property_sets: vec![],
-                    additional: crate::model::AdditionalProperties::Allowed,
-                },
+    fn real_elicitation_refs_and_connection_transports_are_readable() {
+        let ir = draft();
+        let source = emit(&ir).unwrap();
+        let models = &source["_models/__init__.py"];
+        let Shape::Union { variants, .. } = &ir
+            .types
+            .iter()
+            .find(|n| n.name == "McpElicitationPrimitiveSchemaDefinition")
+            .unwrap()
+            .shape
+        else {
+            panic!("elicitation union")
+        };
+        assert_eq!(variants.len(), 8);
+        let names = variants
+            .iter()
+            .map(|v| match v {
+                Shape::Ref { name } => name.clone(),
+                _ => panic!("canonical reference"),
             })
-            .collect::<Vec<_>>();
-        let mut before = BTreeMap::new();
-        collect_properties("Parent", fields.iter(), &mut before);
-        let mut after = BTreeMap::new();
-        collect_properties("Parent", fields.iter().rev(), &mut after);
-        assert_eq!(before.len(), 2);
+            .collect::<HashSet<_>>();
+        assert_eq!(names.len(), 8);
+        for name in names {
+            assert_eq!(
+                models.matches(&format!("class {name}(")).count(),
+                1,
+                "{name}"
+            );
+        }
+        for transport in ["Http", "Sse", "Stdio", "CustomTransport"] {
+            assert!(models.contains(&format!("class ExecutionEventMcpConnection{transport}(")));
+        }
+        assert!(!models.contains("ConnectionObject"));
+        assert!(!models.contains("PrimitiveSchemaDefinitionString"));
+    }
+
+    #[test]
+    fn aliases_cannot_silently_overwrite_other_models() {
+        let mut exports = BTreeMap::new();
+        export(&mut exports, "Input".into(), "FirstInput".into()).unwrap();
+        export(&mut exports, "Input".into(), "FirstInput".into()).unwrap();
+        assert!(export(&mut exports, "Input".into(), "OtherInput".into()).is_err());
+        assert_eq!(exports["Input"], "FirstInput");
+    }
+
+    #[test]
+    fn exact_duplicate_models_share_one_declaration_without_changing_ir() {
+        let mut ir = draft();
+        let shape = Shape::Object {
+            properties: vec![],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        ir.types.push(crate::model::NamedType {
+            name: "Duplicate".into(),
+            source: "test".into(),
+            shape: Shape::Union {
+                variants: vec![shape.clone(), shape],
+                discriminator: None,
+                mode: crate::model::UnionMode::OneOf,
+            },
+        });
+        let source = emit(&ir).unwrap();
         assert_eq!(
-            serde_json::to_value(before).unwrap(),
-            serde_json::to_value(after).unwrap()
+            source["_models/__init__.py"]
+                .matches("class DuplicateObject(")
+                .count(),
+            1
+        );
+        let wire = super::super::emit(&ir).unwrap();
+        assert!(wire.contains("Duplicate"));
+        let Shape::Union { variants, .. } = &ir.types.last().unwrap().shape else {
+            panic!("union")
+        };
+        assert_eq!(variants.len(), 2);
+    }
+
+    #[test]
+    fn public_model_collisions_fail_instead_of_overwriting() {
+        let mut shapes = BTreeMap::new();
+        collect("Choice", &Shape::String, &mut shapes).unwrap();
+        collect("Choice", &Shape::String, &mut shapes).unwrap();
+        assert!(
+            collect("Choice", &Shape::Number, &mut shapes)
+                .unwrap_err()
+                .to_string()
+                .contains("public Python model collision")
+        );
+        assert!(
+            literal_labels(&[Value::String("a-b".into()), Value::String("a_b".into())]).is_err()
         );
     }
 
@@ -39,7 +107,7 @@ mod tests {
         let mut ir = draft();
         let mut shapes = BTreeMap::new();
         for named in &ir.types {
-            collect(&named.name, &named.shape, &mut shapes);
+            collect(&named.name, &named.shape, &mut shapes).unwrap();
         }
         let Shape::Union { variants, .. } = shapes
             .get_mut("InterceptRequestParamsStateCandidate")
@@ -62,8 +130,8 @@ mod tests {
             source: "test".into(),
             shape: object.clone(),
         });
-        collect("CanonicalCandidate", &object, &mut shapes);
-        let identifiers = IdentifierMap::new(&ir);
+        collect("CanonicalCandidate", &object, &mut shapes).unwrap();
+        let identifiers = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
             names: &identifiers.types,
@@ -110,91 +178,38 @@ mod tests {
     }
 
     #[test]
-    fn colliding_union_tags_and_enum_members_keep_stable_identities() {
-        let mut ir = draft();
-        let tagged = |tag: &str| Shape::Object {
-            properties: vec![Property {
-                wire_name: "type".into(),
-                required: true,
-                constructor_default: None,
-                shape: Shape::Literal {
-                    value: Value::String(tag.into()),
+    fn ambiguous_inline_alternatives_require_canonical_names() {
+        let mut shapes = BTreeMap::new();
+        let union = Shape::Union {
+            variants: vec![
+                Shape::Literal {
+                    value: Value::String("a-b".into()),
                 },
-            }],
-            forbidden_property_sets: vec![],
-            additional: crate::model::AdditionalProperties::Allowed,
+                Shape::Literal {
+                    value: Value::String("a_b".into()),
+                },
+            ],
+            discriminator: None,
+            mode: crate::model::UnionMode::OneOf,
         };
-        let mut alternatives = vec![tagged("a-b"), tagged("a_b"), tagged("unknown")];
-        let mut collected = BTreeMap::new();
-        collect(
-            "Collision",
-            &Shape::Union {
-                variants: alternatives.clone(),
-                discriminator: Some("type".into()),
-                mode: crate::model::UnionMode::OneOf,
-            },
-            &mut collected,
-        );
-        alternatives.reverse();
-        let mut reordered = BTreeMap::new();
-        collect(
-            "Collision",
-            &Shape::Union {
-                variants: alternatives,
-                discriminator: Some("type".into()),
-                mode: crate::model::UnionMode::OneOf,
-            },
-            &mut reordered,
-        );
-        collected.remove("Collision");
-        reordered.remove("Collision");
-        assert_eq!(collected.len(), 6); // each object plus its literal field
-        assert_eq!(
-            serde_json::to_value(collected).unwrap(),
-            serde_json::to_value(reordered).unwrap()
-        );
+        assert!(collect("Collision", &union, &mut shapes).is_err());
+        let mut ir = draft();
         ir.types.push(crate::model::NamedType {
             name: "CollisionEnum".into(),
             source: "test".into(),
             shape: Shape::Enum {
-                values: vec![
-                    Value::String("a-b".into()),
-                    Value::String("a_b".into()),
-                    Value::String("unknown".into()),
-                ],
+                values: vec![Value::String("a-b".into()), Value::String("a_b".into())],
                 open_strings: true,
             },
         });
-        let before = emit(&ir).unwrap();
-        if let Shape::Enum { values, .. } = &mut ir.types.last_mut().unwrap().shape {
-            values.reverse();
-        }
-        let after = emit(&ir).unwrap();
-        let members = |source: &str| {
-            let mut lines = source
-                .split("class CollisionEnum(StrEnum):\n")
-                .nth(1)
-                .unwrap()
-                .split("\n\n")
-                .next()
-                .unwrap()
-                .lines()
-                .map(str::to_owned)
-                .collect::<Vec<_>>();
-            lines.sort();
-            lines
-        };
-        assert_eq!(
-            members(&before["_models/__init__.py"]),
-            members(&after["_models/__init__.py"])
-        );
+        assert!(emit(&ir).is_err());
     }
 
     #[test]
     fn every_named_object_and_boundary_is_emitted_without_runtime_overwrites() {
         let ir = draft();
         let files = emit(&ir).unwrap();
-        let ids = IdentifierMap::new(&ir);
+        let ids = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
             names: &ids.types,
@@ -223,8 +238,10 @@ mod tests {
         assert!(files["tool.py"].contains("import Call as Call"));
         assert!(files["tool.py"].contains("import Tool as Tool"));
         assert!(files["capability.py"].contains("from ._grants import ModifyInput as ModifyInput"));
-        assert!(!files["capability.py"]
-            .contains("from ._models.capability import ModifyInput as ModifyInput"));
+        assert!(
+            !files["capability.py"]
+                .contains("from ._models.capability import ModifyInput as ModifyInput")
+        );
         assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
         assert_eq!(
             files["_boundaries.py"].matches("-> HookResult:").count(),
@@ -241,8 +258,11 @@ mod tests {
         assert_eq!(models.matches("    def to_wire(self)").count(), 32);
         assert!(models.contains("call_id: str"));
         assert!(models.contains("target = target.setdefault(\"call\", {})"));
-        assert!(files["state.py"]
-            .contains("def initial(permission: Permission, *, candidate: Candidate | None = None"));
+        assert!(
+            files["state.py"].contains(
+                "def initial(permission: Permission, *, candidate: Candidate | None = None"
+            )
+        );
         assert!(
             files["candidate.py"].contains("return Candidate(value=value, provenance=provenance)")
         );
@@ -256,8 +276,10 @@ mod tests {
         assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
         assert!(files["capability.py"].contains("from ._grants import intercept as intercept"));
         assert!(files["_boundaries.py"].contains("CONTENT_SOURCE_SLOTS:"));
-        assert!(models
-            .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)"));
+        assert!(
+            models
+                .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)")
+        );
         assert!(models.contains("def bind_instructions_source(self, source: OwnedContentSource)"));
     }
     #[test]
@@ -298,8 +320,10 @@ mod tests {
         assert!(output.contains("json.loads(\"false\")"));
         assert!(output.contains("json.loads(\"[]\")"));
         assert!(output.contains("if nullable is not _UNSET:"));
-        assert!(!serde_json::to_string(&fields)
-            .unwrap()
-            .contains("constructor_default"));
+        assert!(
+            !serde_json::to_string(&fields)
+                .unwrap()
+                .contains("constructor_default")
+        );
     }
 }

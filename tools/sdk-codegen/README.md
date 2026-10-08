@@ -33,13 +33,31 @@ The current `draft` snapshot permits integer request IDs and null response IDs. 
 
 ## Public API naming
 
-Public union alternatives must describe their schema meaning, not their position in `oneOf` or `anyOf`. The Go, Python, and Rust emitters share semantic alternative naming; references retain schema names, tagged objects use literal tag values, and untagged alternatives use their JSON kind or declared properties. Colliding sanitized names receive deterministic structural disambiguation rather than an allocation-order suffix. Alternative order remains intact for parsing: naming must not change union selection, validation, unknown-value preservation, or extensible-enum representation.
+Public union alternatives describe their schema meaning, not their position in `oneOf` or `anyOf`. References retain canonical model names when tags are ambiguous; unique required literal tags (including `transport`) provide concise names. The declared literal `"unknown"` is `UnknownValue`, distinct from the forward-compatible `Unknown` arm. Hashes, ordinal collision suffixes, and concatenated constraint descriptions are not public naming fallbacks. An ambiguous anonymous schema must gain a canonical reference or a distinguishing semantic tag; generation fails with a naming error rather than inventing an identifier.
+
+Public model projection is separate from validation. Exactly identical alternatives may share one public arm, whose projection retains all original source indices. The original validation descriptors, branch multiplicity, order, and `oneOf`/`anyOf` modes remain intact. Distinct canonical references are not collapsed merely because they have the same discriminator or runtime representation. In particular, all eight elicitation primitive schema references remain distinct.
 
 For an enum-plus-string union, `Known` names the enum-typed arm and `Custom` names the raw-string arm. An extensible enum still accepts future strings; decoding can therefore select `Known` for an unrecognized value according to the existing branch order. These names are not a new known/unknown classification rule.
 
-TypeScript uses structural unions and quoted wire-property names, so it does not need synthetic alternative types. Runtime loop indexes, schema-descriptor `variants`, generic type parameters, and content-array index parameters are implementation or domain concepts, not anonymous public variant names.
+TypeScript uses structural unions and quoted wire-property names. Parentheses preserve nested intersection/union precedence; required-only constraints cannot escape their containing object. Its open `UnknownVariant` type still accepts arbitrary tagged objects: canonical parsing, not static typing alone, enforces validity of known tags.
 
-Renaming generated symbols is a source-level API change even when JSON is unchanged. Consumers of positional generated names must migrate to the corresponding semantic name; high-level facade names should remain stable where possible. Do not retain positional aliases whose meaning would change when a schema reorders alternatives. Regenerate SDK artifacts from a committed generator revision, and update SDK CI source pins together with their source locks.
+Runtime loop indexes, schema-descriptor `variants`, generic parameters, and underscore-prefixed Python implementation hints are not public naming defects. Whole-output regression gates also inspect public declarations, enum arms, facade methods, parameters, and aliases.
+
+### Go nullability and presence
+
+A conservatively recognized `null | T` is `Nullable[T]`; an optional nullable property is `Optional[Nullable[T]]`. These dimensions are independent:
+
+| Wire state | Model state |
+| --- | --- |
+| Optional member absent | `Optional.Present == false` |
+| Member explicitly null | `Nullable.Valid == false` |
+| Non-null member (including `false`, `0`, or `""`) | `Nullable.Valid == true`, with its payload in `Value` |
+
+`Null[T]()` creates explicit null; `NonNull(value)` selects a payload. Encoding rejects a selected payload that itself serializes to JSON null, including nil pointers, slices, maps, or raw messages. Decoding null clears an earlier non-null payload. Named nullable references are values, not nullable pointers that could bypass wrapper decoding.
+
+`state.NoCandidate()` encodes null. `state.Candidate(nil)` encodes `{ "value": null }`, a present candidate with a null application value. Required nullable absence is rejected by the original descriptor checks in the named `Parse*` entrypoints. Generated object unmarshalling also rejects a missing required nullable member specifically, so absence cannot silently become the wrapper’s zero/null state; this is not universal required-member enforcement, and direct `json.Unmarshal` is not a complete schema validator.
+
+Renaming generated symbols and introducing `Nullable[T]` are source-level API changes even when JSON is unchanged. Consumers must migrate renamed members and types; positional aliases are not retained. Regenerate artifacts from a committed generator revision and update SDK CI source pins with their locks.
 
 ## SDK synchronization
 

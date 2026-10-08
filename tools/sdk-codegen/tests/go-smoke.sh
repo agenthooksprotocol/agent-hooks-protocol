@@ -274,6 +274,24 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	}
 }
 
+func TestRequiredCandidateStates(t *testing.T) {
+    request := fixture(t, "fixtures/draft/http/intercept-request.valid.json")
+    state := map[string]any{"permission": "allow"}
+    request["params"].(map[string]any)["state"] = state
+    for _, candidate := range []any{nil, map[string]any{"value": nil}, map[string]any{"value": false}, map[string]any{"value": ""}, map[string]any{"value": 0}} {
+        state["candidate"] = candidate
+        parsed := ParseInterceptRequest(inputJSON(t, request))
+        if !parsed.OK { t.Fatalf("candidate %v: %+v", candidate, parsed.Diagnostics) }
+        if parsed.Value.Params.State.Value.Candidate.Valid != (candidate != nil) { t.Fatal("candidate null and payload collapsed") }
+        encoded, err := EncodeInterceptRequest(parsed.Value)
+        if err != nil { t.Fatal(err) }
+        if !bytes.Equal(inputJSON(t, encodedObject(t, encoded, nil)), inputJSON(t, request)) { t.Fatal("candidate changed on roundtrip") }
+    }
+    delete(state, "candidate")
+    parsed := ParseInterceptRequest(inputJSON(t, request))
+    if parsed.OK || !hasDiagnostic(parsed.Diagnostics, DiagnosticMissingRequired) { t.Fatalf("missing candidate: %+v", parsed.Diagnostics) }
+}
+
 func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
     manifest := fixture(t, "fixtures/draft/manifest.json")
     for _, raw := range manifest["cases"].([]any) {
