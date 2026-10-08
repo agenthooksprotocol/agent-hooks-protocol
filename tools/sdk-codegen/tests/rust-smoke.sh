@@ -204,7 +204,7 @@ fn preserves_unknown_data_and_absence_on_round_trip() {
 
     let (model, raw, diagnostics) = success(parse_registration_value(registration.clone()));
     assert!(diagnostics.is_empty());
-    assert!(matches!(model.hooks[0].transport, BackendTransport::Http(_)));
+    assert!(matches!(model.hooks[0].transport, BackendTransport::HttpTransport(_)));
     assert_eq!(raw, registration);
     let encoded: Value = serde_json::from_str(&encode_registration(&model).unwrap()).unwrap();
     assert_eq!(encoded, registration);
@@ -244,7 +244,7 @@ fn public_constructors_fill_constants_defaults_and_convert_unions() {
     assert!(parse_capabilities_request_value(wire).is_ok());
 
     let effect: effect::Effect = effect::DenyEffect::new("policy").with_code("denied").into();
-    assert!(matches!(effect, Effect::Deny(_)));
+    assert!(matches!(effect, Effect::DenyEffect(_)));
     assert_eq!(serde_json::to_value(effect).unwrap(), json!({"type":"deny", "reason":"policy", "code":"denied"}));
     let selection = content::ContentSelection::new(content::ContentSelectionDefault::Metadata);
     let subscription = subscription::ObserveSubscription::new(selection, vec![]);
