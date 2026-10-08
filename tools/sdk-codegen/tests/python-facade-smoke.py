@@ -71,6 +71,8 @@ def main() -> None:
     event = importlib.import_module("facade_contract.event")
     effect = importlib.import_module("facade_contract.effect")
     capability = importlib.import_module("facade_contract.capability")
+    assert capability.Event is models.CapabilitiesResponseResultManifestEventsItemEvent
+    assert capability.Event.TOOL_BEFORE == "tool.before"
     tool = importlib.import_module("facade_contract.tool")
     registration = importlib.import_module("facade_contract._models.registration")
     boundaries = importlib.import_module("facade_contract._boundaries")

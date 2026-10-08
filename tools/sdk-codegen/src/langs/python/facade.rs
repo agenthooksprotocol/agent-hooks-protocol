@@ -185,6 +185,13 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             model.into(),
         )?;
     }
+    // This established capability vocabulary has an explicit canonical owner;
+    // it must not disappear when another nested manifest exposes an Event field.
+    export(
+        modules.entry("capability".into()).or_default(),
+        "Event".into(),
+        "CapabilitiesResponseResultManifestEventsItemEvent".into(),
+    )?;
     // Offer a short alias only when exactly one canonical model owns it.
     // Never let traversal order choose between unrelated nested field models.
     for exports in modules.values_mut() {

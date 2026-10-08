@@ -46,6 +46,13 @@ mod tests {
     }
 
     #[test]
+    fn capability_event_alias_has_an_explicit_stable_owner() {
+        let files = emit(&draft()).unwrap();
+        assert!(files["_models/capability.py"].contains("from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"));
+        assert!(files["capability.py"].contains("from ._models.capability import Event as Event"));
+    }
+
+    #[test]
     fn aliases_cannot_silently_overwrite_other_models() {
         let mut exports = BTreeMap::new();
         export(&mut exports, "Input".into(), "FirstInput".into()).unwrap();
