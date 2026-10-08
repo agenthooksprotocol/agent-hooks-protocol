@@ -607,47 +607,6 @@ impl<'a> EmitContext<'a> {
         ty.to_owned()
     }
 
-    fn union_label(&self, shape: &Shape) -> Option<String> {
-        let properties =
-            collect_object_properties(shape, &self.named_shapes, &mut BTreeSet::new())?;
-        let literals = properties
-            .iter()
-            .filter(|property| property.required)
-            .filter_map(|property| {
-                self.fixed_value(&property.shape, &mut BTreeSet::new())
-                    .and_then(Value::as_str)
-                    .map(|value| (property.wire_name.as_str(), value))
-            })
-            .collect::<BTreeMap<_, _>>();
-        let key = [
-            "type",
-            "kind",
-            "mode",
-            "method",
-            "selection",
-            "action",
-            "status",
-        ]
-        .into_iter()
-        .find(|key| literals.contains_key(key))?;
-        let mut label = literals[key].to_owned();
-        // Secondary tags distinguish flow stop/continue and similar typed operations.
-        for (other, value) in &literals {
-            if *other != key && !matches!(*other, "jsonrpc" | "protocolVersion") {
-                label.push(' ');
-                label.push_str(value);
-            }
-        }
-        if key == "selection"
-            && properties
-                .iter()
-                .any(|property| property.required && property.wire_name == "gap")
-        {
-            label.push_str(" gap");
-        }
-        Some(label)
-    }
-
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
         Ok(match shape {
             Shape::Any | Shape::Never => "JsonValue".into(),
@@ -688,11 +647,9 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_enum(&self, name: &str, values: &[Value], open_strings: bool) -> Result<String> {
-        let mut used = BTreeSet::from(["Unknown".to_owned()]);
-        let variants = values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| (unique_variant_identifier(value, index, &mut used), value))
+        let variants = super::naming::literal_names(values)
+            .into_iter()
+            .zip(values)
             .collect::<Vec<_>>();
         let mut output = String::new();
         writeln!(
@@ -754,9 +711,9 @@ impl<'a> EmitContext<'a> {
         variants: &[Shape],
         discriminator: Option<&str>,
     ) -> Result<String> {
-        let mut used = BTreeSet::from(["Unknown".to_owned()]);
+        let names = super::naming::union_names(variants);
         let mut rendered = Vec::new();
-        for (index, shape) in variants.iter().enumerate() {
+        for (shape, variant) in variants.iter().zip(names) {
             if matches!(shape, Shape::Never) {
                 continue;
             }
@@ -764,14 +721,6 @@ impl<'a> EmitContext<'a> {
                 shape_discriminator_value(shape, property, &self.named_shapes, &mut BTreeSet::new())
                     .map(str::to_owned)
             });
-            let semantic = self
-                .union_label(shape)
-                .or_else(|| discriminator_value.clone());
-            let variant = if let Some(label) = semantic {
-                unique_upper_camel_identifier(type_identifier(&label), &mut used)
-            } else {
-                unique_union_variant_identifier(shape, index, &mut used)
-            };
             let ty = self.render_type(shape, &format!("{name} {variant}"))?;
             rendered.push((variant, ty, discriminator_value));
         }
@@ -1032,50 +981,6 @@ fn unique_field_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
 
 fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
     unique_upper_camel_identifier(type_identifier(value), used)
-}
-
-fn unique_variant_identifier(value: &Value, index: usize, used: &mut BTreeSet<String>) -> String {
-    let label = match value {
-        Value::Null => "Null".to_owned(),
-        Value::Bool(true) => "True".to_owned(),
-        Value::Bool(false) => "False".to_owned(),
-        Value::Number(number) if number.to_string().starts_with('-') => {
-            format!("Negative {}", &number.to_string()[1..])
-        }
-        Value::Number(number) => format!("Value {number}"),
-        Value::String(value) if value.is_empty() => "Empty".to_owned(),
-        Value::String(value) => value.clone(),
-        Value::Array(_) => format!("Array {}", index + 1),
-        Value::Object(_) => format!("Object {}", index + 1),
-    };
-    unique_upper_camel_identifier(type_identifier(&label), used)
-}
-
-fn unique_union_variant_identifier(
-    shape: &Shape,
-    index: usize,
-    used: &mut BTreeSet<String>,
-) -> String {
-    let label = match shape {
-        Shape::Any => "Any".to_owned(),
-        Shape::Never => "Never".to_owned(),
-        Shape::Null => "Null".to_owned(),
-        Shape::Boolean => "Boolean".to_owned(),
-        Shape::Integer => "Integer".to_owned(),
-        Shape::Number => "Number".to_owned(),
-        Shape::String => "String".to_owned(),
-        Shape::Literal { value } => {
-            let mut local = BTreeSet::new();
-            unique_variant_identifier(value, index, &mut local)
-        }
-        Shape::Enum { .. } => "Enum".to_owned(),
-        Shape::Array { .. } => "Array".to_owned(),
-        Shape::Object { .. } => "Object".to_owned(),
-        Shape::Union { .. } => "Union".to_owned(),
-        Shape::Intersection { .. } => "Intersection".to_owned(),
-        Shape::Ref { name } => name.clone(),
-    };
-    unique_upper_camel_identifier(type_identifier(&label), used)
 }
 
 fn unique_upper_camel_identifier(base: String, used: &mut BTreeSet<String>) -> String {
@@ -1802,6 +1707,70 @@ mod tests {
     use crate::model::{AdditionalProperties, NamedType, PublicRoot, UnionMode};
 
     #[test]
+    fn public_union_and_enum_names_survive_reordering_and_collisions() {
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![],
+            types: vec![],
+        };
+        let mut shapes = vec![
+            Shape::Literal {
+                value: "foo-bar".into(),
+            },
+            Shape::Literal {
+                value: "foo_bar".into(),
+            },
+            Shape::Enum {
+                values: vec!["ready".into()],
+                open_strings: false,
+            },
+            Shape::String,
+            Shape::Null,
+            Shape::Object {
+                properties: vec![Property {
+                    wire_name: "result".into(),
+                    required: true,
+                    shape: Shape::Integer,
+                    constructor_default: None,
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Allowed,
+            },
+        ];
+        let mut context = EmitContext::new(&ir);
+        let first = context.emit_union("Payload", &shapes, None).unwrap();
+        let arms = context.ergonomic_arms["Payload"]
+            .iter()
+            .cloned()
+            .collect::<BTreeMap<_, _>>();
+        assert!(first.contains("Custom(String)"));
+        assert!(first.contains("Known(PayloadKnown)"));
+        assert!(first.contains("ResultObject(PayloadResultObject)"));
+        assert!(!first.contains("Variant1"));
+        shapes.reverse();
+        let mut context = EmitContext::new(&ir);
+        context.emit_union("Payload", &shapes, None).unwrap();
+        assert_eq!(
+            arms,
+            context.ergonomic_arms["Payload"].iter().cloned().collect()
+        );
+        let mut values = vec![
+            serde_json::json!([1, 2]),
+            serde_json::json!([2, 1]),
+            serde_json::json!({"foo": 1}),
+            serde_json::json!({"foo": 2}),
+        ];
+        let first = context.emit_enum("Choice", &values, false).unwrap();
+        values.reverse();
+        let second = context.emit_enum("Choice", &values, false).unwrap();
+        for name in super::super::naming::literal_names(&values) {
+            assert!(first.contains(&format!("    {name},")));
+            assert!(second.contains(&format!("    {name},")));
+        }
+    }
+
+    #[test]
     fn boundary_inventory_matches_canonical_schema_and_capabilities() {
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&repository, "draft").unwrap();
@@ -2302,22 +2271,5 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
         );
         assert_eq!(unique_type_identifier("foo-bar", &mut types), "FooBar");
         assert_eq!(unique_type_identifier("foo_bar", &mut types), "FooBar2");
-
-        let mut variants = BTreeSet::from(["Unknown".to_owned()]);
-        assert_eq!(
-            unique_variant_identifier(&Value::String("unknown".into()), 0, &mut variants),
-            "Unknown2"
-        );
-        let mut union_variants = BTreeSet::from(["Unknown".to_owned()]);
-        assert_eq!(
-            unique_union_variant_identifier(
-                &Shape::Ref {
-                    name: "Unknown".into(),
-                },
-                0,
-                &mut union_variants,
-            ),
-            "Unknown2"
-        );
     }
 }

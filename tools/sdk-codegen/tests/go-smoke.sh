@@ -118,6 +118,28 @@ func typedEffects(capabilities Capabilities) []CapabilitiesEffectsItem {
 	return capabilities.Effects
 }
 
+func TestSemanticCapabilityAlternativeNamesPreserveValues(t *testing.T) {
+	var known, custom CapabilitiesEffectsItem
+	if err := json.Unmarshal([]byte(`"deny"`), &known); err != nil { t.Fatal(err) }
+	custom = CapabilitiesEffectsItem{Custom: Some("vendor.future")}
+	if !known.Known.Present || string(known.Known.Value) != "deny" || known.Custom.Present {
+		t.Fatalf("known alternative: %+v", known)
+	}
+	if !custom.Custom.Present || custom.Custom.Value != "vendor.future" || custom.Known.Present {
+		t.Fatalf("custom alternative: %+v", custom)
+	}
+	for _, value := range []CapabilitiesEffectsItem{known, custom} {
+		data, err := json.Marshal(value)
+		if err != nil { t.Fatal(err) }
+		var roundTrip CapabilitiesEffectsItem
+		if err := json.Unmarshal(data, &roundTrip); err != nil { t.Fatal(err) }
+		// The enum remains extensible: parsing an unknown string selects the first
+		// matching (enum) branch, just as before the public naming change.
+		reencoded, err := json.Marshal(roundTrip)
+		if err != nil || string(reencoded) != string(data) { t.Fatalf("round trip: %s, %v", data, err) }
+	}
+}
+
 func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	var _ ProtocolVersion = ProtocolVersion(ProtocolVersionValue)
 	var _ InterceptSubscriptionMode = InterceptSubscriptionModeIntercept

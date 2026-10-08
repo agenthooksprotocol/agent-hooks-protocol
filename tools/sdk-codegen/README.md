@@ -31,6 +31,16 @@ Use `--emit-ir` instead of `--language` to inspect the language-neutral lowering
 
 The current `draft` snapshot permits integer request IDs and null response IDs. Generated codecs accept only integers that are safely interoperable across all supported SDKs. String-only request IDs require a future schema change; generation does not silently alter the schema.
 
+## Public API naming
+
+Public union alternatives must describe their schema meaning, not their position in `oneOf` or `anyOf`. The Go, Python, and Rust emitters share semantic alternative naming; references retain schema names, tagged objects use literal tag values, and untagged alternatives use their JSON kind or declared properties. Colliding sanitized names receive deterministic structural disambiguation rather than an allocation-order suffix. Alternative order remains intact for parsing: naming must not change union selection, validation, unknown-value preservation, or extensible-enum representation.
+
+For an enum-plus-string union, `Known` names the enum-typed arm and `Custom` names the raw-string arm. An extensible enum still accepts future strings; decoding can therefore select `Known` for an unrecognized value according to the existing branch order. These names are not a new known/unknown classification rule.
+
+TypeScript uses structural unions and quoted wire-property names, so it does not need synthetic alternative types. Runtime loop indexes, schema-descriptor `variants`, generic type parameters, and content-array index parameters are implementation or domain concepts, not anonymous public variant names.
+
+Renaming generated symbols is a source-level API change even when JSON is unchanged. Consumers of positional generated names must migrate to the corresponding semantic name; high-level facade names should remain stable where possible. Do not retain positional aliases whose meaning would change when a schema reorders alternatives. Regenerate SDK artifacts from a committed generator revision, and update SDK CI source pins together with their source locks.
+
 ## SDK synchronization
 
 A push to `main` that changes schema snapshots, the generator, or draft conformance metadata runs `.github/workflows/sync-sdks.yml`. The workflow regenerates the TypeScript, Python, Go, and Rust SDKs and opens or updates one `automation/schema-sync` pull request in each SDK repository. Each SDK records the exact source commit, schema snapshot, manifest digest, and language in `ahp-codegen.lock.json`.

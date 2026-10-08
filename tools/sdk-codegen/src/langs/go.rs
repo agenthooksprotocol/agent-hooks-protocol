@@ -411,8 +411,7 @@ impl<'a> Generator<'a> {
             )?;
         } else {
             writeln!(declaration, "type {name} {base}\n")?;
-            for (index, value) in values.iter().enumerate() {
-                let suffix = value_constant_suffix(value, index);
+            for (value, suffix) in values.iter().zip(super::naming::literal_names(&values)) {
                 let constant = self.allocate_package_name(&format!("{name}{suffix}"));
                 let rendered = match value {
                     serde_json::Value::String(value) => go_string(value)?,
@@ -444,10 +443,9 @@ impl<'a> Generator<'a> {
         };
         let mut fields = Vec::with_capacity(variants.len());
         let mut field_names = BTreeSet::from(["Unknown".to_owned()]);
-        for (index, variant) in variants.iter().enumerate() {
-            let field_type = self.render_type(variant, &format!("{name}Variant{}", index + 1))?;
-            let base = union_variant_name(self, variant, index);
+        for (variant, base) in variants.iter().zip(super::naming::union_names(variants)) {
             let field_name = allocate_local_name(&base, &mut field_names);
+            let field_type = self.render_type(variant, &format!("{name}{field_name}"))?;
             fields.push((field_name, field_type));
         }
         self.unions.insert(name.to_owned(), fields.clone());
@@ -616,33 +614,6 @@ struct RenderedField {
     field_type: String,
     required: bool,
     shape: Shape,
-}
-
-fn union_variant_name(generator: &Generator<'_>, shape: &Shape, index: usize) -> String {
-    match shape {
-        Shape::Ref { name } => generator.named_name(name),
-        Shape::Literal {
-            value: serde_json::Value::String(value),
-        } => go_identifier(value),
-        _ => format!("Variant{}", index + 1),
-    }
-}
-
-fn value_constant_suffix(value: &serde_json::Value, index: usize) -> String {
-    match value {
-        serde_json::Value::String(value) if !value.is_empty() => {
-            let identifier = go_identifier(value);
-            if value.as_bytes()[0].is_ascii_digit() {
-                format!("Value{}", identifier.trim_start_matches("Field"))
-            } else {
-                identifier
-            }
-        }
-        serde_json::Value::Bool(true) => "True".into(),
-        serde_json::Value::Bool(false) => "False".into(),
-        serde_json::Value::Number(_) => format!("Value{}", index + 1),
-        _ => format!("Value{}", index + 1),
-    }
 }
 
 fn runtime_names() -> BTreeSet<String> {
@@ -1306,8 +1277,106 @@ mod tests {
                 .any(|line| line.split_whitespace().eq(["ID", "json.Number"]))
         );
         assert!(output.contains("type Choice struct"));
-        assert!(output.contains("Variant1 Optional[string]"));
-        assert!(output.contains("Variant2 Optional[json.Number]"));
+        assert!(
+            output
+                .lines()
+                .any(|line| line.split_whitespace().eq(["String", "Optional[string]"]))
+        );
+        assert!(output.lines().any(|line| {
+            line.split_whitespace()
+                .eq(["Integer", "Optional[json.Number]"])
+        }));
+    }
+
+    #[test]
+    fn union_public_names_are_semantic_and_reorder_stable() {
+        let ir = sample_ir();
+        let mut variants = vec![
+            Shape::Enum {
+                values: vec![serde_json::json!("allow")],
+                open_strings: false,
+            },
+            Shape::String,
+            Shape::Null,
+            Shape::Object {
+                properties: vec![Property {
+                    constructor_default: None,
+                    wire_name: "value".into(),
+                    required: true,
+                    shape: Shape::Any,
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Allowed,
+            },
+        ];
+        let mut arms = None;
+        for _ in 0..2 {
+            let mut generator = Generator::new(&ir);
+            generator
+                .emit_union(
+                    "Choice",
+                    None,
+                    &Shape::Union {
+                        mode: UnionMode::AnyOf,
+                        variants: variants.clone(),
+                        discriminator: None,
+                    },
+                )
+                .unwrap();
+            let current = generator.unions["Choice"]
+                .iter()
+                .cloned()
+                .collect::<BTreeMap<_, _>>();
+            if let Some(previous) = &arms {
+                assert_eq!(previous, &current);
+            }
+            arms = Some(current);
+            let source = generator.declarations.join("\n");
+            assert!(!source.contains("Variant1"));
+            assert!(source.contains("type ChoiceValueObject struct"));
+            assert!(source.contains("Unknown"));
+            assert!(source.contains("decoded.Unknown = append(json.RawMessage(nil), data...)"));
+            variants.reverse();
+        }
+    }
+
+    #[test]
+    fn numeric_constants_follow_values_not_enum_positions() {
+        let mut ir = sample_ir();
+        let mut values = vec![
+            serde_json::json!(-7),
+            serde_json::json!(42),
+            serde_json::json!(1.5),
+        ];
+        let mut constants = None;
+        for _ in 0..2 {
+            ir.types.push(NamedType {
+                name: "Code".into(),
+                source: "code.json#".into(),
+                shape: Shape::Enum {
+                    values: values.clone(),
+                    open_strings: false,
+                },
+            });
+            let output = emit(&ir).unwrap();
+            let current = output
+                .lines()
+                .filter(|line| line.starts_with("const Code"))
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(current.len(), 3);
+            assert!(
+                !current
+                    .iter()
+                    .any(|line| line.starts_with("const CodeValue1 "))
+            );
+            if let Some(previous) = &constants {
+                assert_eq!(previous, &current);
+            }
+            constants = Some(current);
+            ir.types.pop();
+            values.reverse();
+        }
     }
 
     #[test]

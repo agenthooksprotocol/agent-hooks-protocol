@@ -30,6 +30,7 @@ publish = false
 anyhow = "=1.0.104"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
+sha2 = "0.10.9"
 TOML
 
 cat >"$temporary/emitter/src/main.rs" <<RS
@@ -39,6 +40,8 @@ mod model;
 mod ergonomics;
 #[path = "$repository/tools/sdk-codegen/src/capability_ergonomics.rs"]
 mod capability_ergonomics;
+#[path = "$repository/tools/sdk-codegen/src/langs/naming.rs"]
+mod naming;
 #[path = "$repository/tools/sdk-codegen/src/langs/rust.rs"]
 mod rust;
 

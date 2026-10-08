@@ -155,14 +155,12 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             if values.iter().all(Value::is_string) {
                 writeln!(body, "class {name}(StrEnum):")?;
                 let mut seen = HashSet::new();
-                for value in values {
-                    let key = allocate_identifier(
-                        &snake_case(value.as_str().unwrap())
-                            .replace(['.', '-'], "_")
-                            .to_uppercase(),
-                        "VALUE",
-                        &mut seen,
-                    );
+                for (value, label) in values
+                    .iter()
+                    .zip(super::super::naming::literal_names(values))
+                {
+                    let key =
+                        allocate_identifier(&snake_case(&label).to_uppercase(), "VALUE", &mut seen);
                     writeln!(
                         body,
                         "    {key} = {}",
@@ -303,63 +301,63 @@ fn collect(name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) {
     shapes.entry(name.into()).or_insert_with(|| shape.clone());
     match shape {
         Shape::Object { properties, .. } => {
-            for p in properties {
-                collect(
-                    &format!("{name}{}", pascal_fragment(&p.wire_name)),
-                    &p.shape,
-                    shapes,
-                );
-            }
+            collect_properties(name, properties.iter(), shapes);
         }
         Shape::Array { items } => collect(&format!("{name}Item"), items, shapes),
         Shape::Union { variants, .. } => {
-            for (index, variant) in variants.iter().enumerate() {
-                let tag = if let Shape::Object { properties, .. } = variant {
-                    let mut label = String::new();
-                    for key in ["type", "operation"] {
-                        if let Some(Property {
-                            shape:
-                                Shape::Literal {
-                                    value: Value::String(value),
-                                },
-                            ..
-                        }) = properties.iter().find(|p| p.wire_name == key)
-                        {
-                            label.push_str(&pascal_fragment(value));
-                        }
-                    }
-                    label
-                } else {
-                    String::new()
-                };
-                collect(
-                    &format!(
-                        "{name}{}",
-                        if tag.is_empty() {
-                            format!("Variant{}", index + 1)
-                        } else {
-                            tag
-                        }
-                    ),
-                    variant,
-                    shapes,
-                );
-            }
-        }
-        Shape::Intersection { variants } => {
-            for variant in variants {
-                if let Shape::Object { properties, .. } = variant {
-                    for p in properties {
-                        collect(
-                            &format!("{name}{}", pascal_fragment(&p.wire_name)),
-                            &p.shape,
-                            shapes,
-                        );
-                    }
+            for (variant, label) in variants
+                .iter()
+                .zip(super::super::naming::union_names(variants))
+            {
+                // Referenced alternatives already have canonical public constructors.
+                // Do not duplicate event boundaries under union-context aliases.
+                if !matches!(variant, Shape::Ref { .. }) {
+                    collect(&format!("{name}{label}"), variant, shapes);
                 }
             }
         }
+        Shape::Intersection { variants } => {
+            collect_properties(
+                name,
+                variants
+                    .iter()
+                    .filter_map(|variant| {
+                        if let Shape::Object { properties, .. } = variant {
+                            Some(properties.iter())
+                        } else {
+                            None
+                        }
+                    })
+                    .flatten(),
+                shapes,
+            );
+        }
         _ => {}
+    }
+}
+
+fn collect_properties<'a>(
+    name: &str,
+    properties: impl Iterator<Item = &'a Property>,
+    shapes: &mut BTreeMap<String, Shape>,
+) {
+    // Resolve sibling spelling collisions before adding models to the global map.
+    // Repeated intersection fields refer to the same wire property.
+    let mut fields = BTreeMap::new();
+    for property in properties {
+        fields
+            .entry(property.wire_name.as_str())
+            .or_insert(property);
+    }
+    let values = fields
+        .keys()
+        .map(|name| Value::String((*name).into()))
+        .collect::<Vec<_>>();
+    for (property, label) in fields
+        .values()
+        .zip(super::super::naming::literal_names(&values))
+    {
+        collect(&format!("{name}{label}"), &property.shape, shapes);
     }
 }
 
@@ -519,7 +517,22 @@ fn ergonomic_modules(
     diagnostics.push_str("\nDiagnosticCode = Code\n");
     files.insert("diagnostics.py".into(), diagnostics);
     let state_name = "InterceptRequestParamsState";
-    let candidate_name = format!("{state_name}CandidateVariant2");
+    let candidate_union = &shapes[&format!("{state_name}Candidate")];
+    let Shape::Union { variants, .. } = candidate_union else {
+        anyhow::bail!("decision state candidate must be a union");
+    };
+    let candidate_name = variants
+        .iter()
+        .zip(super::super::naming::union_names(variants))
+        .find(|(shape, _)| {
+            properties(renderer, shape)
+                .is_some_and(|fields| fields.iter().any(|field| field.wire_name == "value"))
+        })
+        .map(|(shape, label)| match shape {
+            Shape::Ref { name } => name.clone(),
+            _ => format!("{state_name}Candidate{label}"),
+        })
+        .ok_or_else(|| anyhow::anyhow!("decision state candidate has no value object"))?;
     let mut state = format!(
         "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom ._models import {state_name} as State\nfrom ._models import {state_name}Permission as Permission\nfrom ._models import {state_name}Flow as Flow\nfrom ._models import {candidate_name} as Candidate\nfrom ._models import {candidate_name}Provenance as Provenance\n\n_UNSET: Any = object()\n\ndef initial(permission: Permission, *, candidate: Candidate | None = None"
     );

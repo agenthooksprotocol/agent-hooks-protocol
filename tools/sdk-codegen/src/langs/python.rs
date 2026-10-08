@@ -339,13 +339,8 @@ impl Renderer<'_> {
                 self.emit_declarations(items, &format!("{hint}Item"), false, output)?
             }
             Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-                for (index, variant) in variants.iter().enumerate() {
-                    self.emit_declarations(
-                        variant,
-                        &format!("{hint}Variant{index}"),
-                        false,
-                        output,
-                    )?;
+                for (variant, name) in variants.iter().zip(super::naming::union_names(variants)) {
+                    self.emit_declarations(variant, &format!("{hint}{name}"), false, output)?;
                 }
             }
             Shape::Any
@@ -391,8 +386,8 @@ impl Renderer<'_> {
             } => {
                 let mut rendered = variants
                     .iter()
-                    .enumerate()
-                    .map(|(index, variant)| self.render(variant, &format!("{hint}Variant{index}")))
+                    .zip(super::naming::union_names(variants))
+                    .map(|(variant, name)| self.render(variant, &format!("{hint}{name}")))
                     .collect::<Result<Vec<_>>>()?;
                 if discriminator.is_some() {
                     rendered.push("UnknownVariant".into());
@@ -405,11 +400,9 @@ impl Renderer<'_> {
                 } else {
                     let rendered = variants
                         .iter()
-                        .filter(|variant| !matches!(variant, Shape::Any))
-                        .enumerate()
-                        .map(|(index, variant)| {
-                            self.render(variant, &format!("{hint}Variant{index}"))
-                        })
+                        .zip(super::naming::union_names(variants))
+                        .filter(|(variant, _)| !matches!(variant, Shape::Any))
+                        .map(|(variant, name)| self.render(variant, &format!("{hint}{name}")))
                         .collect::<Result<Vec<_>>>()?;
                     if rendered.is_empty() {
                         "JsonValue".into()
@@ -1367,6 +1360,51 @@ mod tests {
         assert!(!source.contains("def parse_a_b("));
         assert!(source.contains("def parse_a_b_2("));
         assert!(source.contains("def parse_a_b_3("));
+    }
+
+    #[test]
+    fn union_model_names_follow_semantics_and_preserve_unknown_fallback() {
+        let ir = sample_ir();
+        let identifiers = IdentifierMap::new(&ir);
+        let renderer = Renderer {
+            ir: &ir,
+            names: &identifiers.types,
+        };
+        let tagged = |tag: &str| Shape::Object {
+            properties: vec![Property {
+                wire_name: "kind".into(),
+                required: true,
+                constructor_default: None,
+                shape: Shape::Literal {
+                    value: Value::String(tag.into()),
+                },
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let variants = vec![tagged("a-b"), tagged("a_b"), tagged("unknown")];
+        let labels = super::super::naming::union_names(&variants);
+        let union = Shape::Union {
+            variants: variants.clone(),
+            discriminator: Some("kind".into()),
+            mode: UnionMode::OneOf,
+        };
+        let mut declarations = String::new();
+        renderer
+            .emit_declarations(&union, "Choice", true, &mut declarations)
+            .unwrap();
+        let annotation = renderer.render(&union, "Choice").unwrap();
+        for label in &labels {
+            assert!(declarations.contains(&format!("_Choice{label}Model")));
+            assert!(annotation.contains(&format!("_Choice{label}Model")));
+        }
+        assert!(annotation.ends_with(", UnknownVariant]"));
+        assert!(!declarations.contains("Variant0"));
+        let mut reversed = variants;
+        reversed.reverse();
+        let mut reversed_labels = super::super::naming::union_names(&reversed);
+        reversed_labels.reverse();
+        assert_eq!(labels, reversed_labels);
     }
 
     #[test]

@@ -306,6 +306,68 @@ mod tests {
     use crate::model::{Ir, NamedType, PublicRoot, Shape};
 
     #[test]
+    fn structural_unions_keep_semantic_names_when_reordered() {
+        use crate::model::UnionMode;
+        let alternatives = vec![
+            Shape::Ref {
+                name: "ToolInputEffect".into(),
+            },
+            Shape::Ref {
+                name: "ResponseEffect".into(),
+            },
+        ];
+        let union = |variants| Shape::Union {
+            mode: UnionMode::OneOf,
+            variants,
+            discriminator: Some("type".into()),
+        };
+        let first = render(&union(alternatives.clone()), 0).unwrap();
+        let reversed = render(&union(alternatives.into_iter().rev().collect()), 0).unwrap();
+        let members = |value: &str| {
+            let mut names = value.split(" | ").map(str::to_owned).collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(members(&first), members(&reversed));
+        assert_eq!(
+            members(&first),
+            members("ToolInputEffect | ResponseEffect | UnknownVariant<\"type\">")
+        );
+        let open = render(
+            &union(vec![
+                Shape::Enum {
+                    values: vec![
+                        serde_json::json!("tool.input"),
+                        serde_json::json!("response"),
+                    ],
+                    open_strings: false,
+                },
+                Shape::String,
+            ]),
+            0,
+        )
+        .unwrap();
+        assert!(open.contains("\"tool.input\" | \"response\" | string"));
+        assert!(!first.contains("Variant1"));
+        let object = Shape::Object {
+            properties: ["a-b", "a_b"]
+                .into_iter()
+                .map(|wire_name| crate::model::Property {
+                    wire_name: wire_name.into(),
+                    required: true,
+                    constructor_default: None,
+                    shape: Shape::String,
+                })
+                .collect(),
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Forbidden,
+        };
+        let output = render(&object, 0).unwrap();
+        assert!(output.contains("\"a-b\": string"));
+        assert!(output.contains("\"a_b\": string"));
+    }
+
+    #[test]
     fn output_is_deterministic_and_open() {
         let ir = Ir {
             schema_revision: "test".into(),

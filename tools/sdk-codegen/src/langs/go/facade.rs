@@ -385,7 +385,15 @@ fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
 
 // Functional declarations allocate fresh wire models for every composition.
 fn capability_composition(g: &Generator<'_>, out: &mut String) -> Result<()> {
-    out.push_str(r#"
+    let effects_field = g.objects["Capabilities"]
+        .iter()
+        .find(|f| f.wire_name == "effects")
+        .unwrap();
+    let item = effects_field.field_type.strip_prefix("[]").unwrap();
+    let arms = &g.unions[item];
+    let (custom, _) = arms.iter().find(|(_, ty)| ty == "string").unwrap();
+    let (known, known_type) = arms.iter().find(|(_, ty)| ty != "string").unwrap();
+    out.push_str(&r#"
 type Mode = ahp.StaticCapabilityManifestEventsItemModesItem
 const (InterceptMode Mode = "intercept"; ObserveMode Mode = "observe")
 type Event struct { Modes []Mode; Capabilities *ahp.Capabilities }
@@ -407,10 +415,10 @@ func Intercept(grants ...Grant) (Event, error) {
 }
 func Observe() Event { return Event{Modes: []Mode{ObserveMode}} }
 func addEffect(v *ahp.Capabilities, name string) {
-    for _, effect := range v.Effects { if effect.Variant2.Present && effect.Variant2.Value == name { return }; if effect.Variant1.Present && string(effect.Variant1.Value) == name { return } }
-    v.Effects = append(v.Effects, ahp.CapabilitiesEffectsItem{Variant1: ahp.Some(ahp.CapabilitiesEffectsItemVariant1(name))})
+    for _, effect := range v.Effects { if effect.$CUSTOM.Present && effect.$CUSTOM.Value == name { return }; if effect.$KNOWN.Present && string(effect.$KNOWN.Value) == name { return } }
+    v.Effects = append(v.Effects, ahp.$ITEM{$KNOWN: ahp.Some(ahp.$KNOWN_TYPE(name))})
 }
-"#);
+"#.replace("$CUSTOM", custom).replace("$KNOWN_TYPE", known_type).replace("$KNOWN", known).replace("$ITEM", item));
     let effects = &g.objects["Capabilities"]
         .iter()
         .find(|f| f.wire_name == "effects")
@@ -560,25 +568,41 @@ fn state_helpers(g: &Generator<'_>, packages: &mut BTreeMap<String, String>) -> 
     packages.insert("permission".into(), body);
     let mut body = String::new();
     constructor(g, &mut body, name, "", fields)?;
-    body.push_str(r#"
+    let candidate_union = &fields
+        .iter()
+        .find(|f| f.wire_name == "candidate")
+        .unwrap()
+        .field_type;
+    let arms = &g.unions[candidate_union];
+    let (null_arm, _) = arms.iter().find(|(_, ty)| ty == "json.RawMessage").unwrap();
+    let (object_arm, object_type) = arms
+        .iter()
+        .find(|(_, ty)| g.objects.contains_key(ty))
+        .unwrap();
+    let provenance_type = &g.objects[object_type]
+        .iter()
+        .find(|f| f.wire_name == "provenance")
+        .unwrap()
+        .field_type;
+    body.push_str(&r#"
 // Initial represents a native decision already made for this occurrence, not authorization.
 func Initial(value permission.Permission, opts ...Option) *ahp.InterceptRequestParamsState {
     v := &ahp.InterceptRequestParamsState{Permission: value, Candidate: NoCandidate()}
     for _, opt := range opts { if opt != nil { opt(v) } }; return v
 }
-func NoCandidate() ahp.InterceptRequestParamsStateCandidate {
-    return ahp.InterceptRequestParamsStateCandidate{Variant1: ahp.Some(json.RawMessage("null"))}
+func NoCandidate() ahp.$CANDIDATE_UNION {
+    return ahp.$CANDIDATE_UNION{$NULL_ARM: ahp.Some(json.RawMessage("null"))}
 }
 // Candidate preserves payload encoding errors instead of silently dropping the value.
-func Candidate[T any](value T, provenance ...ahp.InterceptRequestParamsStateCandidateVariant2Provenance) (ahp.InterceptRequestParamsStateCandidate, error) {
-    if len(provenance) > 1 { return ahp.InterceptRequestParamsStateCandidate{}, fmt.Errorf("candidate accepts at most one provenance") }
-    raw, err := json.Marshal(value); if err != nil { return ahp.InterceptRequestParamsStateCandidate{}, err }
-    candidate := ahp.InterceptRequestParamsStateCandidateVariant2{Value: raw}
+func Candidate[T any](value T, provenance ...ahp.$PROVENANCE_TYPE) (ahp.$CANDIDATE_UNION, error) {
+    if len(provenance) > 1 { return ahp.$CANDIDATE_UNION{}, fmt.Errorf("candidate accepts at most one provenance") }
+    raw, err := json.Marshal(value); if err != nil { return ahp.$CANDIDATE_UNION{}, err }
+    candidate := ahp.$OBJECT_TYPE{Value: raw}
     if len(provenance) == 1 { candidate.Provenance = ahp.Some(provenance[0]) }
-    return ahp.InterceptRequestParamsStateCandidate{Variant2: ahp.Some(candidate)}, nil
+    return ahp.$CANDIDATE_UNION{$OBJECT_ARM: ahp.Some(candidate)}, nil
 }
-func WithCandidate(value ahp.InterceptRequestParamsStateCandidate) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
-"#);
+func WithCandidate(value ahp.$CANDIDATE_UNION) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
+"#.replace("$PROVENANCE_TYPE", provenance_type).replace("$OBJECT_TYPE", object_type).replace("$CANDIDATE_UNION", candidate_union).replace("$NULL_ARM", null_arm).replace("$OBJECT_ARM", object_arm));
     packages.insert("state".into(), body);
     Ok(())
 }
@@ -1290,6 +1314,44 @@ mod tests {
         )
         .unwrap()
     }
+    #[test]
+    fn facade_resolves_semantic_union_names_after_reordering() {
+        fn reverse_unions(shape: &mut Shape) {
+            match shape {
+                Shape::Union { variants, .. } => {
+                    variants.reverse();
+                    for variant in variants {
+                        reverse_unions(variant);
+                    }
+                }
+                Shape::Intersection { variants } => {
+                    for variant in variants {
+                        reverse_unions(variant);
+                    }
+                }
+                Shape::Object { properties, .. } => {
+                    for property in properties {
+                        reverse_unions(&mut property.shape);
+                    }
+                }
+                Shape::Array { items, .. } => reverse_unions(items),
+                _ => {}
+            }
+        }
+        let mut ir = draft();
+        let before = emit(&ir).unwrap();
+        for named in &mut ir.types {
+            reverse_unions(&mut named.shape);
+        }
+        let after = emit(&ir).unwrap();
+        for path in ["state/generated.go", "capability/generated.go"] {
+            assert_eq!(before[path], after[path]);
+            assert!(!after[path].contains("Variant1"));
+            assert!(!after[path].contains("Variant2"));
+            assert!(!after[path].contains('$'));
+        }
+    }
+
     #[test]
     fn accepted_ergonomics_use_shared_fields_slots_and_codes() {
         let ir = draft();

@@ -230,7 +230,12 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
                     .1;
                 let candidate_obj = &context.ergonomic_arms[candidate_ty]
                     .iter()
-                    .find(|(n, _)| n == "Object")
+                    .find(|(_, ty)| {
+                        context
+                            .ergonomic_fields
+                            .get(ty)
+                            .is_some_and(|fields| fields.iter().any(|(name, _)| name == "value"))
+                    })
                     .unwrap()
                     .1;
                 let provenance_ty = &context.ergonomic_fields[candidate_obj]
@@ -257,7 +262,10 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
     if let Some(effect) = ir.types.iter().find(|t| t.name == "Effect") {
         if let Shape::Union { variants, .. } = &effect.shape {
             out.push_str("\npub mod effects {\nuse super::*;\n");
-            for variant in variants {
+            for (variant, label) in variants
+                .iter()
+                .zip(super::super::naming::union_names(variants))
+            {
                 let Some(properties) =
                     collect_object_properties(variant, &context.named_shapes, &mut BTreeSet::new())
                 else {
@@ -281,7 +289,6 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
                     tag,
                     op.map(|s| format!("_{s}")).unwrap_or_default()
                 ));
-                let label = type_identifier(&context.union_label(variant).unwrap());
                 let arm = &context.ergonomic_arms["Effect"]
                     .iter()
                     .find(|(n, _)| n == &label)
