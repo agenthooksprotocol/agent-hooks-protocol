@@ -73,6 +73,11 @@ pub fn emit(ir: &Ir) -> Result<String> {
     )?;
     writeln!(
         output,
+        "var unionDescriptors = loadSchemaDescriptors({})\n",
+        go_string(&serde_json::to_string(&generator.union_descriptors)?)?
+    )?;
+    writeln!(
+        output,
         "var schemaDescriptors = loadSchemaDescriptors({})\n",
         go_string(&descriptor_json)?
     )?;
@@ -124,6 +129,7 @@ struct Generator<'a> {
     unions: BTreeMap<String, Vec<(String, String)>>,
     nullables: BTreeMap<String, String>,
     decoder_shapes: BTreeMap<String, Shape>,
+    union_descriptors: BTreeMap<String, Shape>,
 }
 
 impl<'a> Generator<'a> {
@@ -160,6 +166,7 @@ impl<'a> Generator<'a> {
             unions: BTreeMap::new(),
             nullables: BTreeMap::new(),
             decoder_shapes: BTreeMap::new(),
+            union_descriptors: BTreeMap::new(),
         }
     }
 
@@ -173,6 +180,9 @@ impl<'a> Generator<'a> {
     fn emit_named(&mut self, name: &str, source: &str, shape: &Shape) -> Result<()> {
         if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
             self.emit_struct(name, Some(source), properties, shape)?;
+        } else if let Some(projected) = self.intersection_union(shape) {
+            self.emit_union(name, Some(source), &projected)?;
+            self.decoder_shapes.insert(name.to_owned(), shape.clone());
         } else if matches!(shape, Shape::Literal { .. } | Shape::Enum { .. }) {
             self.emit_value_type(name, Some(source), shape)?;
         } else if let Shape::Union { .. } = shape {
@@ -213,8 +223,14 @@ impl<'a> Generator<'a> {
             Shape::Object { properties, .. } => Some(properties.clone()),
             Shape::Intersection { variants } => {
                 let mut merged = Vec::<Property>::new();
+                if variants.iter().all(|variant| matches!(variant, Shape::Any)) {
+                    return None;
+                }
                 for variant in variants {
-                    for property in self.structural_properties(variant, visiting)? {
+                    if matches!(variant, Shape::Any) {
+                        continue;
+                    }
+                    for property in self.intersection_properties(variant, visiting)? {
                         if let Some(existing) = merged
                             .iter_mut()
                             .find(|existing| existing.wire_name == property.wire_name)
@@ -249,6 +265,126 @@ impl<'a> Generator<'a> {
             }
             _ => None,
         }
+    }
+
+    /// Project predicate unions only inside intersections. A property absent in
+    /// one branch is unconstrained there (unknown fields are retained), so it
+    /// cannot narrow the enclosing object's property type or requiredness.
+    /// This is a representation only: emit_struct keeps the original descriptor.
+    fn intersection_properties(
+        &self,
+        shape: &Shape,
+        visiting: &mut BTreeSet<String>,
+    ) -> Option<Vec<Property>> {
+        let Shape::Union { variants, .. } = shape else {
+            return self.structural_properties(shape, visiting);
+        };
+        if variants.is_empty() {
+            return None;
+        }
+        let branches = variants
+            .iter()
+            .map(|variant| self.intersection_properties(variant, visiting))
+            .collect::<Option<Vec<_>>>()?;
+        let names = branches
+            .iter()
+            .flatten()
+            .map(|p| p.wire_name.clone())
+            .collect::<BTreeSet<_>>();
+        Some(
+            names
+                .into_iter()
+                .map(|wire_name| {
+                    let members = branches
+                        .iter()
+                        .map(|branch| branch.iter().find(|p| p.wire_name == wire_name))
+                        .collect::<Vec<_>>();
+                    let required = members.iter().all(|p| p.is_some_and(|p| p.required));
+                    let mut shapes = members
+                        .iter()
+                        .map(|p| p.map_or(Shape::Any, |p| p.shape.clone()))
+                        .collect::<Vec<_>>();
+                    shapes.sort_by_cached_key(|s| {
+                        serde_json::to_string(s).expect("shape serializes")
+                    });
+                    shapes.dedup_by(|a, b| {
+                        serde_json::to_value(a).unwrap() == serde_json::to_value(b).unwrap()
+                    });
+                    let shape = if shapes.iter().any(|s| matches!(s, Shape::Any)) {
+                        Shape::Any
+                    } else if shapes.len() == 1 {
+                        shapes.pop().expect("one property shape")
+                    } else {
+                        Shape::Union {
+                            mode: crate::model::UnionMode::AnyOf,
+                            variants: shapes,
+                            discriminator: None,
+                        }
+                    };
+                    Property {
+                        wire_name,
+                        required,
+                        shape,
+                        constructor_default: None,
+                    }
+                })
+                .collect(),
+        )
+    }
+
+    /// Distribute an object intersection over a referenced object union for
+    /// its public representation (for example ContentItem plus role). The
+    /// original descriptor still owns acceptance; this union only selects fields.
+    fn intersection_union(&self, shape: &Shape) -> Option<Shape> {
+        let Shape::Intersection { variants } = shape else {
+            return None;
+        };
+        for (index, variant) in variants.iter().enumerate() {
+            let mut resolved = variant;
+            let mut visiting = BTreeSet::new();
+            while let Shape::Ref { name } = resolved {
+                if !visiting.insert(name) {
+                    return None;
+                }
+                resolved = &self.ir.types.iter().find(|t| t.name == *name)?.shape;
+            }
+            if let Shape::Union {
+                mode,
+                variants: arms,
+                discriminator,
+            } = resolved
+            {
+                if arms.is_empty()
+                    || !arms.iter().all(|arm| {
+                        self.structural_properties(arm, &mut BTreeSet::new())
+                            .is_some()
+                    })
+                {
+                    continue;
+                }
+                return Some(Shape::Union {
+                    mode: *mode,
+                    discriminator: discriminator.clone(),
+                    variants: arms
+                        .iter()
+                        .map(|arm| Shape::Intersection {
+                            variants: variants
+                                .iter()
+                                .enumerate()
+                                .map(|(i, other)| {
+                                    if i == index {
+                                        arm.clone()
+                                    } else {
+                                        other.clone()
+                                    }
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                });
+            }
+        }
+        None
     }
 
     fn emit_struct(
@@ -496,6 +632,8 @@ impl<'a> Generator<'a> {
             fields.push((field_name, field_type));
         }
         self.unions.insert(name.to_owned(), fields.clone());
+        self.union_descriptors
+            .insert(name.to_owned(), shape.clone());
         self.decoder_shapes.insert(name.to_owned(), shape.clone());
         let mut declaration = String::new();
         match source {
@@ -531,7 +669,7 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "\tschema := modelDescriptors[{}]",
+            "\tschema := unionDescriptors[{}]",
             go_string(name)?
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
@@ -611,10 +749,27 @@ impl<'a> Generator<'a> {
                 self.emit_union(&name, None, shape)?;
                 name
             }
-            Shape::Intersection { .. } => {
+            Shape::Intersection { variants } => {
                 if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
                     let name = self.allocate_type_name(hint);
                     self.emit_struct(&name, None, properties, shape)?;
+                    name
+                } else if let Some(projected) = self.intersection_union(shape) {
+                    let name = self.allocate_type_name(hint);
+                    self.emit_union(&name, None, &projected)?;
+                    self.decoder_shapes.insert(name.clone(), shape.clone());
+                    name
+                } else if let Some(representation) = variants
+                    .iter()
+                    .find(|variant| !matches!(variant, Shape::Any | Shape::Never | Shape::Null))
+                {
+                    // Every valid intersection value satisfies each conjunct. Use
+                    // one typed representation but validate the ORIGINAL descriptor,
+                    // including the other conjuncts, on direct and root decoding.
+                    // Value conversion avoids invalid Go receiver types over pointers.
+                    let rendered = self.render_type(representation, &format!("{hint}Value"))?;
+                    let name = self.allocate_type_name(hint);
+                    self.emit_checked_type(&name, rendered.trim_start_matches('*'), shape)?;
                     name
                 } else {
                     "json.RawMessage".into()

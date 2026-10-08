@@ -34,7 +34,49 @@ fn exported_decoders_share_structural_validation() {
         variants: vec![Shape::Null, shape],
         discriminator: None,
     };
+    let projected = Shape::Intersection {
+        variants: vec![
+            Shape::Object {
+                properties: vec![
+                    Property {
+                        constructor_default: None,
+                        wire_name: "url".into(),
+                        required: false,
+                        shape: Shape::String,
+                    },
+                    Property {
+                        constructor_default: None,
+                        wire_name: "gaps".into(),
+                        required: false,
+                        shape: Shape::Array {
+                            items: Box::new(Shape::String),
+                        },
+                    },
+                ],
+                forbidden_property_sets: vec![vec!["evidenceA".into(), "evidenceB".into()]],
+                additional: AdditionalProperties::Allowed,
+            },
+            Shape::Union {
+                mode: UnionMode::OneOf,
+                discriminator: None,
+                variants: ["url", "gaps"]
+                    .into_iter()
+                    .map(|wire_name| Shape::Object {
+                        properties: vec![Property {
+                            constructor_default: None,
+                            wire_name: wire_name.into(),
+                            required: true,
+                            shape: Shape::Any,
+                        }],
+                        forbidden_property_sets: vec![],
+                        additional: AdditionalProperties::Allowed,
+                    })
+                    .collect(),
+            },
+        ],
+    };
     let shapes = vec![
+        ("Projected", projected),
         ("Left", object("a")),
         ("Right", object("b")),
         (
@@ -142,6 +184,7 @@ fn exported_decoders_share_structural_validation() {
     std::fs::write(dir.join("generated.go"), emit(&ir).unwrap()).unwrap();
     std::fs::write(dir.join("decode_test.go"), r#"package ahp_test
 import (
+ "bytes"
  "encoding/json"
  "testing"
  ahp "decodetest"
@@ -158,6 +201,13 @@ func agreement[T any](t *testing.T, parse func([]byte) ahp.ParseResult[T], accep
  }
 }
 func TestStructuralAgreement(t *testing.T) {
+ agreement(t,ahp.ParseProjected,[]string{`{"url":"https://example.test","extension":true}`,`{"gaps":["url"]}`},[]string{`{}`,`null`,`{"url":1}`,`{"url":"x","gaps":["url"]}`,`{"url":"x","evidenceA":true,"evidenceB":true}`})
+ projected := ahp.ParseProjected([]byte(`{"url":"https://example.test","extension":true}`))
+ if !projected.OK || !projected.Value.URL.Present || projected.Value.URL.Value != "https://example.test" || projected.Value.Gaps.Present { t.Fatalf("typed projection lost fields: %+v", projected) }
+ raw, err := json.Marshal(projected.Value)
+ if err != nil || !bytes.Contains(raw, []byte(`"extension":true`)) { t.Fatalf("extension lost: %s %v", raw, err) }
+ constructed := ahp.Projected{Gaps: ahp.Some([]string{"url"})}
+ if constructed.Gaps.Value[0] != "url" { t.Fatal(constructed) }
  agreement(t,ahp.ParseLeft,[]string{`{"kind":"same","a":1,"extension":true}`},[]string{`{}`,`null`,`{"kind":"wrong","a":1}`,`{"kind":"same","a":1.5}`,`{"kind":"same","a":1,"forbiddenA":null,"forbiddenB":false}`})
  agreement(t,ahp.ParseTaggedOne,[]string{`{"kind":"same","a":1}`,`{"kind":"same","b":2}`,`{"kind":"future"}`},[]string{`{"kind":"same"}`,`{"kind":"same","a":1,"b":2}`,`{}`,`null`})
  agreement(t,ahp.ParseTaggedAny,[]string{`{"kind":"same","b":2}`,`{"kind":"same","a":1,"b":2}`},[]string{`{"kind":"same"}`})
@@ -198,4 +248,73 @@ func TestStructuralAgreement(t *testing.T) {
         String::from_utf8_lossy(&result.stderr)
     );
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn schema_compositions_keep_original_descriptors_and_typed_fields() {
+    let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let ir = crate::compiler::compile(&repository, "draft").unwrap();
+    let mut generator = Generator::new(&ir);
+    for named in &ir.types {
+        generator
+            .emit_named(
+                &generator.named_name(&named.name),
+                &named.source,
+                &named.shape,
+            )
+            .unwrap();
+    }
+    for named in &ir.types {
+        if let Some(descriptor) = generator
+            .decoder_shapes
+            .get(&generator.named_name(&named.name))
+        {
+            assert_eq!(
+                serde_json::to_value(descriptor).unwrap(),
+                serde_json::to_value(&named.shape).unwrap(),
+                "{} validation descriptor changed",
+                named.name
+            );
+        }
+    }
+    for name in [
+        "ExecutionEventContextCompactBefore",
+        "CapabilitiesModifyContent",
+        "AuthenticationBearer",
+    ] {
+        assert!(
+            generator.objects.contains_key(name),
+            "{name} is not an object model"
+        );
+    }
+    let visible = generator.unions.get("ModelVisibleItem").unwrap();
+    for (_, arm_type) in visible {
+        let fields = &generator.objects[arm_type];
+        assert!(fields.iter().any(|field| field.wire_name == "role"
+            && field.required
+            && field.field_type == "string"));
+    }
+    assert!(matches!(
+        generator.decoder_shapes["ModelVisibleItem"],
+        Shape::Intersection { .. }
+    ));
+    assert!(matches!(
+        generator.union_descriptors["ModelVisibleItem"],
+        Shape::Union { .. }
+    ));
+    // Raw storage is reserved for true unconstrained JSON, null/never shapes,
+    // explicit unknown fields/variants, and arrays of such values. No composed
+    // schema property in the current draft may silently fall back to raw JSON.
+    for (name, fields) in &generator.objects {
+        for field in fields {
+            if field.field_type == "json.RawMessage" {
+                assert!(
+                    matches!(field.shape, Shape::Any | Shape::Null | Shape::Never),
+                    "structured raw field {name}.{}: {:?}",
+                    field.wire_name,
+                    field.shape
+                );
+            }
+        }
+    }
 }

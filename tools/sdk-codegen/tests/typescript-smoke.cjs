@@ -114,6 +114,34 @@ for (const type of ["bearer", "unsupported"]) {
   }
 }
 
+// All structured transports retain typed location and evidence fields. Parsing
+// still enforces the known transport's composed location predicates.
+for (const connection of [
+  { transport: "http", url: "https://mcp.example", gaps: [{ path: "headers", reason: "redacted" }] },
+  { transport: "sse", url: "https://mcp.example/events", gaps: [{ path: "headers", reason: "redacted" }] },
+  { transport: "stdio", command: "mcp", args: ["--local"], cwd: "/srv", gaps: [{ path: "env", reason: "redacted" }] },
+  { transport: "unix", addressForm: "path", address: "/tmp/mcp.sock", gaps: [{ path: "credentials", reason: "redacted" }] },
+]) {
+  const event = fixture("fixtures/draft/http/mcp-http-gap.valid.json").params.event;
+  event.tool.mcp.connection = connection;
+  const parsed = sdk.parseToolBeforeEvent(event);
+  if (!parsed.ok) throw new Error(`structured transport rejected: ${JSON.stringify(parsed.diagnostics)}`);
+  const decoded = parsed.value.tool.mcp.connection;
+  if (decoded.transport !== connection.transport || decoded.gaps[0].reason !== "redacted") {
+    throw new Error("typed transport fields were not preserved");
+  }
+  require("node:assert/strict").deepEqual(JSON.parse(sdk.encodeToolBeforeEvent(parsed.value)).tool.mcp.connection, connection);
+}
+for (const connection of [
+  { transport: "http" },
+  { transport: "sse", gaps: [{ path: "url", reason: 42 }] },
+  { transport: "stdio", command: "mcp", args: [] },
+]) {
+  const event = fixture("fixtures/draft/http/mcp-http-gap.valid.json").params.event;
+  event.tool.mcp.connection = connection;
+  if (sdk.parseToolBeforeEvent(event).ok) throw new Error("composed transport predicate was lost");
+}
+
 console.log("generated TypeScript codec smoke tests passed");
 // Exercise the semantic surface through the same CI consumer entrypoint.
 require("./typescript-ergonomics-smoke.cjs");

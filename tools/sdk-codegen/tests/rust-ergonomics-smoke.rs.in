@@ -61,3 +61,54 @@ fn known_event_type_preserves_canonical_selector() {
     assert_eq!(event.as_str(), "tool.before");
     assert_eq!(serde_json::to_value(event).unwrap(), serde_json::json!("tool.before"));
 }
+
+#[test]
+fn connection_compositions_expose_typed_fields_and_gaps() {
+    use agenthooksprotocol::*;
+    let http = ExecutionEventMcpConnectionHttp::new().with_url("https://example.test")
+        .with_gaps(vec![ExecutionEventMcpConnectionHttpGapsItem::new("url", "redacted")]);
+    assert!(matches!(http.url, Presence::Present(ref url) if url == "https://example.test"));
+    assert!(matches!(http.gaps, Presence::Present(ref gaps) if gaps[0].reason == "redacted"));
+    let sse = ExecutionEventMcpConnectionSse::new().with_url("https://example.test/events");
+    let stdio = ExecutionEventMcpConnectionStdio::new().with_command("server");
+    let custom = ExecutionEventMcpConnectionCustomTransport::new("socket")
+        .with_address("/tmp/server.sock").with_address_form("path");
+    let custom_wire = serde_json::to_value(&custom).unwrap();
+    let custom_read: ExecutionEventMcpConnectionCustomTransport = serde_json::from_value(custom_wire.clone()).unwrap();
+    assert_eq!(custom_read.transport, "socket");
+    // Preserve existing nonliteral-discriminator extension behavior; callers
+    // can also construct/read the known custom transport model explicitly.
+    let extension: ExecutionEventMcpConnection = serde_json::from_value(custom_wire.clone()).unwrap();
+    assert!(matches!(extension, ExecutionEventMcpConnection::Unknown(ref raw) if raw == &custom_wire));
+    assert_eq!(custom.transport, "socket");
+    assert!(matches!(custom.address, Presence::Present(ref address) if address == "/tmp/server.sock"));
+    for connection in [ExecutionEventMcpConnection::Http(http), ExecutionEventMcpConnection::Sse(sse),
+        ExecutionEventMcpConnection::Stdio(stdio), ExecutionEventMcpConnection::CustomTransport(custom)] {
+        let value = serde_json::to_value(connection).unwrap();
+        assert!(value["transport"].is_string());
+    }
+    let value = json!({"transport":"http", "url":"https://example.test", "future":{"keep":true},
+        "gaps":[{"path":"url", "reason":"redacted", "future":7}]});
+    let typed: ExecutionEventMcpConnectionHttp = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(typed).unwrap(), value);
+}
+
+#[test]
+fn nonobject_intersections_and_distributed_content_stay_typed() {
+    use agenthooksprotocol::*;
+    let modify = CapabilitiesModifyContent::new(true, false);
+    assert!(modify.merge);
+    assert!(!modify.replace);
+    let effects = ConfigChangeBeforeCapabilitiesEffects::new(vec![ConfigChangeBeforeCapabilitiesEffectsItem::Deny]);
+    assert_eq!(serde_json::to_value(effects).unwrap(), json!(["deny"]));
+    let flow = ModelRequestBeforeCapabilitiesFlowOperations::new(vec![ModelRequestBeforeCapabilitiesFlowOperationsItem::Continue]);
+    assert_eq!(serde_json::to_value(flow).unwrap(), json!(["continue"]));
+    let provenance = ExecutionEventAttemptusageProvenance::Provider;
+    assert_eq!(serde_json::to_value(provenance).unwrap(), json!("provider"));
+    let item = ModelVisibleItem::Omit(ModelVisibleItemOmit::new("i", "text", "text/plain", "user"));
+    assert!(matches!(&item, ModelVisibleItem::Omit(value) if value.role == "user" && value.id == "i"));
+    let mut value = serde_json::to_value(item).unwrap();
+    value["future"] = json!({"keep":true});
+    let parsed: ModelVisibleItem = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(parsed).unwrap(), value);
+}

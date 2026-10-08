@@ -45,6 +45,7 @@ jobs:
           python-version: "3.11"
       - name: Test generated Python
         run: |
+          python3 -m pip install mypy==1.20.2
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
             generate --revision draft --language python \
             --output "$RUNNER_TEMP/ahp_generated.py"
@@ -56,7 +57,7 @@ jobs:
             generate --revision draft --language python-facade \
             --output "$RUNNER_TEMP/ahp_python_facade"
           python3 tools/sdk-codegen/tests/python-facade-smoke.py \
-            "$RUNNER_TEMP/ahp_python_facade"
+            "$RUNNER_TEMP/ahp_python_facade" --typing
       - uses: actions/setup-go@v6
         with:
           go-version: "1.27.x"

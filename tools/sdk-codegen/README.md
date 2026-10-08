@@ -356,3 +356,43 @@ Named primitive aliases become defined types to attach decoders (for example,
 of pointers so null cannot bypass decoding. Nullable aliases retain their generic
 target types. Explicit caller-owned pointers still follow Go null-pointer semantics. The Go facade converts its string backend-ID argument
 without changing the convenience constructor signature.
+
+### Typed composition payloads
+
+Composition is a validation rule, not a reason to erase a model's fields. Object
+intersections project their declared fields into typed public models, including
+location/evidence predicates such as “url or gaps” and “command, args, cwd or
+gaps.” Predicate alternatives affect presence requirements; they do not replace
+the sibling declaration of a gap array with arbitrary JSON. Properties required
+only by some alternatives remain optional in the projected model. The original
+schema descriptor—not the projection—checks the alternatives and intersections
+at each language's existing validation boundary.
+
+MCP HTTP, SSE, stdio, and custom-transport payloads expose typed location fields
+and gap records. Construction and field access do not require maps, raw JSON, or
+serialization. Unknown object members and unknown transport variants retain the
+existing forward-compatible behavior. TypeScript already represents these
+constraints with native intersections/unions; its consumer probes check the
+known branches separately from the intentionally open unknown-variant arm.
+
+Actual application-owned JSON remains JSON: native event payloads, tool inputs
+and outputs, candidate values, extension values, and genuinely unconstrained
+schema fields are not assigned invented protocol models. Public model typing is
+not a replacement for canonical validators or caller-context checks. In
+particular, the generated structural IR still omits canonical constraints such
+as string patterns, numeric bounds, and some conditional keywords.
+
+This is a source-level API migration: former Rust JSON newtypes become structs,
+arrays, scalar models, or semantic enums; Go raw composition arms become typed
+models; Python facade parameters now name their generated nested models. Build
+those models instead of supplying raw JSON where a schema describes the fields.
+`ModelVisibleItem` exposes composed content variants with a typed required role.
+
+Python facade objects remain mappings and now also provide typed read-only
+attributes. An optional attribute returns `None` when absent; mapping membership
+continues to distinguish absence from an explicit null. Accessors colliding with
+dictionary methods use a trailing underscore (`items_`), leaving `dict.items()`
+usable. Wire parsers still return their lossless mapping/TypedDict API, not
+hydrated facade instances. Attribute access is available on constructed facade
+objects. Type annotations do not replace runtime parsing or validate arbitrary
+manual mapping mutations.

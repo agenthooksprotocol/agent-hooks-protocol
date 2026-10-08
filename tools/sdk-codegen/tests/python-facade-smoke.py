@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Runtime contract checks for all schema-generated Python facade artifacts."""
+"""Runtime contract checks for all schema-generated Python facade artifacts.
+
+Pass --typing to run actual generated consumer checks with mypy on PATH.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -11,6 +14,9 @@ import re
 from pathlib import Path
 import sys
 import types
+import typing
+import subprocess
+import tempfile
 
 
 def audit_public_names(directory: Path) -> None:
@@ -60,6 +66,131 @@ def audit_public_names(directory: Path) -> None:
     assert count > 2000, count
 
 
+def check_structured_consumers(directory: Path, models, wire) -> None:
+    """Exercise actual emitted constructors/accessors and unchanged wire boundaries."""
+    for name in models.__all__:
+        constructor = getattr(models, name)
+        if isinstance(constructor, type) and issubclass(constructor, dict):
+            # An annotation pointing to an undeclared inline model is not typed.
+            typing.get_type_hints(constructor.__init__)
+            for member_name, member in vars(constructor).items():
+                if isinstance(member, property) and member_name != "content_sources":
+                    typing.get_type_hints(member.fget)
+
+    for suffix, tag, facts in [
+        ("Http", "http", {"url": "https://example.test/mcp"}),
+        ("Sse", "sse", {"url": "https://example.test/sse"}),
+        ("Stdio", "stdio", {"command": "mcp", "args": ["--stdio"], "cwd": "/tmp"}),
+        ("CustomTransport", "vendor.pipe", {"address": "pipe", "address_form": "vendor.pipe"}),
+    ]:
+        connection_type = getattr(models, "ExecutionEventMcpConnection" + suffix)
+        gap_type = getattr(models, "ExecutionEventMcpConnection" + suffix + "GapsItem")
+        gap = gap_type(path="url", reason="unavailable")
+        connection = connection_type(transport=tag, gaps=[gap], **facts)
+        assert connection.gaps[0].reason == "unavailable"
+        assert connection.gaps[0].path == "url"
+        assert connection.transport == tag
+        assert connection_type(transport=tag).gaps is None
+        assert callable(connection.items)  # Mapping API remains available.
+        mcp = models.ExecutionEventMcp(
+            connection=connection, provenance="runtime",
+            server=models.ExecutionEventMcpServer(id="server"), tool_name="read",
+        )
+        event = models.ToolBeforeEvent(
+            id="event", source="test", time="2026-01-01T00:00:00Z", path="native",
+            call=models.ToolBeforeEventCall(id="call"),
+            tool=models.ExecutionEventTool(name="read", origin="mcp", input={}, mcp=mcp),
+        )
+        result = wire.parse_tool_before_event(event)
+        assert result["ok"], result["diagnostics"]
+        assert result["value"]["tool"]["mcp"]["connection"] == connection
+        if tag != "vendor.pipe":
+            # Location/evidence alternatives remain optional at construction,
+            # and the established parser still rejects the invalid combination.
+            event["tool"]["mcp"]["connection"] = connection_type()
+            assert not wire.parse_tool_before_event(event)["ok"]
+            event["tool"]["mcp"]["connection"] = connection_type(gaps=[{"path": 7, "reason": False}])
+            assert not wire.parse_tool_before_event(event)["ok"]
+        else:
+            # Custom transport remains the existing unknown-variant extension
+            # path; adding types must not silently tighten that boundary.
+            assert any(d["code"] == "unknown_variant" for d in result["diagnostics"])
+
+    visible = models.ModelVisibleItemMetadata(
+        id="item", kind="text", media_type="text/plain", role="user", future="preserved",
+    )
+    compact = models.ExecutionEventContextCompactBefore(
+        id="event", source="test", time="2026-01-01T00:00:00Z", trigger="auto", items=[visible],
+    )
+    assert compact.items_[0].role == "user"
+    assert wire.parse_execution_event(compact)["ok"]
+    assert wire.parse_execution_event(compact)["value"]["items"][0]["future"] == "preserved"
+    del visible["role"]
+    assert not wire.parse_execution_event(compact)["ok"]
+    visible["role"] = "user"
+    visible["selection"] = "body"  # body selection requires body OR gap evidence.
+    assert not wire.parse_execution_event(compact)["ok"]
+    visible["gap"] = {"reason": "unavailable"}
+    assert wire.parse_execution_event(compact)["ok"]
+    visible["body"] = {"ref": "urn:test:content", "sha256": "a" * 64, "size": 0}
+    assert not wire.parse_execution_event(compact)["ok"]  # mutually exclusive evidence
+    assert typing.get_type_hints(models.ExecutionEventTool.__init__)["input"] == dict[str, typing.Any]
+
+    assert callable(models.SessionStartEvent.items)
+    assert isinstance(models.SessionStartEvent.items_, property)
+
+    if "--typing" not in sys.argv:
+        return
+    with tempfile.TemporaryDirectory(prefix="ahp-python-typing-") as temporary:
+        root = Path(temporary)
+        (root / "consumer_sdk").symlink_to(directory, target_is_directory=True)
+        consumer = root / "consumer.py"
+        lines = ["from typing import assert_type", "from consumer_sdk import _models as m"]
+        for suffix in ["Http", "Sse", "Stdio", "CustomTransport"]:
+            owner = "ExecutionEventMcpConnection" + suffix
+            extra = ', transport="vendor.pipe"' if suffix == "CustomTransport" else ""
+            lines.extend([
+                f'g_{suffix} = m.{owner}GapsItem(path="url", reason="unavailable")',
+                # Distinct names avoid mypy reassigning nominal facade classes.
+                f'c_{suffix} = m.{owner}(gaps=[g_{suffix}]{extra})',
+                f'assert c_{suffix}.gaps is not None',
+                f'assert_type(c_{suffix}.gaps[0].reason, str)',
+                f'assert_type(c_{suffix}.gaps[0].path, str)',
+                f'm.{owner}(gaps=[42]{extra})  # type: ignore[list-item]',
+                f'm.{owner}GapsItem(path="url", reason=42)  # type: ignore[arg-type]',
+            ])
+        lines.extend([
+            's = m.ExecutionEventMcpConnectionStdio(command="mcp", args=["--stdio"], cwd="/tmp")',
+            'assert s.args is not None',
+            'assert_type(s.args[0], str)',
+            'assert_type(s.command, str | None)',
+            'assert_type(s.cwd, str | None)',
+            's_bad = m.ExecutionEventMcpConnectionStdio(args=[42])  # type: ignore[list-item]',
+            'h = m.ExecutionEventMcpConnectionHttp(url="https://example.test")',
+            'assert_type(h.url, str | None)',
+            'sse = m.ExecutionEventMcpConnectionSse(url="https://example.test")',
+            'assert_type(sse.url, str | None)',
+            'custom = m.ExecutionEventMcpConnectionCustomTransport(transport="vendor.pipe", address="pipe", address_form="vendor.pipe")',
+            'assert_type(custom.address, str | None)',
+            'assert_type(custom.address_form, str | None)',
+            'assert_type(custom.transport, str)',
+            'visible = m.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain", role="user")',
+            'assert_type(visible.role, str)',
+            'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", time="now", trigger="auto", items=[visible])',
+            'assert_type(compact.items_[0].role, str)',
+            'm.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain", role=42)  # type: ignore[arg-type]',
+            'm.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain")  # type: ignore[call-arg]',
+            'm.ExecutionEventTool(name="read", origin="native", input={"genuinely": ["arbitrary", 42, None]})',
+
+        ])
+        consumer.write_text("\n".join(lines) + "\n")
+        checked = subprocess.run(
+            ["mypy", "--follow-imports=silent", "--ignore-missing-imports", "--warn-unused-ignores", str(consumer)],
+            cwd=root, text=True, capture_output=True,
+        )
+        assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
 def main() -> None:
     directory = Path(sys.argv[1]).resolve()
     audit_public_names(directory)
@@ -68,6 +199,7 @@ def main() -> None:
     sys.modules[package.__name__] = package
     models = importlib.import_module("facade_contract._models")
     wire = importlib.import_module("facade_contract.generated")
+    check_structured_consumers(directory, models, wire)
     event = importlib.import_module("facade_contract.event")
     effect = importlib.import_module("facade_contract.effect")
     capability = importlib.import_module("facade_contract.capability")

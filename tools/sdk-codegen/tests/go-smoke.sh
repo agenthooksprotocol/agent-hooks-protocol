@@ -350,6 +350,59 @@ import (
     ahp "github.com/agenthooksprotocol/go-sdk"
 )
 
+func TestTypedCompositionConsumers(t *testing.T) {
+    http := ahp.ExecutionEventMcpConnection{HTTP: ahp.Some(ahp.ExecutionEventMcpConnectionHTTP{
+        Transport: "http", URL: ahp.Some("https://example.test/mcp"),
+        Gaps: ahp.Some([]ahp.ExecutionEventMcpConnectionHTTPGapsItem{{Path: "url", Reason: "redacted"}}),
+    })}
+    sse := ahp.ExecutionEventMcpConnection{Sse: ahp.Some(ahp.ExecutionEventMcpConnectionSse{
+        Transport: "sse", URL: ahp.Some("https://example.test/sse"),
+        Gaps: ahp.Some([]ahp.ExecutionEventMcpConnectionSseGapsItem{{Path: "url", Reason: "redacted"}}),
+    })}
+    stdio := ahp.ExecutionEventMcpConnection{Stdio: ahp.Some(ahp.ExecutionEventMcpConnectionStdio{
+        Transport: "stdio", Command: ahp.Some("server"), Args: ahp.Some([]string{"--local"}), CWD: ahp.Some("/tmp"),
+        Gaps: ahp.Some([]ahp.ExecutionEventMcpConnectionStdioGapsItem{{Path: "cwd", Reason: "redacted"}}),
+    })}
+    custom := ahp.ExecutionEventMcpConnection{CustomTransport: ahp.Some(ahp.ExecutionEventMcpConnectionCustomTransport{
+        Transport: "socket", Address: ahp.Some("/tmp/mcp.sock"), AddressForm: ahp.Some("unix"),
+        Gaps: ahp.Some([]ahp.ExecutionEventMcpConnectionCustomTransportGapsItem{{Path: "address", Reason: "redacted"}}),
+    })}
+    if http.HTTP.Value.URL.Value != "https://example.test/mcp" || http.HTTP.Value.Gaps.Value[0].Path != "url" ||
+        sse.Sse.Value.Gaps.Value[0].Reason != "redacted" || stdio.Stdio.Value.Args.Value[0] != "--local" ||
+        stdio.Stdio.Value.Gaps.Value[0].Path != "cwd" || custom.CustomTransport.Value.AddressForm.Value != "unix" ||
+        custom.CustomTransport.Value.Gaps.Value[0].Path != "address" { t.Fatal("typed connection fields unavailable") }
+    for _, input := range []string{
+        `{"transport":"http","url":"https://example.test","future":true}`,
+        `{"transport":"sse","gaps":[{"path":"url","reason":"redacted"}]}`,
+        `{"transport":"stdio","command":"server","args":[],"cwd":"/tmp"}`,
+        `{"transport":"socket","address":"/tmp/mcp.sock","addressForm":"unix"}`,
+    } {
+        var decoded ahp.ExecutionEventMcpConnection
+        if err := json.Unmarshal([]byte(input), &decoded); err != nil { t.Fatalf("typed decode %s: %v", input, err) }
+        if !decoded.HTTP.Present && !decoded.Sse.Present && !decoded.Stdio.Present && !decoded.CustomTransport.Present { t.Fatalf("typed branch unavailable: %+v", decoded) }
+    }
+    for _, input := range []string{
+        `{"transport":"http"}`, `{"transport":"sse"}`, `{"transport":"stdio","command":"server"}`,
+        `{"transport":"http","gaps":[{"path":"url"}]}`, `{"transport":"http","url":42}`,
+    } {
+        var decoded ahp.ExecutionEventMcpConnection
+        if err := json.Unmarshal([]byte(input), &decoded); err == nil { t.Fatalf("location/structure predicate lost: %s", input) }
+    }
+    item := ahp.ModelVisibleItem{Metadata: ahp.Some(ahp.ModelVisibleItemMetadata{
+        ID: "item", Kind: "text", MediaType: "text/plain", Selection: "metadata", Role: "user",
+    })}
+    if item.Metadata.Value.Role != "user" || item.Metadata.Value.Kind != "text" { t.Fatal("composed item fields unavailable") }
+    for _, input := range []string{
+        `{"id":"item","kind":"text","mediaType":"text/plain","selection":"metadata"}`,
+        `{"id":"item","kind":"text","mediaType":"text/plain","selection":"body","role":"user"}`,
+    } {
+        var decoded ahp.ModelVisibleItem
+        if err := json.Unmarshal([]byte(input), &decoded); err == nil { t.Fatalf("composed content constraints lost: %s", input) }
+    }
+    var decoded ahp.ModelVisibleItem
+    if err := json.Unmarshal([]byte(`{"id":"item","kind":"text","mediaType":"text/plain","selection":"metadata","role":"user","future":true}`), &decoded); err != nil || decoded.Metadata.Value.Role != "user" || !bytes.Equal(decoded.Metadata.Value.AdditionalProperties["future"], []byte("true")) { t.Fatalf("composed decode: %+v %v", decoded, err) }
+}
+
 func exportedFixture(t *testing.T, path string) []byte {
     t.Helper()
     data, err := os.ReadFile(filepath.Join(os.Getenv("AHP_REPOSITORY"), path))

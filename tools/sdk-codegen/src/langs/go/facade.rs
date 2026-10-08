@@ -329,29 +329,30 @@ fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
                     .map(|p| format!("arg{} bool", go_identifier(&p.wire_name)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let mut expression = vec![go_string("{")?];
-                for (index, property) in properties.iter().enumerate() {
-                    let key = format!(
-                        "{}{}:",
-                        if index == 0 { "" } else { "," },
-                        serde_json::to_string(&property.wire_name)?
+                let fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
+                    anyhow::anyhow!("modification grant {} has no object model", leaf.wire_name)
+                })?;
+                let mut values = Vec::new();
+                for property in &properties {
+                    let field = fields
+                        .iter()
+                        .find(|field| field.wire_name == property.wire_name)
+                        .context("modification property has no generated field")?;
+                    anyhow::ensure!(
+                        field.required && field.field_type == "bool",
+                        "unsupported modification field {}",
+                        field.wire_name
                     );
-                    expression.push(go_string(&key)?);
-                    expression.push(format!(
-                        "strconv.FormatBool(arg{})",
+                    values.push(format!(
+                        "{}: arg{}",
+                        field.field_name,
                         go_identifier(&property.wire_name)
                     ));
                 }
-                expression.push(go_string("}")?);
-                anyhow::ensure!(
-                    leaf.field_type == "json.RawMessage",
-                    "unsupported modification model {}",
-                    leaf.field_type
-                );
                 (
                     format!("With{}{group_name}", leaf.field_name),
                     args,
-                    format!("json.RawMessage({})", expression.join(" + ")),
+                    format!("{}{{{}}}", qualify(&leaf.field_type), values.join(", ")),
                 )
             } else {
                 let grant_fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
@@ -448,11 +449,24 @@ func addEffect(v *ahp.Capabilities, name string) {
     }
     for leaf in &g.objects["CapabilitiesModify"] {
         let name = &leaf.field_name;
-        let flags = capability_declarations(&leaf.shape)
-            .iter()
-            .map(|p| format!("{:?}:false", p.wire_name))
-            .collect::<Vec<_>>()
-            .join(",");
+        let fields = g
+            .objects
+            .get(&leaf.field_type)
+            .context("modification grant has no object model")?;
+        let mut cases = String::new();
+        for field in fields {
+            anyhow::ensure!(
+                field.required && field.field_type == "bool",
+                "unsupported modification field {}",
+                field.wire_name
+            );
+            writeln!(
+                cases,
+                "case {}: grant.{} = true",
+                go_string(&field.wire_name)?,
+                field.field_name
+            )?;
+        }
         writeln!(
             out,
             r#"
@@ -460,18 +474,14 @@ func Modify{name}(operations ...ModifyOperation) Grant {{
     operations = append([]ModifyOperation(nil), operations...)
     return Grant{{apply: func(v *ahp.Capabilities) error {{
         if len(operations) == 0 {{ return fmt.Errorf("modification requires an operation") }}
-        flags := map[string]bool{{{flags}}}
+        grant := v.Modify.Value.{name}.Value
         for _, operation := range operations {{
-            if _, known := flags[string(operation)]; !known {{ return fmt.Errorf("unknown modify operation %q", operation) }}
-            flags[string(operation)] = true
+            switch string(operation) {{
+            {cases}
+            default: return fmt.Errorf("unknown modify operation %q", operation)
+            }}
         }}
-        if v.Modify.Present && v.Modify.Value.{name}.Present {{
-            var previous map[string]bool
-            if err := json.Unmarshal(v.Modify.Value.{name}.Value, &previous); err != nil {{ return err }}
-            for operation, enabled := range previous {{ flags[operation] = flags[operation] || enabled }}
-        }}
-        raw, err := json.Marshal(flags); if err != nil {{ return err }}
-        v.Modify.Present = true; v.Modify.Value.{name} = ahp.Some(json.RawMessage(raw)); addEffect(v, "modify"); return nil
+        v.Modify.Present = true; v.Modify.Value.{name} = ahp.Some(grant); addEffect(v, "modify"); return nil
     }} }}
 }}
 "#
@@ -1429,6 +1439,27 @@ mod tests {
                 additional: crate::model::AdditionalProperties::Forbidden,
             };
         }
+        // Keep the synthetic typed projections aligned with the edited schema.
+        let projected = targets
+            .iter()
+            .map(|target| {
+                let fields = capability_declarations(&target.shape)
+                    .into_iter()
+                    .map(|property| RenderedField {
+                        field_name: go_identifier(&property.wire_name),
+                        wire_name: property.wire_name,
+                        field_type: "bool".into(),
+                        required: property.required,
+                        constructor_default: None,
+                        shape: property.shape,
+                    })
+                    .collect();
+                (target.field_type.clone(), fields)
+            })
+            .collect::<Vec<_>>();
+        for (name, fields) in projected {
+            g.objects.insert(name, fields);
+        }
         let mut source = String::new();
         capability_composition(&g, &mut source).unwrap();
         assert_eq!(
@@ -1459,11 +1490,11 @@ mod tests {
             .split("func ")
             .next()
             .unwrap();
-        assert!(first.contains("flags := map[string]bool{\"patch\":false}"));
+        assert!(first.contains("case \"patch\": grant.Patch = true"));
         assert!(!first.contains("\"splice\""));
-        assert!(second.contains("flags := map[string]bool{\"splice\":false}"));
+        assert!(second.contains("case \"splice\": grant.Splice = true"));
         assert!(!second.contains("\"patch\""));
-        assert!(source.contains("known := flags[string(operation)]"));
+        assert!(source.contains("switch string(operation)"));
     }
 
     #[test]

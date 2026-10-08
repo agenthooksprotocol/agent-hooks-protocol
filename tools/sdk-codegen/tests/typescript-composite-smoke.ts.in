@@ -22,3 +22,29 @@ const nullValueCandidate: Candidate = { value: null };
 const absentCandidate: Candidate = undefined;
 void [http, gap, missingTransport, wrongGaps, gapsWithoutTransport, missingLocation,
   noCandidate, nullValueCandidate, absentCandidate];
+
+// Construct and consume every schema-described transport without casting to a
+// generic JSON object. The custom branch is selected by its address predicate;
+// its open string tag intentionally also accepts future transports.
+type KnownSse = Extract<Connection, { transport: 'sse' }>;
+type KnownStdio = Extract<Connection, { transport: 'stdio' }>;
+type LocatedCustom = Extract<Connection, { address: unknown }>;
+const typedHttp: KnownHttp = { transport: 'http', url: 'https://mcp.example', gaps: [{ path: 'headers', reason: 'redacted' }] };
+const typedSse: KnownSse = { transport: 'sse', url: 'https://mcp.example/events', gaps: [{ path: 'headers', reason: 'redacted' }] };
+const typedStdio: KnownStdio = { transport: 'stdio', command: 'mcp', args: ['--local'], cwd: '/srv', gaps: [{ path: 'env', reason: 'redacted' }] };
+const typedCustom: LocatedCustom = { transport: 'unix', addressForm: 'path', address: '/tmp/mcp.sock', gaps: [{ path: 'credentials', reason: 'redacted' }] };
+const httpUrl: string | undefined = typedHttp.url;
+const sseUrl: string | undefined = typedSse.url;
+const command: string | undefined = typedStdio.command;
+const args: string[] | undefined = typedStdio.args;
+const cwd: string | undefined = typedStdio.cwd;
+const address: string = typedCustom.address;
+const addressForm: string | undefined = typedCustom.addressForm;
+const reason: string | undefined = typedHttp.gaps?.[0]?.reason;
+// @ts-expect-error typed gap members cannot silently become arbitrary JSON.
+const invalidGap: KnownSse = { transport: 'sse', gaps: [{ path: 'url', reason: 42 }] };
+// @ts-expect-error args must retain their declared array element type.
+const invalidArgs: KnownStdio = { transport: 'stdio', command: 'mcp', args: [42], cwd: '/srv' };
+// @ts-expect-error all three stdio location predicates remain applicable.
+const missingCwd: KnownStdio = { transport: 'stdio', command: 'mcp', args: [] };
+void [httpUrl, sseUrl, command, args, cwd, address, addressForm, reason, invalidGap, invalidArgs, missingCwd];

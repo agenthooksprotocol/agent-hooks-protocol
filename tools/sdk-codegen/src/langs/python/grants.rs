@@ -236,7 +236,7 @@ fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) ->
             out,
             ", {}: {}{}",
             snake_case(&field.wire_name),
-            annotation(ir, &field.shape),
+            annotation(ir, &field.shape, &field_hint(name, &field.wire_name)?, "")?,
             if optional { " = _UNSET" } else { "" }
         )?;
     }

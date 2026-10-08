@@ -239,6 +239,17 @@ def main() -> None:
         if sdk.parse_tool_before_event(missing)["ok"]:
             fail(f"required-only {transport} location predicate was lost")
 
+    # Type projections must never replace the original constraint graph.
+    visible_schema = sdk._SCHEMAS["ModelVisibleItem"]
+    assert visible_schema["kind"] == "intersection"
+    assert visible_schema["variants"][0] == {"kind": "ref", "name": "ContentItem"}
+    connection_schema = next(p["shape"] for p in sdk._SCHEMAS["ExecutionEventMcp"]["properties"] if p["wire_name"] == "connection")
+    assert connection_schema["kind"] == "union"
+    assert connection_schema["mode"] == "oneOf"
+    assert connection_schema["discriminator"] == "transport"
+    assert len(connection_schema["variants"]) == 4
+    assert all(arm["kind"] == "intersection" for arm in connection_schema["variants"])
+
     print("generated Python codec smoke tests passed")
 
 

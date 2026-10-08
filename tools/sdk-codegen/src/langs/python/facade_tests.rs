@@ -9,6 +9,22 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn annotation_imports_follow_emitted_signatures() {
+        let mut source = format!(
+            "{HEADER}from __future__ import annotations\ndef value(x: Literal[\"Never\"]) -> str: ...\n"
+        );
+        add_annotation_imports(&mut source);
+        assert!(source.contains("from typing import Literal\n"));
+        assert!(!source.contains("import Never"));
+        assert!(!source.contains("from . import _models"));
+        let mut source = format!("{HEADER}def value(x: _models.Example) -> Never: ...\n");
+        add_annotation_imports(&mut source);
+        assert!(source.contains("from typing import Never\n"));
+        assert!(source.contains("from . import _models\n"));
+        assert!(!source.contains("import Literal"));
+    }
+
+    #[test]
     fn real_elicitation_refs_and_connection_transports_are_readable() {
         let ir = draft();
         let source = emit(&ir).unwrap();
@@ -40,15 +56,76 @@ mod tests {
         }
         for transport in ["Http", "Sse", "Stdio", "CustomTransport"] {
             assert!(models.contains(&format!("class ExecutionEventMcpConnection{transport}(")));
+            assert!(models.contains(&format!(
+                "gaps: list[ExecutionEventMcpConnection{transport}GapsItem]"
+            )));
+            assert!(models.contains(&format!(
+                "def gaps(self) -> list[ExecutionEventMcpConnection{transport}GapsItem] | None:"
+            )));
         }
         assert!(!models.contains("ConnectionObject"));
         assert!(!models.contains("PrimitiveSchemaDefinitionString"));
+        assert!(models.contains("items: list[ModelVisibleItemBody | ModelVisibleItemBodyGap | ModelVisibleItemMetadata | ModelVisibleItemOmit]"));
+        let wire = super::super::emit(&ir).unwrap();
+        assert!(wire.contains("ModelVisibleItem: TypeAlias = Union["));
+        assert!(!wire.contains("ModelVisibleItem: TypeAlias = JsonValue"));
+        // Only a genuinely unconstrained named schema remains fully dynamic.
+        let raw = wire
+            .lines()
+            .filter(|line| line.ends_with(": TypeAlias = JsonValue"))
+            .collect::<Vec<_>>();
+        assert_eq!(raw, vec!["NativeEvent: TypeAlias = JsonValue"]);
+    }
+
+    #[test]
+    fn real_dynamic_fields_are_unconstrained_not_composition_fallbacks() {
+        let ir = draft();
+        let names = HashMap::new();
+        let renderer = Renderer {
+            ir: &ir,
+            names: &names,
+        };
+        let mut shapes = BTreeMap::new();
+        for named in &ir.types {
+            collect(&ir, &named.name, &named.shape, &mut shapes).unwrap();
+        }
+        for (name, shape) in shapes {
+            let Some(fields) = properties(&renderer, &shape) else {
+                continue;
+            };
+            for field in fields {
+                let hint = field_hint(&name, &field.wire_name).unwrap();
+                let rendered = annotation(&ir, &field.shape, &hint, "").unwrap();
+                let original = match &field.shape {
+                    Shape::Ref { name } => {
+                        &ir.types.iter().find(|n| n.name == *name).unwrap().shape
+                    }
+                    shape => shape,
+                };
+                if rendered == "Any" {
+                    assert!(
+                        matches!(original, Shape::Any),
+                        "opaque structured field {hint}: {original:?}"
+                    );
+                }
+                if rendered == "list[Any]" {
+                    assert!(
+                        matches!(original, Shape::Array { items } if matches!(items.as_ref(), Shape::Any)),
+                        "opaque structured array {hint}: {original:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
     fn capability_event_alias_has_an_explicit_stable_owner() {
         let files = emit(&draft()).unwrap();
-        assert!(files["_models/capability.py"].contains("from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"));
+        assert!(
+            files["_models/capability.py"].contains(
+                "from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"
+            )
+        );
         assert!(files["capability.py"].contains("from ._models.capability import Event as Event"));
     }
 
@@ -96,10 +173,10 @@ mod tests {
     #[test]
     fn public_model_collisions_fail_instead_of_overwriting() {
         let mut shapes = BTreeMap::new();
-        collect("Choice", &Shape::String, &mut shapes).unwrap();
-        collect("Choice", &Shape::String, &mut shapes).unwrap();
+        collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
+        collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
         assert!(
-            collect("Choice", &Shape::Number, &mut shapes)
+            collect(&draft(), "Choice", &Shape::Number, &mut shapes)
                 .unwrap_err()
                 .to_string()
                 .contains("public Python model collision")
@@ -114,7 +191,7 @@ mod tests {
         let mut ir = draft();
         let mut shapes = BTreeMap::new();
         for named in &ir.types {
-            collect(&named.name, &named.shape, &mut shapes).unwrap();
+            collect(&ir, &named.name, &named.shape, &mut shapes).unwrap();
         }
         let Shape::Union { variants, .. } = shapes
             .get_mut("InterceptRequestParamsStateCandidate")
@@ -137,7 +214,7 @@ mod tests {
             source: "test".into(),
             shape: object.clone(),
         });
-        collect("CanonicalCandidate", &object, &mut shapes).unwrap();
+        collect(&draft(), "CanonicalCandidate", &object, &mut shapes).unwrap();
         let identifiers = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
@@ -199,7 +276,7 @@ mod tests {
             discriminator: None,
             mode: crate::model::UnionMode::OneOf,
         };
-        assert!(collect("Collision", &union, &mut shapes).is_err());
+        assert!(collect(&draft(), "Collision", &union, &mut shapes).is_err());
         let mut ir = draft();
         ir.types.push(crate::model::NamedType {
             name: "CollisionEnum".into(),
@@ -224,7 +301,8 @@ mod tests {
         for named in &ir.types {
             if properties(&renderer, &named.shape).is_some() {
                 assert!(
-                    files["_models/__init__.py"].contains(&format!("class {}(", named.name)),
+                    files["_models/__init__.py"].contains(&format!("class {}(", named.name))
+                        || files["_models/__init__.py"].contains(&format!("{} = ", named.name)),
                     "{}",
                     named.name
                 );

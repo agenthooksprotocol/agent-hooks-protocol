@@ -102,6 +102,26 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::Union { mode, variants: vec![model::Shape::String, model::Shape::String], discriminator: None },
         });
     }
+    // Typed object projection must not replace the original predicate graph.
+    let property = |name: &str, shape: model::Shape, required: bool| model::Property {
+        constructor_default: None, wire_name: name.into(), required, shape,
+    };
+    let object = |properties| model::Shape::Object {
+        properties, forbidden_property_sets: vec![], additional: model::AdditionalProperties::Allowed,
+    };
+    for (name, mode) in [("EvidenceAny", model::UnionMode::AnyOf), ("EvidenceOne", model::UnionMode::OneOf)] {
+        recursive.roots.push(model::PublicRoot { name: name.into(), schema: format!("{name}.json") });
+        recursive.types.push(model::NamedType {
+            name: name.into(), source: format!("{name}.json#"),
+            shape: model::Shape::Intersection { variants: vec![
+                object(vec![property("evidence", model::Shape::String, false), property("location", model::Shape::String, false)]),
+                model::Shape::Union { mode, discriminator: None, variants: vec![
+                    object(vec![property("evidence", model::Shape::Any, true)]),
+                    object(vec![property("location", model::Shape::Any, true)]),
+                ] },
+            ] },
+        });
+    }
     let generated = rust::emit(&recursive)?;
     assert!(!generated.contains("Duplicate2"));
     std::fs::write(recursive_output, generated)?;
@@ -160,6 +180,22 @@ use serde_json::{Value, json};
 
 #[test]
 fn recursively_referenced_models_compile_and_parse() {
+    let projected = recursive::EvidenceAny::new().with_evidence("proof").with_location("file.rs");
+    assert!(matches!(projected.evidence, recursive::Presence::Present(ref value) if value == "proof"));
+    for (input, any_ok, one_ok) in [
+        (r#"{}"#, false, false),
+        (r#"{"evidence":"proof"}"#, true, true),
+        (r#"{"location":"file.rs"}"#, true, true),
+        (r#"{"evidence":"proof","location":"file.rs"}"#, true, false),
+        (r#"{"evidence":7}"#, false, false),
+    ] {
+        assert_eq!(recursive::parse_evidence_any(input).is_ok(), any_ok, "{input}");
+        assert_eq!(recursive::parse_evidence_one(input).is_ok(), one_ok, "{input}");
+    }
+    let extended = serde_json::json!({"location":"file.rs", "future":{"keep":true}});
+    let parsed = recursive::parse_evidence_any_value(extended.clone());
+    assert_eq!(serde_json::to_value(parsed.value().unwrap()).unwrap(), extended);
+
     assert!(recursive::parse_node("{}").is_ok());
     let any = recursive::parse_duplicate_any(r#""value""#);
     assert!(any.is_ok());

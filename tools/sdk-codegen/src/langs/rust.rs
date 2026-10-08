@@ -427,6 +427,8 @@ impl<'a> EmitContext<'a> {
                     collect_object_properties(shape, &self.named_shapes, &mut visiting)
                 {
                     self.emit_struct(name, &properties)
+                } else if let Some(projected) = project_intersection(shape, &self.named_shapes) {
+                    self.emit_declaration(name, &projected)
                 } else {
                     Ok(format!(
                         "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub JsonValue);\n\nimpl {name} {{ pub fn new(value: impl Into<JsonValue>) -> Self {{ Self(value.into()) }} }}\n\n"
@@ -916,6 +918,77 @@ fn root_function_names(ir: &Ir) -> BTreeMap<String, String> {
     result
 }
 
+/// Select a lossless public representation, never a replacement validator.
+/// A value satisfying allOf satisfies each conjunct. Arrays and scalar values
+/// can therefore use a typed conjunct while retaining all constraints in IR.
+/// Object unions instead distribute allOf so fields from every sibling remain
+/// typed in each branch (not hidden in an extension map).
+fn project_intersection(shape: &Shape, named: &BTreeMap<&str, &Shape>) -> Option<Shape> {
+    fn expand(
+        shape: &Shape,
+        named: &BTreeMap<&str, &Shape>,
+        visiting: &mut BTreeSet<String>,
+        out: &mut Vec<Shape>,
+    ) {
+        match shape {
+            Shape::Ref { name } if visiting.insert(name.clone()) => {
+                if let Some(target) = named.get(name.as_str()) {
+                    expand(target, named, visiting, out);
+                } else {
+                    out.push(shape.clone());
+                }
+                visiting.remove(name);
+            }
+            Shape::Intersection { variants } => {
+                for variant in variants {
+                    expand(variant, named, visiting, out);
+                }
+            }
+            Shape::Any => {}
+            other => out.push(other.clone()),
+        }
+    }
+    let mut conjuncts = Vec::new();
+    expand(shape, named, &mut BTreeSet::new(), &mut conjuncts);
+    if let Some(typed) = conjuncts.iter().find(|shape| {
+        matches!(
+            shape,
+            Shape::Array { .. }
+                | Shape::String
+                | Shape::Boolean
+                | Shape::Integer
+                | Shape::Number
+                | Shape::Enum { .. }
+                | Shape::Literal { .. }
+        )
+    }) {
+        return Some(typed.clone());
+    }
+    for (index, conjunct) in conjuncts.iter().enumerate() {
+        if let Shape::Union {
+            variants,
+            mode,
+            discriminator,
+        } = conjunct
+        {
+            let variants = variants
+                .iter()
+                .map(|variant| {
+                    let mut siblings = conjuncts.clone();
+                    siblings[index] = variant.clone();
+                    Shape::Intersection { variants: siblings }
+                })
+                .collect();
+            return Some(Shape::Union {
+                variants,
+                mode: mode.clone(),
+                discriminator: discriminator.clone(),
+            });
+        }
+    }
+    None
+}
+
 fn collect_object_properties(
     shape: &Shape,
     named_shapes: &BTreeMap<&str, &Shape>,
@@ -925,7 +998,13 @@ fn collect_object_properties(
         Shape::Object { properties, .. } => Some(properties.clone()),
         Shape::Intersection { variants } => {
             let mut merged: Vec<Property> = Vec::new();
+            let mut object_constrained = false;
             for variant in variants {
+                // An unconstrained allOf member does not erase typed siblings.
+                if matches!(variant, Shape::Any) {
+                    continue;
+                }
+                object_constrained = true;
                 for property in collect_object_properties(variant, named_shapes, visiting)? {
                     if let Some(existing) = merged
                         .iter_mut()
@@ -941,7 +1020,46 @@ fn collect_object_properties(
                     }
                 }
             }
-            Some(merged)
+            object_constrained.then_some(merged)
+        }
+        Shape::Union { variants, .. } => {
+            // Projection only: predicate branches describe presence alternatives,
+            // not a new value type. Keep conditional fields optional unless every
+            // branch requires them. The ORIGINAL schema graph below remains the
+            // authority for anyOf/oneOf counts and forbidden combinations.
+            let branches = variants
+                .iter()
+                .map(|variant| collect_object_properties(variant, named_shapes, visiting))
+                .collect::<Option<Vec<_>>>()?;
+            if branches.is_empty() {
+                return None;
+            }
+            // A property omitted by an open predicate branch is unconstrained
+            // in that branch. Its overall projection is Any, which lets typed
+            // allOf siblings supply its actual representation (e.g. booleans).
+            for property in branches.iter().flatten() {
+                if !matches!(property.shape, Shape::Any)
+                    && !variants.iter().any(|variant| matches!(variant,
+                        Shape::Object { properties, additional: crate::model::AdditionalProperties::Allowed, .. }
+                        if !properties.iter().any(|candidate| candidate.wire_name == property.wire_name)))
+                {
+                    return None;
+                }
+            }
+            let mut merged = BTreeMap::<String, Property>::new();
+            for property in branches.iter().flatten() {
+                merged.entry(property.wire_name.clone()).or_insert_with(|| {
+                    let mut projected = property.clone();
+                    projected.shape = Shape::Any;
+                    projected.required = branches.iter().all(|branch| {
+                        branch.iter().any(|candidate| {
+                            candidate.wire_name == property.wire_name && candidate.required
+                        })
+                    });
+                    projected
+                });
+            }
+            Some(merged.into_values().collect())
         }
         Shape::Ref { name } => {
             if !visiting.insert(name.clone()) {
@@ -2437,6 +2555,35 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
         assert!(source.contains("pub next: Presence<Box<Node>>"));
         assert!(source.contains("pub type ExactNumber = JsonNumber"));
         assert!(source.contains("pub struct LargeLiteral;"));
+    }
+
+    #[test]
+    fn draft_compositions_are_typed_without_rewriting_validator_descriptors() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let source = emit(&ir).unwrap();
+        assert!(
+            !source
+                .lines()
+                .any(|line| line.starts_with("pub struct ") && line.ends_with("(pub JsonValue);")),
+            "schema-expressible compositions must not become opaque JSON wrappers"
+        );
+        assert!(source.contains("pub enum ModelVisibleItem {"));
+        assert!(source.contains("pub struct ExecutionEventMcpConnectionHttp {"));
+        assert!(source.contains("pub struct CapabilitiesModifyContent {"));
+        assert!(source.contains("pub type NativeEvent = JsonValue;"));
+        let descriptor = source
+            .lines()
+            .find_map(|line| line.strip_prefix("const SCHEMAS_JSON: &str = "))
+            .unwrap();
+        let encoded: String = serde_json::from_str(descriptor.trim_end_matches(';')).unwrap();
+        let actual: Value = serde_json::from_str(&encoded).unwrap();
+        let expected = ir
+            .types
+            .iter()
+            .map(|named| (named.name.as_str(), &named.shape))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(actual, serde_json::to_value(expected).unwrap());
     }
 
     #[test]

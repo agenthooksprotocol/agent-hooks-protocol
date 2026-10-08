@@ -281,6 +281,41 @@ struct Renderer<'a> {
 }
 
 impl Renderer<'_> {
+    // Distribute a referenced object union only in the public projection.
+    // Inline predicate unions instead contribute optional/common fields below.
+    fn composed_union(&self, shape: &Shape) -> Option<Shape> {
+        let Shape::Intersection { variants } = shape else {
+            return None;
+        };
+        for (index, variant) in variants.iter().enumerate() {
+            let Shape::Ref { name } = variant else {
+                continue;
+            };
+            let named = self.ir.types.iter().find(|n| n.name == *name)?;
+            let Shape::Union {
+                variants: arms,
+                mode,
+                discriminator,
+            } = &named.shape
+            else {
+                continue;
+            };
+            return Some(Shape::Union {
+                mode: *mode,
+                discriminator: discriminator.clone(),
+                variants: arms
+                    .iter()
+                    .map(|arm| {
+                        let mut parts = variants.clone();
+                        parts[index] = arm.clone();
+                        Shape::Intersection { variants: parts }
+                    })
+                    .collect(),
+            });
+        }
+        None
+    }
+
     fn emit_declarations(
         &self,
         shape: &Shape,
@@ -288,6 +323,9 @@ impl Renderer<'_> {
         public: bool,
         output: &mut String,
     ) -> Result<()> {
+        if let Some(projected) = self.composed_union(shape) {
+            return self.emit_declarations(&projected, hint, public, output);
+        }
         // References are declared by their own stable-name entry. Following them here
         // causes direct and mutual recursive object graphs to recurse forever.
         if matches!(shape, Shape::Ref { .. }) {
@@ -380,6 +418,9 @@ impl Renderer<'_> {
     }
 
     fn render(&self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(projected) = self.composed_union(shape) {
+            return self.render(&projected, hint);
+        }
         Ok(match shape {
             Shape::Any => "JsonValue".into(),
             Shape::Never => "Never".into(),
@@ -436,9 +477,15 @@ impl Renderer<'_> {
                             .reduce(intersect_shapes)
                             .expect("non-empty intersection");
                         if matches!(simplified, Shape::Intersection { .. }) {
-                            // Python has no general intersection type. An unresolved
-                            // intersection can still be satisfiable, so stay conservative.
-                            "JsonValue".into()
+                            // Every satisfying value satisfies each conjunct. Python has
+                            // no intersection operator: expose a typed conjunct while
+                            // the untouched descriptor validates all constraints.
+                            let (index, variant) = variants
+                                .iter()
+                                .enumerate()
+                                .find(|(_, variant)| !matches!(variant, Shape::Any))
+                                .expect("non-empty typed intersection");
+                            self.render(variant, &format!("{hint}Field{index}"))?
                         } else {
                             self.render(&simplified, hint)?
                         }
@@ -525,7 +572,56 @@ impl Renderer<'_> {
                     if matches!(variant, Shape::Any) {
                         continue;
                     }
-                    for property in self.model_properties_inner(variant, visiting)? {
+                    // Project predicate alternatives only inside an intersection. The
+                    // original oneOf/anyOf remains authoritative at parse time.
+                    let fields = if let Shape::Union { variants, .. } = variant {
+                        let alternatives = variants
+                            .iter()
+                            .map(|arm| self.model_properties_inner(arm, visiting))
+                            .collect::<Option<Vec<_>>>()?;
+                        let mut fields = Vec::<Property>::new();
+                        for alternative in &alternatives {
+                            for field in alternative {
+                                if fields.iter().any(|p| p.wire_name == field.wire_name) {
+                                    continue;
+                                }
+                                let mut projected = field.clone();
+                                projected.required = alternatives.iter().all(|arm| {
+                                    arm.iter()
+                                        .any(|p| p.wire_name == field.wire_name && p.required)
+                                });
+                                let shapes = alternatives
+                                    .iter()
+                                    .map(|arm| {
+                                        arm.iter()
+                                            .find(|p| p.wire_name == field.wire_name)
+                                            .map(|p| p.shape.clone())
+                                            .unwrap_or(Shape::Any)
+                                    })
+                                    .collect::<Vec<_>>();
+                                projected.shape = if shapes.iter().any(|s| matches!(s, Shape::Any))
+                                {
+                                    Shape::Any
+                                } else if shapes.iter().all(|s| {
+                                    is_subshape(s, &shapes[0]) && is_subshape(&shapes[0], s)
+                                }) {
+                                    shapes[0].clone()
+                                } else {
+                                    Shape::Union {
+                                        variants: shapes,
+                                        mode: crate::model::UnionMode::AnyOf,
+                                        discriminator: None,
+                                    }
+                                };
+                                fields.push(projected);
+                            }
+                        }
+                        fields.sort_by(|a, b| a.wire_name.cmp(&b.wire_name));
+                        fields
+                    } else {
+                        self.model_properties_inner(variant, visiting)?
+                    };
+                    for property in fields {
                         if let Some(existing) = merged
                             .iter_mut()
                             .find(|item| item.wire_name == property.wire_name)
@@ -1198,7 +1294,7 @@ mod tests {
                     "Impossible"
                 )
                 .unwrap(),
-            "JsonValue"
+            "str"
         );
         assert_eq!(
             renderer
