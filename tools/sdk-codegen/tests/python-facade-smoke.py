@@ -92,6 +92,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         assert decoded.gaps[0].reason == "unavailable"
         assert decoded.gaps[0].path == "url"
         assert decoded == connection
+        constructed = connection_type(**{**facts, "transport": tag, "gaps": [{"path": "url", "reason": "unavailable"}]})
+        assert constructed.gaps[0].reason == "unavailable"
         assert connection.gaps[0].reason == "unavailable"
         assert connection.gaps[0].path == "url"
         assert connection.transport == tag
@@ -117,6 +119,10 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         wire._check_node_impl = counted
         try:
             hydrated = models.ToolBeforeEvent.from_dict(dict(event))
+            assert max(checks.values()) == 1, checks
+            checks.clear()
+            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], time=event["time"], path=event["path"], call=dict(event.call), tool=dict(event.tool))
+            assert reconstructed.tool.mcp.connection.gaps[0].reason == "unavailable"
         finally:
             wire._check_node_impl = original_check
         assert hydrated.tool.mcp.connection.gaps[0].reason == "unavailable"
@@ -285,6 +291,29 @@ def main() -> None:
     capability = importlib.import_module("facade_contract.capability")
     assert not hasattr(models.InterceptDenyResponseResult, "supports")
     assert not hasattr(models.InterceptNoEffectResponseResult, "supports")
+    # Audit every emitted model, not only capability namespace aliases. Closed
+    # effect payload arrays must never acquire a family-membership query.
+    family_models = set()
+    payload_models = set()
+    for name in models.__all__:
+        cls = getattr(models, name)
+        if isinstance(cls, type) and issubclass(cls, dict) and isinstance(getattr(cls, "effects", None), property):
+            annotation = typing.get_type_hints(cls.effects.fget)["return"]
+            (family_models if annotation == list[str] else payload_models).add(cls)
+    assert len(family_models) >= 21 and payload_models
+    assert all(hasattr(cls, "supports") for cls in family_models)
+    assert all(not hasattr(cls, "supports") for cls in payload_models)
+    capability_models = {value for value in vars(capability).values()
+                         if isinstance(value, type) and issubclass(value, dict) and hasattr(value, "effects")}
+    assert len(capability_models) >= 20
+    for cls in capability_models:
+        for value in (cls(effects=["deny", "vendor.custom"]), cls.from_dict({"effects": ["deny", "vendor.custom"]})):
+            assert value.supports(capability.EffectName.DENY), cls
+            assert value.supports("vendor.custom"), cls
+            assert not value.supports(capability.EffectName.MODIFY), cls
+        assert not cls(effects=[]).supports(capability.EffectName.DENY), cls
+    assert capability.ToolBeforeCapabilities(effects=["deny"]).supports(capability.EffectName.DENY)
+    assert isinstance(capability.Capabilities(effects=["modify"], modify={}).modify, models.CapabilitiesModify)
     assert effect.EffectName is capability.EffectName
     for cls in (capability.Capabilities, models.InterceptRequestParamsCapabilities):
         value = cls.from_dict({"effects": ["deny", "vendor.custom"], "modify": {"input": {"replace": True, "merge": False}}})

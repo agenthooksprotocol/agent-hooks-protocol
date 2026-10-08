@@ -62,11 +62,11 @@ for model, parse, accepted, rejected in (
         raw = {"items": [number, {"left": "ok"}]}
         result = parse(raw)
         assert result["ok"], result
-        decoded = model.from_dict(raw)
-        assert decoded.items_[1].left == "ok", (model, number)
-        assert type(decoded.items_[0]) is type(number)
-        assert decoded == raw
-        assert parse(decoded) == result
+        for decoded in (model.from_dict(raw), model(items=raw["items"])):
+            assert decoded.items_[1].left == "ok", (model, number)
+            assert type(decoded.items_[0]) is type(number)
+            assert decoded == raw
+            assert parse(decoded) == result
     for number in rejected:
         raw = {"items": [number, {"left": "ok"}]}
         assert not parse(raw)["ok"], (model, number)

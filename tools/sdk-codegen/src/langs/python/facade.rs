@@ -685,10 +685,32 @@ fn constructor(
             if optional { " = _UNSET" } else { "" }
         )?;
     }
-    writeln!(
-        out,
-        "**extra: Any) -> None:\n        super().__init__(extra)"
-    )?;
+    writeln!(out, "**extra: Any) -> None:")?;
+    for (p, param) in fields.iter().zip(&params) {
+        if p.wire_name != *param {
+            let optional = !p.required
+                || p.constructor_default.is_some()
+                || literal(ir, &p.shape).is_some()
+                || p.wire_name == "protocolVersion";
+            writeln!(out, "        if {:?} in extra:", p.wire_name)?;
+            if optional {
+                writeln!(out, "            if {param} is not _UNSET:")?;
+                writeln!(
+                    out,
+                    "                raise TypeError(\"Duplicate assignment for {} via {param} and wire key\")",
+                    p.wire_name
+                )?;
+                writeln!(out, "            {param} = extra.pop({:?})", p.wire_name)?;
+            } else {
+                writeln!(
+                    out,
+                    "            raise TypeError(\"Duplicate assignment for {} via {param} and wire key\")",
+                    p.wire_name
+                )?;
+            }
+        }
+    }
+    out.push_str("        super().__init__(extra)\n");
     for (p, param) in fields.iter().zip(&params) {
         let default = p
             .constructor_default
@@ -727,9 +749,8 @@ fn string_family(ir: &Ir, shape: &Shape) -> bool {
         Shape::String => true,
         Shape::Literal { value } => value.is_string(),
         Shape::Enum { values, .. } => values.iter().all(Value::is_string),
-        Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-            variants.iter().all(|shape| string_family(ir, shape))
-        }
+        Shape::Union { variants, .. } => variants.iter().all(|shape| string_family(ir, shape)),
+        Shape::Intersection { variants } => variants.iter().any(|shape| string_family(ir, shape)),
         Shape::Ref { name } => ir
             .types
             .iter()
@@ -739,11 +760,32 @@ fn string_family(ir: &Ir, shape: &Shape) -> bool {
     }
 }
 
+// Intersections retain an array/string guarantee from any conjunct; unions
+// need that guarantee in every arm. Do not attach family queries to effect
+// payload arrays merely because their property is also named "effects".
+fn effect_family_array(ir: &Ir, shape: &Shape) -> bool {
+    match shape {
+        Shape::Array { items } => string_family(ir, items),
+        Shape::Ref { name } => ir
+            .types
+            .iter()
+            .find(|named| named.name == *name)
+            .is_some_and(|named| effect_family_array(ir, &named.shape)),
+        Shape::Intersection { variants } => {
+            variants.iter().any(|shape| effect_family_array(ir, shape))
+        }
+        Shape::Union { variants, .. } => {
+            !variants.is_empty() && variants.iter().all(|shape| effect_family_array(ir, shape))
+        }
+        _ => false,
+    }
+}
+
 fn accessors(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
-    if fields.iter().any(|p| {
-        p.wire_name == "effects"
-            && matches!(&p.shape, Shape::Array { items } if string_family(ir, items))
-    }) {
+    if fields
+        .iter()
+        .any(|p| p.wire_name == "effects" && effect_family_array(ir, &p.shape))
+    {
         out.push_str("    def supports(self, effect: str) -> bool:\n        \"\"\"Advertised family membership only, never authorization or grant checks.\"\"\"\n        return effect in self.get(\"effects\", ())\n\n");
     }
     // Accessors leave the wire mapping intact. Optional fields return None when
@@ -1106,9 +1148,15 @@ class _ModelValidationError(ValueError):
 
 class _WireModel(dict[str, Any]):
     def _validate(self) -> None:
-        result = _wire._parse_descriptor(_DESCRIPTORS[type(self).__name__], self)
+        cache: dict[Any, Any] = {}
+        result = _wire._parse_descriptor(_DESCRIPTORS[type(self).__name__], self, cache)
         if not result["ok"]:
             raise _ModelValidationError(result)
+        # Hydrate plain nested mappings after the one validation pass. Keep
+        # already typed child instances, preserving established constructor identity.
+        hydrated = type(self)._hydrate_validated(self, "", cache)
+        dict.clear(self)
+        dict.update(self, hydrated)
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> Self:
@@ -1177,7 +1225,8 @@ def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> A
     origin = get_origin(annotation)
     if origin is list and isinstance(value, list):
         item_type = get_args(annotation)[0]
-        return [_hydrate(item_type, child, f"{path}/{index}", cache) for index, child in enumerate(value)]
+        hydrated = [_hydrate(item_type, child, f"{path}/{index}", cache) for index, child in enumerate(value)]
+        return value if all(left is right for left, right in zip(value, hydrated)) else hydrated
     if origin in (Union, UnionType):
         # Prefer specific object models over an open mapping/Any fallback. The
         # shared validator's memoized branch decisions avoid rechecking subtrees.
@@ -1186,13 +1235,13 @@ def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> A
                 diagnostics: list[Any] = []
                 _wire._check_node(_DESCRIPTORS[arm.__name__], value, path, diagnostics, cache)
                 if not any(item["severity"] == "error" for item in diagnostics):
-                    return arm._hydrate_validated(value, path, cache)
+                    return value if isinstance(value, arm) else arm._hydrate_validated(value, path, cache)
         for arm in get_args(annotation):
             if get_origin(arm) is list and _matches(arm, value, path, cache):
                 return _hydrate(arm, value, path, cache)
         return value
     if isinstance(annotation, type) and issubclass(annotation, _WireModel) and isinstance(value, dict):
-        return annotation._hydrate_validated(value, path, cache)
+        return value if isinstance(value, annotation) else annotation._hydrate_validated(value, path, cache)
     return value
 
 "#;

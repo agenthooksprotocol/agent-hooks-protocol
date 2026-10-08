@@ -406,6 +406,15 @@ may become checked newtypes. Capability queries are additive. TypeScript rejects
 non-JSON object inputs rather than silently discarding properties; its existing
 native raw-JSON/type-annotation boundary remains unchanged.
 
+Python wire constructors and `from_dict` both hydrate nested mappings into typed
+models after validation. Explicit Python-name/wire-name duplicate assignments
+(for example `tool_name=` with `toolName=`) raise `TypeError`, even when values
+agree. A lone wire spelling for an optional/defaulted field is preserved and
+validated; required constructor arguments retain their documented Python spelling.
+`from_dict` does not reinterpret aliases, so distinct wire and extension keys stay
+distinct. Family queries include composed per-occurrence capability arrays, not
+only the generic capability model; effect-payload arrays do not expose queries.
+
 ### Typed composition payloads
 
 Composition is a validation rule, not a reason to erase a model's fields. Object
