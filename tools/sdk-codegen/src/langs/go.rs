@@ -312,7 +312,7 @@ impl<'a> Generator<'a> {
             if field.required && self.is_nullable(&field.shape) {
                 writeln!(
                     declaration,
-                    "\tif _, ok := fields[{}]; !ok {{ return fmt.Errorf({}) }}",
+                    "\tif _, ok := fields[{}]; !ok {{\n\t\treturn fmt.Errorf({})\n\t}}",
                     go_string(&field.wire_name)?,
                     go_string(&format!(
                         "{name}.{}: missing required member",
@@ -864,8 +864,8 @@ func Some[T any](value T) Optional[T] {
 // Nullable distinguishes JSON null from a non-null value, independently of presence.
 // Its zero value is null. Use Optional[Nullable[T]] for an optional nullable member.
 type Nullable[T any] struct {
-    Value T
-    Valid bool
+	Value T
+	Valid bool
 }
 
 // Null returns an explicit JSON null.
@@ -875,24 +875,30 @@ func Null[T any]() Nullable[T] { return Nullable[T]{} }
 func NonNull[T any](value T) Nullable[T] { return Nullable[T]{Value: value, Valid: true} }
 
 func (value *Nullable[T]) UnmarshalJSON(data []byte) error {
-    if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-        *value = Null[T]()
-        return nil
-    }
-    var payload T
-    if err := json.Unmarshal(data, &payload); err != nil { return err }
-    *value = NonNull(payload)
-    return nil
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*value = Null[T]()
+		return nil
+	}
+	var payload T
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*value = NonNull(payload)
+	return nil
 }
 
 func (value Nullable[T]) MarshalJSON() ([]byte, error) {
-    if !value.Valid { return []byte("null"), nil }
-    data, err := json.Marshal(value.Value)
-    if err != nil { return nil, err }
-    if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
-        return nil, fmt.Errorf("Nullable: non-null payload encoded as null")
-    }
-    return data, nil
+	if !value.Valid {
+		return []byte("null"), nil
+	}
+	data, err := json.Marshal(value.Value)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil, fmt.Errorf("Nullable: non-null payload encoded as null")
+	}
+	return data, nil
 }
 
 // DiagnosticCode identifies a structural parse diagnostic.
