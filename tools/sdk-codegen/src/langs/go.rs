@@ -59,6 +59,7 @@ pub fn emit(ir: &Ir) -> Result<String> {
     for declaration in &generator.declarations {
         output.push_str(declaration);
     }
+    facade::capability_queries(&generator, &mut output)?;
     for name in generator.decoder_shapes.keys() {
         writeln!(
             output,

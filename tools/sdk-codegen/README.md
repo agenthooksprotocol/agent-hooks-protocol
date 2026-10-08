@@ -396,3 +396,20 @@ usable. Wire parsers still return their lossless mapping/TypedDict API, not
 hydrated facade instances. Attribute access is available on constructed facade
 objects. Type annotations do not replace runtime parsing or validate arbitrary
 manual mapping mutations.
+
+### Go capability queries
+
+Go exposes `req.Params.Capabilities.Supports(ahp.EffectDeny)` and
+`capabilities.Supports(ahp.EffectName("vendor.custom"))`. The generated
+`EffectNameDeny`, `EffectNameModify`, and the other `EffectName*` constants
+identify effect families; `EffectDeny` aliases `EffectNameDeny`. This avoids
+collisions with existing payload types such as `EffectModify`. Queries inspect typed fields
+without serialization and accept the known and custom string representations.
+Capability grant builders use the same family membership query for deduplication.
+
+`Supports` reports only advertised family membership: it does not authorize
+execution or imply a target, operation, delivery mode, or per-call grant. A nested
+modify grant without the `modify` family returns false; a `modify` family alone
+does not grant any modification operation. Continue to use the existing grant
+builders and host/request validation for operation constraints. This convenience
+API is currently Go-only; no new operation-query API is introduced.

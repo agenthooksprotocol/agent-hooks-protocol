@@ -384,6 +384,51 @@ fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
     Ok(())
 }
 
+// Queries expose family membership without re-encoding wire models.
+pub(super) fn capability_queries(g: &Generator<'_>, out: &mut String) -> Result<()> {
+    let Some(fields) = g.objects.get("Capabilities") else {
+        return Ok(());
+    };
+    let effects = fields
+        .iter()
+        .find(|f| f.wire_name == "effects")
+        .expect("capability effects");
+    out.push_str("// EffectName identifies an advertised effect family, including extension names.\ntype EffectName string\n\n");
+    for name in enum_strings(g, &effects.shape) {
+        writeln!(
+            out,
+            "const EffectName{} EffectName = {name:?}",
+            go_identifier(&name)
+        )?;
+    }
+    out.push_str("\n// EffectDeny is the shorthand family identifier for deny.\nconst EffectDeny = EffectNameDeny\n");
+    for model in ["Capabilities", "InterceptRequestParamsCapabilities"] {
+        let Some(fields) = g.objects.get(model) else {
+            continue;
+        };
+        let effects = fields
+            .iter()
+            .find(|f| f.wire_name == "effects")
+            .expect("capability effects");
+        let item = effects.field_type.strip_prefix("[]").expect("effect list");
+        let arms = &g.unions[item];
+        let (custom, _) = arms
+            .iter()
+            .find(|(_, ty)| ty == "string")
+            .expect("custom effect arm");
+        let (known, _) = arms
+            .iter()
+            .find(|(_, ty)| ty != "string")
+            .expect("known effect arm");
+        writeln!(
+            out,
+            "\n// Supports reports advertised effect-family membership only.\n// It does not grant execution permission or check target, operation, mode, or\n// per-call restrictions. Nested grants alone never imply family support.\nfunc (value {model}) Supports(effect EffectName) bool {{\n\tfor _, item := range value.Effects {{\n\t\tif item.{known}.Present {{\n\t\t\tif string(item.{known}.Value) == string(effect) {{\n\t\t\t\treturn true\n\t\t\t}}\n\t\t}} else if item.{custom}.Present && item.{custom}.Value == string(effect) {{\n\t\t\treturn true\n\t\t}}\n\t}}\n\treturn false\n}}"
+        )?;
+    }
+    out.push('\n');
+    Ok(())
+}
+
 // Functional declarations allocate fresh wire models for every composition.
 fn capability_composition(g: &Generator<'_>, out: &mut String) -> Result<()> {
     let effects_field = g.objects["Capabilities"]
@@ -392,7 +437,6 @@ fn capability_composition(g: &Generator<'_>, out: &mut String) -> Result<()> {
         .unwrap();
     let item = effects_field.field_type.strip_prefix("[]").unwrap();
     let arms = &g.unions[item];
-    let (custom, _) = arms.iter().find(|(_, ty)| ty == "string").unwrap();
     let (known, known_type) = arms.iter().find(|(_, ty)| ty != "string").unwrap();
     out.push_str(&r#"
 type Mode = ahp.StaticCapabilityManifestEventsItemModesItem
@@ -415,11 +459,11 @@ func Intercept(grants ...Grant) (Event, error) {
     return Event{Modes: []Mode{InterceptMode, ObserveMode}, Capabilities: value}, nil
 }
 func Observe() Event { return Event{Modes: []Mode{ObserveMode}} }
-func addEffect(v *ahp.Capabilities, name string) {
-    for _, effect := range v.Effects { if effect.$CUSTOM.Present && effect.$CUSTOM.Value == name { return }; if effect.$KNOWN.Present && string(effect.$KNOWN.Value) == name { return } }
+func addEffect(v *ahp.Capabilities, name ahp.EffectName) {
+    if v.Supports(name) { return }
     v.Effects = append(v.Effects, ahp.$ITEM{$KNOWN: ahp.Some(ahp.$KNOWN_TYPE(name))})
 }
-"#.replace("$CUSTOM", custom).replace("$KNOWN_TYPE", known_type).replace("$KNOWN", known).replace("$ITEM", item));
+"#.replace("$KNOWN_TYPE", known_type).replace("$KNOWN", known).replace("$ITEM", item));
     let effects = &g.objects["Capabilities"]
         .iter()
         .find(|f| f.wire_name == "effects")
@@ -431,7 +475,8 @@ func addEffect(v *ahp.Capabilities, name string) {
         }
         writeln!(
             out,
-            "func {}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ addEffect(v, {effect:?}); return nil }} }} }}",
+            "func {}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ addEffect(v, ahp.EffectName{}); return nil }} }} }}",
+            go_identifier(&effect),
             go_identifier(&effect)
         )?;
     }
