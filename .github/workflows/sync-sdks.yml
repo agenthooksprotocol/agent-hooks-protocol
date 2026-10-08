@@ -110,6 +110,11 @@ jobs:
           private-key: ${{ secrets.SDK_SYNC_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ matrix.repository }}
+          # The app installation must grant these permissions (tools/README.md).
+          # Explicit requests fail at token creation if approval is missing.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
       - name: Check out SDK
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:

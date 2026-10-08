@@ -124,3 +124,25 @@ dates and missing timezone separators are rejected. Integer-valued JSON numbers
 such as 1.0 satisfy `integer`; booleans do not. This is not URL authorization or
 HTTP header validation. JSON Schema patterns retain search semantics; exact
 SHA-256 fields therefore additionally enforce minLength/maxLength 64.
+
+## SDK sync app permissions
+
+The post-merge `sync-sdks.yml` workflow uses `install_generated_sdk.py` to install
+generated artifacts and update each SDK CI checkout to the lock's immutable
+protocol source commit. Configure `SDK_SYNC_APP_ID` and `SDK_SYNC_APP_PRIVATE_KEY`
+for a GitHub App installed on all four SDK repositories.
+
+Before enabling sync, the app must request **Contents: read and write**,
+**Pull requests: read and write**, and **Workflows: read and write** repository
+permissions, and the organization installation must approve those permissions.
+Workflows write is required because synchronization updates
+`.github/workflows/ci.yml`; Contents write alone cannot push that change.
+An app owner must configure the additional permission and an authorized
+organization owner must approve the installation permission update. Changing
+this workflow does not grant app permissions.
+
+Token creation explicitly requests all three write permissions for the selected
+SDK repository. If the app or installation lacks one, the sync job fails at
+**Generate installation token**, rather than later when pushing the SDK PR.
+Confirm the approved installation permissions before merging a sync change or
+retrying a failed sync run.

@@ -95,6 +95,8 @@ class SdkGenerationTests(unittest.TestCase):
         self.assertIn('python3 protocol/tools/install_generated_sdk.py', workflow)
         self.assertIn('add-paths: ${{ steps.install.outputs.paths }}', workflow)
         self.assertNotIn('**/generated.go', workflow)
+        for permission in ('contents', 'pull-requests', 'workflows'):
+            self.assertIn(f'permission-{permission}: write', workflow)
 
     def test_pinned_sources_disable_line_ending_conversion(self):
         result = subprocess.check_output(['git', 'check-attr', 'text', '--', 'upstream/mcp/2025-11-25/schema.json', 'upstream/mcp/2025-11-25/schema.ts'], cwd=ROOT, text=True)
