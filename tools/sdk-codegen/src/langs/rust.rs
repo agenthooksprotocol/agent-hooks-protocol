@@ -21,6 +21,9 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
     "DiagnosticSeverity",
     "Deref",
     "Integer",
+    "Hydration",
+    "ValidatedHydration",
+    "EffectId",
     "Into",
     "From",
     "JsonNumber",
@@ -369,6 +372,63 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     Ok(output)
 }
 
+/// Validate the original descriptor, never the ergonomic public projection.
+fn validated_declaration(name: &str, shape: &Shape, declaration: String) -> Result<String> {
+    // Primitive intersections and `never` cannot be aliases: aliases cannot
+    // own Deserialize, and their primitive projection omits source predicates.
+    let declaration = if matches!(shape, Shape::Intersection { .. } | Shape::Never)
+        && declaration.starts_with("pub type ")
+    {
+        let target = declaration
+            .split_once(" = ")
+            .expect("alias target")
+            .1
+            .trim()
+            .trim_end_matches(';');
+        format!(
+            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub {target});\n\nimpl {name} {{ pub fn new(value: impl Into<{target}>) -> Self {{ Self(value.into()) }} }}\n"
+        )
+    } else {
+        declaration
+    };
+    let descriptor = serde_json::to_string(shape)?;
+    let check = format!("let _validated = validate_decode::<D::Error>(&value, {descriptor:?})?;");
+    if declaration.contains("impl<'de> Deserialize<'de>") {
+        return Ok(declaration.replacen(
+            "let value = JsonValue::deserialize(deserializer)?;",
+            &format!("let value = JsonValue::deserialize(deserializer)?;\n        {check}"),
+            1,
+        ));
+    }
+    if !declaration.starts_with("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]") {
+        return Ok(declaration);
+    }
+    let start = declaration
+        .find("pub struct ")
+        .or_else(|| declaration.find("pub enum "))
+        .expect("derived model declaration");
+    let tail = &declaration[start..];
+    let end = if tail.starts_with(&format!("pub struct {name}(")) {
+        start + tail.find(";\n").expect("tuple declaration end") + 2
+    } else {
+        start + tail.find("\n}\n").expect("model declaration end") + 3
+    };
+    let remote = declaration[..end]
+        .replacen(
+            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+            &format!("// Mirror the public representation exactly; do not rename arms or remove recursive indirection.\n#[allow(clippy::vec_box, clippy::enum_variant_names)]\n#[derive(Deserialize)]\n#[serde(remote = {name:?})]"),
+            1,
+        )
+        .replacen(&format!("pub struct {name}"), "struct Hydration", 1)
+        .replacen(&format!("pub enum {name}"), "enum Hydration", 1);
+    let mut output = declaration.replacen("Serialize, Deserialize", "Serialize", 1);
+    writeln!(
+        output,
+        "impl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        {check}\n        {remote}\n        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)\n    }}\n}}"
+    )?;
+    Ok(output)
+}
+
 struct EmitContext<'a> {
     named_shapes: BTreeMap<&'a str, &'a Shape>,
     type_names: BTreeMap<String, String>,
@@ -428,6 +488,11 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_declaration(&mut self, name: &str, shape: &Shape) -> Result<String> {
+        let declaration = self.emit_unvalidated_declaration(name, shape)?;
+        validated_declaration(name, shape, declaration)
+    }
+
+    fn emit_unvalidated_declaration(&mut self, name: &str, shape: &Shape) -> Result<String> {
         if matches!(shape, Shape::Intersection { .. }) {
             if let Some(value) = self.fixed_value(shape, &mut BTreeSet::new()).cloned() {
                 return self.emit_literal(name, &value);
@@ -442,7 +507,7 @@ impl<'a> EmitContext<'a> {
                 {
                     self.emit_struct(name, &properties)
                 } else if let Some(projected) = project_intersection(shape, &self.named_shapes) {
-                    self.emit_declaration(name, &projected)
+                    self.emit_unvalidated_declaration(name, &projected)
                 } else {
                     Ok(format!(
                         "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub JsonValue);\n\nimpl {name} {{ pub fn new(value: impl Into<JsonValue>) -> Self {{ Self(value.into()) }} }}\n\n"
@@ -462,7 +527,7 @@ impl<'a> EmitContext<'a> {
             Shape::Array { items } => {
                 let item = self.render_type(items, &format!("{name} item"))?;
                 Ok(format!(
-                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Vec<{item}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<Vec<{item}>> for {name} {{ fn from(value: Vec<{item}>) -> Self {{ Self::new(value) }} }}\n\n"
+                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Vec<{item}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<Vec<{item}>> for {name} {{ fn from(value: Vec<{item}>) -> Self {{ Self::new(value) }} }}\n\nimpl Deref for {name} {{ type Target = [{item}]; fn deref(&self) -> &Self::Target {{ &self.0 }} }}\n\n"
                 ))
             }
             Shape::Ref { name: target } => {
@@ -687,6 +752,19 @@ impl<'a> EmitContext<'a> {
             writeln!(output, "    Unknown(String),")?;
         }
         writeln!(output, "}}\n")?;
+        if values.iter().all(Value::is_string) {
+            writeln!(
+                output,
+                "impl {name} {{ pub fn as_str(&self) -> &str {{ match self {{"
+            )?;
+            for (variant, value) in &variants {
+                writeln!(output, "Self::{variant} => {:?},", value.as_str().unwrap())?;
+            }
+            if open_strings {
+                writeln!(output, "Self::Unknown(value) => value.as_str(),")?;
+            }
+            writeln!(output, "}} }} }}")?;
+        }
         writeln!(
             output,
             "impl Serialize for {name} {{\n    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n        match self {{"
@@ -1537,6 +1615,39 @@ fn schemas() -> &'static BTreeMap<String, SchemaNode> {
     })
 }
 
+// Private, synchronous, panic-safe hydration scope. Generated models have no
+// consumer callbacks: their fields contain only generated models and JSON values.
+thread_local! {
+    static VALIDATED_HYDRATION: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+struct ValidatedHydration;
+impl ValidatedHydration {
+    fn enter() -> Self {
+        VALIDATED_HYDRATION.with(|depth| depth.set(depth.get() + 1));
+        Self
+    }
+}
+impl Drop for ValidatedHydration {
+    fn drop(&mut self) {
+        VALIDATED_HYDRATION.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+fn validate_decode<E: serde::de::Error>(value: &JsonValue, descriptor: &'static str) -> Result<ValidatedHydration, E> {
+    if !VALIDATED_HYDRATION.with(|depth| depth.get() > 0) {
+        static DESCRIPTORS: OnceLock<std::sync::Mutex<BTreeMap<&'static str, std::sync::Arc<SchemaNode>>>> = OnceLock::new();
+        let schema = {
+            let mut cache = DESCRIPTORS.get_or_init(Default::default).lock().expect("descriptor cache lock");
+            cache.entry(descriptor).or_insert_with(|| std::sync::Arc::new(serde_json::from_str(descriptor).expect("generated descriptor"))).clone()
+        };
+        let mut diagnostics = Vec::new();
+        check_node(&schema, value, "", &mut diagnostics);
+        if has_errors(&diagnostics) {
+            return Err(E::custom(format!("structural decode failed: {diagnostics:?}")));
+        }
+    }
+    Ok(ValidatedHydration::enter())
+}
+
 fn parse_root<T: DeserializeOwned>(name: &str, input: &str) -> ParseResult<T> {
     match serde_json::from_str(input) {
         Ok(raw) => parse_root_value(name, raw),
@@ -1564,6 +1675,7 @@ fn parse_root_value<T: DeserializeOwned>(name: &str, raw: JsonValue) -> ParseRes
             diagnostics,
         };
     }
+    let _validated = ValidatedHydration::enter();
     match serde_json::from_value(raw.clone()) {
         Ok(value) => ParseResult::Success {
             value,

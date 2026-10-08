@@ -22,3 +22,15 @@ assert.equal(typeof sdk.contentSlots['context.compact.before'], 'object');
 
 assert.equal(sdk.events.toolBefore, 'tool.before');
 assert.equal(Object.keys(sdk.events).length, 32);
+
+assert.equal(sdk.effectNames.deny, 'deny');
+assert.equal(sdk.supports({effects: ['deny']}, sdk.effectNames.deny), true);
+assert.equal(sdk.supports({effects: []}, sdk.effectNames.deny), false);
+assert.equal(sdk.supports({effects: [], modify: {input: {replace: true}}}, sdk.effectNames.modify), false);
+assert.equal(sdk.supports({effects: ['vendor.custom']}, 'vendor.custom'), true);
+assert.equal(sdk.supports({effects: ['vendor.custom']}, 'vendor.other'), false);
+assert.equal(sdk.supports(sdk.capabilities.intercept().deny().capabilities, sdk.effectNames.deny), true);
+const incoming = sdk.parseInterceptRequest({jsonrpc:'2.0',id:0,method:'hooks/intercept',params:{protocolVersion:'draft',event:{type:'future'},capabilities:{effects:['deny','vendor.custom']},state:{permission:'none',candidate:null}}});
+assert.equal(incoming.ok, true, JSON.stringify(incoming.diagnostics));
+assert.equal(sdk.supports(incoming.value.params.capabilities, sdk.effectNames.deny), true);
+assert.equal(sdk.supports(incoming.value.params.capabilities, 'vendor.custom'), true);

@@ -87,10 +87,15 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         gap_type = getattr(models, "ExecutionEventMcpConnection" + suffix + "GapsItem")
         gap = gap_type(path="url", reason="unavailable")
         connection = connection_type(transport=tag, gaps=[gap], **facts)
+        decoded = connection_type.from_dict(dict(connection))
+        assert isinstance(decoded.gaps[0], gap_type)
+        assert decoded.gaps[0].reason == "unavailable"
+        assert decoded.gaps[0].path == "url"
+        assert decoded == connection
         assert connection.gaps[0].reason == "unavailable"
         assert connection.gaps[0].path == "url"
         assert connection.transport == tag
-        assert connection_type(transport=tag).gaps is None
+        assert connection_type(transport=tag, **facts).gaps is None
         assert callable(connection.items)  # Mapping API remains available.
         mcp = models.ExecutionEventMcp(
             connection=connection, provenance="runtime",
@@ -101,16 +106,36 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             call=models.ToolBeforeEventCall(id="call"),
             tool=models.ExecutionEventTool(name="read", origin="mcp", input={}, mcp=mcp),
         )
+        # Full event hydration selects the matching composed connection variant,
+        # and shared validation memoization checks each descriptor/path once.
+        checks: dict[tuple[str, str], int] = {}
+        original_check = wire._check_node_impl
+        def counted(schema, value, path, diagnostics, cache):
+            key = (wire._schema_key(schema), path)
+            checks[key] = checks.get(key, 0) + 1
+            return original_check(schema, value, path, diagnostics, cache)
+        wire._check_node_impl = counted
+        try:
+            hydrated = models.ToolBeforeEvent.from_dict(dict(event))
+        finally:
+            wire._check_node_impl = original_check
+        assert hydrated.tool.mcp.connection.gaps[0].reason == "unavailable"
+        assert hydrated.tool.mcp.connection.transport == tag
+        assert max(checks.values()) == 1, checks
         result = wire.parse_tool_before_event(event)
         assert result["ok"], result["diagnostics"]
         assert result["value"]["tool"]["mcp"]["connection"] == connection
         if tag != "vendor.pipe":
-            # Location/evidence alternatives remain optional at construction,
-            # and the established parser still rejects the invalid combination.
-            event["tool"]["mcp"]["connection"] = connection_type()
-            assert not wire.parse_tool_before_event(event)["ok"]
-            event["tool"]["mcp"]["connection"] = connection_type(gaps=[{"path": 7, "reason": False}])
-            assert not wire.parse_tool_before_event(event)["ok"]
+            # SDK constructors now reject the same malformed combinations as Parse.
+            for invalid in ({}, {"gaps": [{"path": 7, "reason": False}]}):
+                try:
+                    connection_type(**invalid)
+                except ValueError:
+                    pass
+                else:
+                    raise AssertionError("Malformed connection constructed")
+                event["tool"]["mcp"]["connection"] = {"transport": tag, **invalid}
+                assert not wire.parse_tool_before_event(event)["ok"]
         else:
             # Custom transport remains the existing unknown-variant extension
             # path; adding types must not silently tighten that boundary.
@@ -155,6 +180,10 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
                 f'c_{suffix} = m.{owner}(gaps=[g_{suffix}]{extra})',
                 f'assert c_{suffix}.gaps is not None',
                 f'assert_type(c_{suffix}.gaps[0].reason, str)',
+                f'd_{suffix} = m.{owner}.from_dict(dict(c_{suffix}))',
+                f'assert_type(d_{suffix}, m.{owner})',
+                f'assert d_{suffix}.gaps is not None',
+                f'assert_type(d_{suffix}.gaps[0].reason, str)',
                 f'assert_type(c_{suffix}.gaps[0].path, str)',
                 f'm.{owner}(gaps=[42]{extra})  # type: ignore[list-item]',
                 f'm.{owner}GapsItem(path="url", reason=42)  # type: ignore[arg-type]',
@@ -191,6 +220,51 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         assert checked.returncode == 0, checked.stdout + checked.stderr
 
 
+def check_structural_acceptance(models, wire) -> None:
+    matrix = json.loads(Path(__file__).with_name("structural-acceptance.json").read_text())
+    for case in matrix["cases"]:
+        constructor = getattr(models, "".join(part.title() for part in case["root"].split("_")))
+        parse = getattr(wire, "parse_" + case["root"])
+        result = parse(case["value"])
+        assert result["ok"] == case["accepted"], (case["id"], result)
+        assert any(d["severity"] == "warning" for d in result["diagnostics"]) == case["warning"], case["id"]
+        try:
+            value = constructor.from_dict(case["value"])
+        except ValueError as error:
+            assert not case["accepted"], (case["id"], error)
+            assert error.result == result, case["id"]
+        else:
+            assert case["accepted"], case["id"]
+            assert value == case["value"], case["id"]
+            assert parse(value) == result, case["id"]
+            assert parse(json.dumps(value))["value"] == result["value"], case["id"]
+    # Constructors and dictionary decode share validation but never fill missing
+    # wire literals/defaults during decode.
+    for invalid in (lambda: models.DenyEffect(type="allow", reason="test"),
+                    lambda: models.InterceptRequestParamsState(permission=42, candidate=None),
+                    lambda: models.InterceptRequestParamsState.from_dict({"permission": "allow"}),
+                    lambda: models.DenyEffect.from_dict({})):
+        try:
+            invalid()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Malformed facade model accepted")
+    for candidate in (None, {"value": None}, {"value": 0}):
+        value = {"permission": "allow", "candidate": candidate}
+        assert models.InterceptRequestParamsState.from_dict(value) == value
+    from decimal import Decimal
+    precise = {"ref": "opaque", "extension": Decimal("1.00000000000000000000001")}
+    assert models.ContentReference.from_dict(precise)["extension"] == precise["extension"]
+    for nonfinite in (float("inf"), float("nan"), Decimal("NaN")):
+        try:
+            models.ContentReference(ref="opaque", extension=nonfinite)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Non-JSON numeric extension accepted")
+
+
 def main() -> None:
     directory = Path(sys.argv[1]).resolve()
     audit_public_names(directory)
@@ -204,10 +278,20 @@ def main() -> None:
     receipt = models.ContentUploadReceipt(ref="opaque", size=0, sha256="a" * 64)
     assert wire.parse_content_upload_receipt(receipt)["ok"]
     assert wire.parse_content_reference(models.ContentReference(ref="opaque"))["ok"]
+    check_structural_acceptance(models, wire)
     check_structured_consumers(directory, models, wire)
     event = importlib.import_module("facade_contract.event")
     effect = importlib.import_module("facade_contract.effect")
     capability = importlib.import_module("facade_contract.capability")
+    assert not hasattr(models.InterceptDenyResponseResult, "supports")
+    assert not hasattr(models.InterceptNoEffectResponseResult, "supports")
+    assert effect.EffectName is capability.EffectName
+    for cls in (capability.Capabilities, models.InterceptRequestParamsCapabilities):
+        value = cls.from_dict({"effects": ["deny", "vendor.custom"], "modify": {"input": {"replace": True, "merge": False}}})
+        assert value.supports(capability.EffectName.DENY)
+        assert value.supports("vendor.custom")
+        assert not value.supports(capability.EffectName.MODIFY)
+        assert not cls(effects=[]).supports(capability.EffectName.DENY)
     assert capability.Event is models.CapabilitiesResponseResultManifestEventsItemEvent
     assert capability.Event.TOOL_BEFORE == "tool.before"
     tool = importlib.import_module("facade_contract.tool")
@@ -238,8 +322,14 @@ def main() -> None:
             if p.kind == inspect.Parameter.KEYWORD_ONLY
             and p.default == inspect.Parameter.empty
         }
-        value = constructor(**required, vendor_field={"future": [1, None]})
-        assert value["vendor_field"] == {"future": [1, None]}, constructor
+        try:
+            value = constructor(**required, vendor_field={"future": [1, None]})
+        except ValueError as error:
+            # Arbitrary placeholders are not valid schema values. Rejection is
+            # now the contract, and the validation error retains raw extensions.
+            assert error.raw["vendor_field"] == {"future": [1, None]}, constructor
+        else:
+            assert value["vendor_field"] == {"future": [1, None]}, constructor
         if required:
             try:
                 constructor()
@@ -392,8 +482,12 @@ def main() -> None:
     assert effect.Deny(reason="blocked") == {"type": "deny", "reason": "blocked"}
     value = registration.Registration(hooks=[])
     assert value["protocolVersion"] == wire.PROTOCOL_VERSION
-    explicit = registration.Registration(hooks=[], protocol_version="future")
-    assert explicit["protocolVersion"] == "future"
+    try:
+        registration.Registration(hooks=[], protocol_version="future")
+    except ValueError as error:
+        assert any(d["code"] == "literal_mismatch" for d in error.diagnostics)
+    else:
+        raise AssertionError("Invalid protocolVersion literal constructed")
     missing = wire.parse_registration({"hooks": []})
     assert not missing["ok"], missing
     parsed = wire.parse_registration(value)

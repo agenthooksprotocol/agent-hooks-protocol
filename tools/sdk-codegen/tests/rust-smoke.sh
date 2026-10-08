@@ -17,6 +17,8 @@ mkdir -p "$temporary/emitter/src" "$temporary/consumer/src" "$temporary/consumer
 cp "$generated" "$temporary/consumer/src/lib.rs"
 cat "$repository/tools/sdk-codegen/tests/rust-boundary-macro-smoke.rs.in" >> "$temporary/consumer/src/lib.rs"
 cp "$repository/tools/sdk-codegen/tests/rust-ergonomics-smoke.rs.in" "$temporary/consumer/tests/ergonomics.rs"
+cp "$repository/tools/sdk-codegen/tests/rust-structural-smoke.rs.in" "$temporary/consumer/tests/structural.rs"
+cp "$repository/tools/sdk-codegen/tests/structural-acceptance.json" "$temporary/consumer/tests/structural-acceptance.json"
 { echo "extern crate agenthooksprotocol as ahp_codegen;"; cat "$repository/tools/sdk-codegen/tests/capability-rust.rs.in"; } > "$temporary/consumer/tests/capability.rs"
 cat >"$temporary/emitter/Cargo.toml" <<'TOML'
 [package]
@@ -122,6 +124,14 @@ fn main() -> anyhow::Result<()> {
             ] },
         });
     }
+    recursive.roots.push(model::PublicRoot { name: "ConstrainedString".into(), schema: "constrained.json".into() });
+    recursive.types.push(model::NamedType {
+        name: "ConstrainedString".into(), source: "constrained.json#".into(),
+        shape: model::Shape::Intersection { variants: vec![
+            model::Shape::String,
+            model::Shape::Enum { values: vec![serde_json::json!("yes")], open_strings: false },
+        ] },
+    });
     let generated = rust::emit(&recursive)?;
     assert!(!generated.contains("Duplicate2"));
     std::fs::write(recursive_output, generated)?;
@@ -219,12 +229,19 @@ fn recursively_referenced_models_compile_and_parse() {
     ] {
         assert_eq!(recursive::parse_evidence_any(input).is_ok(), any_ok, "{input}");
         assert_eq!(recursive::parse_evidence_one(input).is_ok(), one_ok, "{input}");
+        assert_eq!(serde_json::from_str::<recursive::EvidenceAny>(input).is_ok(), any_ok, "direct {input}");
+        assert_eq!(serde_json::from_str::<recursive::EvidenceOne>(input).is_ok(), one_ok, "direct {input}");
     }
     let extended = serde_json::json!({"location":"file.rs", "future":{"keep":true}});
     let parsed = recursive::parse_evidence_any_value(extended.clone());
     assert_eq!(serde_json::to_value(parsed.value().unwrap()).unwrap(), extended);
 
     assert!(recursive::parse_node("{}").is_ok());
+    assert!(serde_json::from_str::<recursive::DuplicateAny>(r#""value""#).is_ok());
+    assert!(serde_json::from_str::<recursive::DuplicateOne>(r#""value""#).is_err());
+    assert!(serde_json::from_str::<recursive::ConstrainedString>(r#""yes""#).is_ok());
+    assert!(serde_json::from_str::<recursive::ConstrainedString>(r#""no""#).is_err());
+    assert!(!recursive::parse_constrained_string(r#""no""#).is_ok());
     let any = recursive::parse_duplicate_any(r#""value""#);
     assert!(any.is_ok());
     assert!(matches!(any.value(), Some(recursive::DuplicateAny::String(value)) if value == "value"));
@@ -238,6 +255,12 @@ fn recursively_referenced_models_compile_and_parse() {
         exact_text
     );
     assert!(!recursive::parse_safe_integer("1.0000000000000001").is_ok());
+    assert!(serde_json::from_str::<recursive::SafeInteger>("1.0000000000000001").is_err());
+    assert!(serde_json::from_str::<recursive::SafeInteger>("9007199254740992").is_err());
+    let direct: recursive::ExactNumber = serde_json::from_str(exact_text).unwrap();
+    assert_eq!(serde_json::to_string(&direct).unwrap(),exact_text);
+    assert!(serde_json::from_str::<recursive::NumericLiteral>("2").is_err());
+    assert!(serde_json::from_str::<recursive::NumericEnum>("2").is_err());
 
     let literal = recursive::parse_numeric_literal("1.0");
     assert!(literal.is_ok());

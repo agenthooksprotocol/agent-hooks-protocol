@@ -58,3 +58,13 @@ sameEvent(sharedObservation.params.event);
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 const interceptUsesEvent: Equal<InterceptRequest['params']['event'], Event> = true;
 const observeUsesEvent: Equal<ObserveNotification['params']['event'], Event> = true;
+
+import { effectNames, supports } from './ahp.generated';
+import type { Capabilities, EffectName } from './ahp.generated';
+declare const declaredCapabilities: Capabilities;
+const family: EffectName = 'vendor.custom';
+supports(declaredCapabilities, effectNames.deny);
+supports(sharedRequest.params.capabilities, family);
+supports({effects: ['deny'] as const}, effectNames.deny);
+// @ts-expect-error effect-family identifiers are strings, not numbers.
+supports(declaredCapabilities, 42);

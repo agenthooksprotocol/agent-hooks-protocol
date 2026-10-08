@@ -454,6 +454,44 @@ func assertExportedDecode[T any](t *testing.T, data []byte, want bool) T {
     return unmarshaled
 }
 
+func checkAcceptanceCase[T any](t *testing.T, input []byte, want, warning bool, parse func([]byte) ahp.ParseResult[T]) {
+    t.Helper()
+    parsed := parse(input)
+    if parsed.OK != want { t.Fatalf("Parse acceptance: want %t, got %+v", want, parsed.Diagnostics) }
+    decoded := assertExportedDecode[T](t, input, want)
+    warned := false
+    for _, diagnostic := range parsed.Diagnostics { if diagnostic.Severity == ahp.SeverityWarning { warned = true } }
+    if warned != warning { t.Fatalf("warning: want %t, got %+v", warning, parsed.Diagnostics) }
+    if want {
+        if !reflect.DeepEqual(decoded, parsed.Value) { t.Fatal("Decode/Parse differ") }
+        var before, after any
+        if err := json.Unmarshal(input, &before); err != nil { t.Fatal(err) }
+        if err := json.Unmarshal(exportedJSON(t, decoded), &after); err != nil { t.Fatal(err) }
+        if !reflect.DeepEqual(before, after) { t.Fatal("accepted value changed in roundtrip") }
+    }
+}
+
+func TestSharedStructuralAcceptanceMatrix(t *testing.T) {
+    var matrix struct { Cases []struct {
+        ID string `json:"id"`
+        Root string `json:"root"`
+        Value json.RawMessage `json:"value"`
+        Accepted bool `json:"accepted"`
+        Warning bool `json:"warning"`
+    } `json:"cases"` }
+    if err := json.Unmarshal(exportedFixture(t, "tools/sdk-codegen/tests/structural-acceptance.json"), &matrix); err != nil { t.Fatal(err) }
+    for _, entry := range matrix.Cases {
+        t.Run(entry.ID, func(t *testing.T) {
+            switch entry.Root {
+            case "intercept_request": checkAcceptanceCase(t, entry.Value, entry.Accepted, entry.Warning, ahp.ParseInterceptRequest)
+            case "content_reference": checkAcceptanceCase(t, entry.Value, entry.Accepted, entry.Warning, ahp.ParseContentReference)
+            case "content_upload_receipt": checkAcceptanceCase(t, entry.Value, entry.Accepted, entry.Warning, ahp.ParseContentUploadReceipt)
+            default: t.Fatalf("unhandled matrix root %s", entry.Root)
+            }
+        })
+    }
+}
+
 func TestExportedCandidateValueRequired(t *testing.T) {
     for _, input := range []string{`{}`, `{"provenance":{}}`, `null`, `[]`} {
         t.Run(input, func(t *testing.T) {

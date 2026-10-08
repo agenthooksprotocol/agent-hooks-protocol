@@ -162,3 +162,30 @@ sharedRequest.params.event = {type:"future.event", extension:true};
 const futureEvent = sdk.parseInterceptRequest(sharedRequest);
 if (!futureEvent.ok || !futureEvent.diagnostics.some(d => d.code === "unknown_variant")) throw new Error("unknown event lost");
 if (!sdk.parseContentUploadReceipt({ref:"opaque", size:0, sha256:"a".repeat(64)}).ok) throw new Error("receipt rejected");
+
+// Both object and text entry points use the same original descriptor engine.
+const assert = require('node:assert/strict');
+for (const entry of fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases) {
+  const name = entry.root.split('_').map(s => s[0].toUpperCase() + s.slice(1)).join('');
+  for (const input of [entry.value, JSON.stringify(entry.value)]) {
+    const parsed = sdk[`parse${name}`](input);
+    assert.equal(parsed.ok, entry.accepted, entry.id + ': acceptance');
+    assert.equal(parsed.diagnostics.some(d => d.severity === 'warning'), entry.warning, entry.id + ': warnings');
+    assert.deepEqual(JSON.parse(JSON.stringify(parsed.raw)), entry.value, entry.id + ': raw');
+    if (parsed.ok) assert.deepEqual(JSON.parse(sdk[`encode${name}`](parsed.value)), entry.value, entry.id + ': roundtrip');
+  }
+}
+// Unknown JSON fields retain finite JS numbers; schema integer positions require safe integers.
+for (const id of [0, Number.MAX_SAFE_INTEGER]) assert.equal(sdk.parseInterceptRequest({...fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value, id}).ok, true);
+for (const id of [1.5, Number.MAX_SAFE_INTEGER + 1]) assert.equal(sdk.parseInterceptRequest({...fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value, id}).ok, false);
+const ordinary = fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value;
+assert.equal(sdk.parseInterceptRequest({...ordinary, future: Number.MAX_SAFE_INTEGER + 1}).ok, true);
+const cycle = {}; cycle.self = cycle;
+for (const future of [undefined, NaN, Infinity, new Date(), new Map(), cycle, Array(1), {get value() {throw new Error('must not execute');}}]) {
+  const parsed = sdk.parseInterceptRequest({...ordinary, future});
+  assert.equal(parsed.ok, false);
+  assert.equal(parsed.diagnostics[0].code, 'invalid_json');
+}
+const shared = {value: 1};
+assert.equal(sdk.parseInterceptRequest({...ordinary, future: [shared, shared]}).ok, true);
+console.log('TypeScript shared structural acceptance matrix passed');

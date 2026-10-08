@@ -121,11 +121,8 @@ mod tests {
     #[test]
     fn capability_event_alias_has_an_explicit_stable_owner() {
         let files = emit(&draft()).unwrap();
-        assert!(
-            files["_models/capability.py"].contains(
-                "from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"
-            )
-        );
+        assert!(files["_models/capability.py"]
+            .contains("from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"));
         assert!(files["capability.py"].contains("from ._models.capability import Event as Event"));
     }
 
@@ -175,12 +172,10 @@ mod tests {
         let mut shapes = BTreeMap::new();
         collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
         collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
-        assert!(
-            collect(&draft(), "Choice", &Shape::Number, &mut shapes)
-                .unwrap_err()
-                .to_string()
-                .contains("public Python model collision")
-        );
+        assert!(collect(&draft(), "Choice", &Shape::Number, &mut shapes)
+            .unwrap_err()
+            .to_string()
+            .contains("public Python model collision"));
         assert!(
             literal_labels(&[Value::String("a-b".into()), Value::String("a_b".into())]).is_err()
         );
@@ -256,7 +251,18 @@ mod tests {
             reverse_unions(&mut named.shape);
         }
         let after = emit(&ir).unwrap();
-        assert_eq!(before, after);
+        // Public naming is order-independent; untouched validation descriptors
+        // intentionally retain original union order (including warning selection).
+        for (path, source) in &before {
+            let declarations = |source: &str| {
+                source
+                    .lines()
+                    .filter(|line| !line.starts_with("_DESCRIPTORS ="))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            assert_eq!(declarations(source), declarations(&after[path]), "{path}");
+        }
         assert!(!before["_models/__init__.py"].contains("Variant2"));
         assert!(before["state.py"].contains("CandidateValueObject as Candidate"));
     }
@@ -323,10 +329,8 @@ mod tests {
         assert!(files["tool.py"].contains("import Call as Call"));
         assert!(files["tool.py"].contains("import Tool as Tool"));
         assert!(files["capability.py"].contains("from ._grants import ModifyInput as ModifyInput"));
-        assert!(
-            !files["capability.py"]
-                .contains("from ._models.capability import ModifyInput as ModifyInput")
-        );
+        assert!(!files["capability.py"]
+            .contains("from ._models.capability import ModifyInput as ModifyInput"));
         assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
         assert_eq!(
             files["_boundaries.py"].matches("-> HookResult:").count(),
@@ -343,11 +347,8 @@ mod tests {
         assert_eq!(models.matches("    def to_wire(self)").count(), 32);
         assert!(models.contains("call_id: str"));
         assert!(models.contains("target = target.setdefault(\"call\", {})"));
-        assert!(
-            files["state.py"].contains(
-                "def initial(permission: Permission, *, candidate: Candidate | None = None"
-            )
-        );
+        assert!(files["state.py"]
+            .contains("def initial(permission: Permission, *, candidate: Candidate | None = None"));
         assert!(
             files["candidate.py"].contains("return Candidate(value=value, provenance=provenance)")
         );
@@ -361,12 +362,161 @@ mod tests {
         assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
         assert!(files["capability.py"].contains("from ._grants import intercept as intercept"));
         assert!(files["_boundaries.py"].contains("CONTENT_SOURCE_SLOTS:"));
-        assert!(
-            models
-                .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)")
-        );
+        assert!(models
+            .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)"));
         assert!(models.contains("def bind_instructions_source(self, source: OwnedContentSource)"));
     }
+    #[test]
+    fn original_composed_descriptors_and_union_ambiguity_are_cached() {
+        use crate::model::{NamedType, PublicRoot, UnionMode};
+        let mut ir = draft();
+        let original = Shape::Intersection {
+            variants: vec![
+                Shape::Object {
+                    properties: vec![Property {
+                        wire_name: "choice".into(),
+                        required: true,
+                        constructor_default: None,
+                        shape: Shape::Union {
+                            mode: UnionMode::OneOf,
+                            discriminator: None,
+                            variants: vec![Shape::Integer, Shape::Number, Shape::String],
+                        },
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Allowed,
+                },
+                Shape::Object {
+                    properties: vec![],
+                    forbidden_property_sets: vec![vec!["left".into(), "right".into()]],
+                    additional: AdditionalProperties::Allowed,
+                },
+            ],
+        };
+        ir.types.push(NamedType {
+            name: "StructuralComposed".into(),
+            source: "synthetic".into(),
+            shape: original.clone(),
+        });
+        ir.roots.push(PublicRoot {
+            name: "StructuralComposed".into(),
+            schema: "synthetic".into(),
+        });
+        for (name, field) in [("HydrationLeft", "left"), ("HydrationRight", "right")] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: "synthetic".into(),
+                shape: Shape::Object {
+                    properties: vec![Property {
+                        wire_name: field.into(),
+                        required: true,
+                        constructor_default: None,
+                        shape: Shape::String,
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Allowed,
+                },
+            });
+        }
+        ir.types.push(NamedType {
+            name: "StructuralHydration".into(),
+            source: "synthetic".into(),
+            shape: Shape::Object {
+                properties: vec![Property {
+                    wire_name: "items".into(),
+                    required: true,
+                    constructor_default: None,
+                    shape: Shape::Union {
+                        mode: UnionMode::OneOf,
+                        discriminator: None,
+                        variants: ["HydrationLeft", "HydrationRight"]
+                            .iter()
+                            .map(|name| Shape::Array {
+                                items: Box::new(Shape::Ref {
+                                    name: (*name).into(),
+                                }),
+                            })
+                            .collect(),
+                    },
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Allowed,
+            },
+        });
+        for (name, scalar) in [
+            ("HydrationNumbers", Shape::Number),
+            ("HydrationIntegers", Shape::Integer),
+        ] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: "synthetic".into(),
+                shape: Shape::Object {
+                    properties: vec![Property {
+                        wire_name: "items".into(),
+                        required: true,
+                        constructor_default: None,
+                        shape: Shape::Union {
+                            mode: UnionMode::OneOf,
+                            discriminator: None,
+                            variants: vec![
+                                Shape::String,
+                                Shape::Array {
+                                    items: Box::new(Shape::Union {
+                                        mode: UnionMode::OneOf,
+                                        discriminator: None,
+                                        variants: vec![
+                                            scalar,
+                                            Shape::Ref {
+                                                name: "HydrationLeft".into(),
+                                            },
+                                        ],
+                                    }),
+                                },
+                            ],
+                        },
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Allowed,
+                },
+            });
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: "synthetic".into(),
+            });
+        }
+        let files = emit(&ir).unwrap();
+        let source = &files["_models/__init__.py"];
+        let encoded = source
+            .lines()
+            .find_map(|line| line.strip_prefix("_DESCRIPTORS = json.loads("))
+            .unwrap()
+            .strip_suffix(", parse_float=Decimal)")
+            .unwrap();
+        let json: String = serde_json::from_str(encoded).unwrap();
+        let descriptors: Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            descriptors["StructuralComposed"],
+            serde_json::to_value(original).unwrap()
+        );
+        assert!(source.contains("class StructuralComposed(_WireModel):"));
+        assert!(source.contains("model = cls.__new__(cls)"));
+        // Optional runtime-smoke fixture output, never into an SDK checkout.
+        if let Ok(directory) = std::env::var("AHP_PYTHON_STRUCTURAL_OUTPUT") {
+            let directory = std::path::Path::new(&directory);
+            std::fs::create_dir_all(directory).unwrap();
+            for (path, source) in files {
+                let path = directory.join(path);
+                std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+                std::fs::write(path, source).unwrap();
+            }
+            std::fs::write(
+                directory.join("generated.py"),
+                super::super::emit(&ir).unwrap(),
+            )
+            .unwrap();
+        }
+    }
+
     #[test]
     fn constructor_defaults_do_not_change_wire_validation_descriptors() {
         let ir = draft();
@@ -399,16 +549,14 @@ mod tests {
             },
         ];
         let mut output = String::new();
-        constructor(&mut output, "Synthetic", &fields, &ir).unwrap();
+        constructor(&mut output, "Synthetic", &fields, &ir, false).unwrap();
         assert!(output.contains("required_name: str,"));
         assert!(output.contains("enabled: bool = _UNSET"));
         assert!(output.contains("json.loads(\"false\")"));
         assert!(output.contains("json.loads(\"[]\")"));
         assert!(output.contains("if nullable is not _UNSET:"));
-        assert!(
-            !serde_json::to_string(&fields)
-                .unwrap()
-                .contains("constructor_default")
-        );
+        assert!(!serde_json::to_string(&fields)
+            .unwrap()
+            .contains("constructor_default"));
     }
 }

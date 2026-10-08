@@ -28,6 +28,10 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
+      - name: Test generated TypeScript structural constraints
+        run: >-
+          npx --yes --package typescript@5.9.3 --call
+          'AHP_TYPESCRIPT_RUNTIME_TESTS=1 cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml langs::typescript'
       - name: Compile generated TypeScript
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
@@ -58,6 +62,11 @@ jobs:
             --output "$RUNNER_TEMP/ahp_python_facade"
           python3 tools/sdk-codegen/tests/python-facade-smoke.py \
             "$RUNNER_TEMP/ahp_python_facade" --typing
+          AHP_PYTHON_STRUCTURAL_OUTPUT="$RUNNER_TEMP/ahp_python_structural" \
+            cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml \
+            original_composed_descriptors_and_union_ambiguity_are_cached
+          python3 tools/sdk-codegen/tests/python-structural-smoke.py \
+            "$RUNNER_TEMP/ahp_python_structural"
       - uses: actions/setup-go@v6
         with:
           go-version: "1.27.x"

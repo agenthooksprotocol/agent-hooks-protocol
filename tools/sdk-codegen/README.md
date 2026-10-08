@@ -357,6 +357,55 @@ of pointers so null cannot bypass decoding. Nullable aliases retain their generi
 target types. Explicit caller-owned pointers still follow Go null-pointer semantics. The Go facade converts its string backend-ID argument
 without changing the convenience constructor signature.
 
+### Cross-language decoding and construction contract
+
+All SDK-owned wire decoding entrypoints share the original structural descriptor
+engine with their rich `Parse` APIs. Public projection does not remove constraints
+from validation. Parse retains diagnostics, warnings, and raw data; successful
+decoding is not canonical validation or authorization.
+
+| SDK | Checked entrypoints | Unchecked construction boundary |
+| --- | --- | --- |
+| Go | Generated `json.Unmarshal` / `Decoder.Decode` and `Parse*` | Struct literals, field assignment, and explicit caller-owned nullable pointers |
+| Rust | Generated Serde `Deserialize` and `parse_*` | Struct literals, infallible builders, and later mutation; validate at a decode/parse boundary |
+| Python | Wire facade constructors, `Model.from_dict`, and generated `parse_*` | `json.loads`, TypedDict annotations, input projections, and later dictionary mutation |
+| TypeScript | Generated `parse*` on JSON text or JSON-compatible values | `JSON.parse`, interfaces, type assertions, object literals, and later mutation |
+
+Direct decoders reject structural errors such as absent required fields, malformed
+known variants, literal mismatches, forbidden-property combinations, and ambiguous
+`oneOf` alternatives. Unknown enum strings and unknown variants retain their
+warning-based forward compatibility, and unrelated extensions survive roundtrip.
+Canonical validators and request-context admission checks remain separate.
+
+Descriptors are cached. Go uses private checked hydration; Rust uses private,
+synchronous scoped hydration so nested Serde model calls do not repeatedly validate
+whole subtrees. Python wire parsing validates a supplied tree without recursively
+calling public constructors. TypeScript parses the original descriptor directly
+and does not introduce a separate model-hydration validator.
+
+| SDK | Absent / null / value | Numeric policy |
+| --- | --- | --- |
+| Go | `Optional[T]` for absence; `Nullable[T]` for null, composed when needed | `json.Number` and raw JSON retain exact numeric text |
+| Rust | `Presence::Missing` / `Present`; generated nullable alternatives for null | `JsonNumber` with arbitrary precision; checked `Integer` for schema integers |
+| Python | Mapping membership distinguishes absence; `None` means explicit null | Integer values and `Decimal` decoding retain precision; caller-provided floats already have float precision |
+| TypeScript | Missing member versus present member; `null` remains distinct | Finite IEEE-754 `number`; JSON parsing cannot retain arbitrary numeric precision or token spelling |
+
+Schema integer positions are restricted to mathematically integral values within
+±9,007,199,254,740,991. This is not a blanket bound on unconstrained JSON payloads.
+Candidate null and candidate `{value: null}` remain distinct, as do zero, false,
+and empty values. A required nullable member must still be present.
+
+The shared `tests/structural-acceptance.json` matrix exercises expected acceptance,
+not merely agreement between two potentially incorrect paths. Every target also
+checks warnings and accepted roundtrips. Language-specific exported consumer tests
+cover original composed constraints, direct nested types, and numeric boundaries.
+
+These changes are behavior-breaking for previously tolerated invalid direct
+Rust decoding and Python wire construction. Rust constrained primitive aliases
+may become checked newtypes. Capability queries are additive. TypeScript rejects
+non-JSON object inputs rather than silently discarding properties; its existing
+native raw-JSON/type-annotation boundary remains unchanged.
+
 ### Typed composition payloads
 
 Composition is a validation rule, not a reason to erase a model's fields. Object
@@ -411,8 +460,19 @@ Capability grant builders use the same family membership query for deduplication
 execution or imply a target, operation, delivery mode, or per-call grant. A nested
 modify grant without the `modify` family returns false; a `modify` family alone
 does not grant any modification operation. Continue to use the existing grant
-builders and host/request validation for operation constraints. This convenience
-API is currently Go-only; no new operation-query API is introduced.
+builders and host/request validation for operation constraints. Equivalent queries
+are available in every SDK without a new operation-authorization API:
+
+| SDK | Family query |
+| --- | --- |
+| Go | `caps.Supports(ahp.EffectDeny)` |
+| Rust | `caps.supports(EffectId::Deny)` |
+| Python | `caps.supports(capability.EffectName.DENY)` |
+| TypeScript | `supports(caps, effectNames.deny)` |
+
+These work on generic and incoming per-occurrence capabilities. Custom family
+strings remain supported. Shared semantic identifiers are derived from the schema;
+query helpers do not infer family membership from nested grants.
 
 ### Shared constrained references
 

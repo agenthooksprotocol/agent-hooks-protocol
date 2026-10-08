@@ -45,6 +45,25 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     let mut body = format!(
         "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nimport json\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\n_UNSET: Any = object()\n\n"
     );
+    body.push_str(MODEL_RUNTIME);
+    let mut validation_shapes = shapes.clone();
+    for named in &ir.types {
+        collect_union_validation(ir, &named.name, &named.shape, &mut validation_shapes)?;
+    }
+    let descriptors = validation_shapes
+        .iter()
+        .map(|(name, shape)| {
+            (
+                name.clone(),
+                serde_json::to_value(shape).expect("shape serializes"),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+    writeln!(
+        body,
+        "_DESCRIPTORS = json.loads({}, parse_float=Decimal)\n",
+        python_string(&serde_json::to_string(&descriptors)?)?
+    )?;
     let mut modules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut boundaries = format!(
         "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, cast\n\nif TYPE_CHECKING:\n    from ._hooks import HookResult, Hooks\n    from . import _models as models\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
@@ -64,7 +83,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                 }
                 writeln!(aliases, "{name} = {target}")?;
             } else {
-                constructor(&mut body, name, &fields, ir)?;
+                constructor(&mut body, name, &fields, ir, true)?;
                 accessors(&mut body, name, &fields, ir)?;
             }
             let role = if name.starts_with("Effect") && name != "Effect" {
@@ -95,7 +114,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                         .iter()
                         .map(|field| field.property.clone())
                         .collect::<Vec<_>>();
-                    constructor(&mut body, &input_name, &input_fields, ir)?;
+                    constructor(&mut body, &input_name, &input_fields, ir, false)?;
                     accessors(&mut body, &input_name, &input_fields, ir)?;
                     body.push_str("    def to_wire(self) -> dict[str, Any]:\n        result = deepcopy(dict(self))\n");
                     for field in &projection {
@@ -205,6 +224,29 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             }
         }
     }
+    let mut hydration = serde_json::Map::new();
+    for (name, shape) in &shapes {
+        if let Some(fields) = properties(&renderer, shape) {
+            let mut types = serde_json::Map::new();
+            for field in fields {
+                types.insert(
+                    field.wire_name.clone(),
+                    Value::String(annotation(
+                        ir,
+                        &field.shape,
+                        &field_hint(name, &field.wire_name)?,
+                        "",
+                    )?),
+                );
+            }
+            hydration.insert(name.clone(), Value::Object(types));
+        }
+    }
+    writeln!(
+        body,
+        "_FIELD_TYPES = json.loads({})\n",
+        python_string(&serde_json::to_string(&hydration)?)?
+    )?;
     body.push_str(&aliases);
     body.push('\n');
     if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
@@ -362,6 +404,10 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         )?;
     }
     ergonomic_modules(&mut files, &renderer, &shapes)?;
+    files
+        .get_mut("effect.py")
+        .unwrap()
+        .push_str("\nfrom ._grants import EffectName as EffectName\n");
     for path in ["_models/__init__.py", "_grants.py", "state.py", "effect.py"] {
         add_annotation_imports(files.get_mut(path).expect("annotation-bearing module"));
     }
@@ -435,9 +481,8 @@ fn literal_labels(values: &[Value]) -> Result<Vec<String>> {
 }
 
 fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Shape>) -> Result<()> {
-    if let Some(reference) = shape.constrained_reference() {
-        return collect(ir, name, reference, shapes);
-    }
+    let original = shape;
+    let shape = shape.constrained_reference().unwrap_or(shape);
     let names = HashMap::new();
     let renderer = Renderer { ir, names: &names };
     let projected = renderer.composed_union(shape);
@@ -448,12 +493,12 @@ fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Sha
     );
     if let Some(existing) = shapes.get(name) {
         anyhow::ensure!(
-            format!("{existing:?}") == format!("{shape:?}"),
+            format!("{existing:?}") == format!("{original:?}"),
             "public Python model collision: {name}; use distinct canonical schema names"
         );
         return Ok(());
     }
-    shapes.insert(name.into(), shape.clone());
+    shapes.insert(name.into(), original.clone());
     match shape {
         Shape::Object { properties, .. } => {
             collect_properties(ir, name, properties.iter(), shapes)?;
@@ -492,6 +537,66 @@ fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Sha
                         }
                         _ => {}
                     }
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+// Inline alternatives are public constructors too. Validate the original union
+// around a selected alternative, rather than only its projected object fields.
+// Keep this separate from declaration projection so it cannot change model names.
+fn collect_union_validation(
+    ir: &Ir,
+    name: &str,
+    original: &Shape,
+    descriptors: &mut BTreeMap<String, Shape>,
+) -> Result<()> {
+    let names = HashMap::new();
+    let renderer = Renderer { ir, names: &names };
+    let shape = original.constrained_reference().unwrap_or(original);
+    let projected = renderer.composed_union(shape);
+    let shape = projected.as_ref().unwrap_or(shape);
+    match shape {
+        Shape::Object { properties, .. } => {
+            for p in properties {
+                collect_union_validation(
+                    ir,
+                    &field_hint(name, &p.wire_name)?,
+                    &p.shape,
+                    descriptors,
+                )?;
+            }
+        }
+        Shape::Array { items } => {
+            collect_union_validation(ir, &format!("{name}Item"), items, descriptors)?
+        }
+        Shape::Union { variants, .. } => {
+            for arm in super::super::naming::projected_union(variants)? {
+                let variant = &variants[arm.source_indices[0]];
+                if !matches!(variant, Shape::Ref { .. }) {
+                    let child = format!("{name}{}", arm.name);
+                    collect_union_validation(ir, &child, variant, descriptors)?;
+                    let descriptor = descriptors.get_mut(&child).ok_or_else(|| {
+                        anyhow::anyhow!("missing Python validation descriptor for {child}")
+                    })?;
+                    *descriptor = Shape::Intersection {
+                        variants: vec![descriptor.clone(), original.clone()],
+                    };
+                }
+            }
+        }
+        Shape::Intersection { .. } => {
+            if let Some(fields) = renderer.model_properties(shape) {
+                for p in fields {
+                    collect_union_validation(
+                        ir,
+                        &field_hint(name, &p.wire_name)?,
+                        &p.shape,
+                        descriptors,
+                    )?;
                 }
             }
         }
@@ -540,10 +645,21 @@ fn literal(ir: &Ir, shape: &Shape) -> Option<Value> {
     }
 }
 
-fn constructor(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
+fn constructor(
+    out: &mut String,
+    name: &str,
+    fields: &[Property],
+    ir: &Ir,
+    validate: bool,
+) -> Result<()> {
+    let base = if validate {
+        "_WireModel"
+    } else {
+        "dict[str, Any]"
+    };
     writeln!(
         out,
-        "class {name}(dict[str, Any]):\n    \"\"\"Keyword-only wire object; parsing remains strict and separate. Optional attributes return None when absent; mapping-method names use a trailing underscore.\"\"\""
+        "class {name}({base}):\n    \"\"\"Keyword-only wire object; wire constructors validate the original descriptor. Optional attributes return None when absent; mapping-method names use a trailing underscore.\"\"\""
     )?;
     let mut occupied = reserved_identifiers();
     occupied.insert("self".into());
@@ -599,11 +715,37 @@ fn constructor(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Re
             )?;
         }
     }
+    if validate {
+        writeln!(out, "        self._validate()")?;
+    }
     out.push('\n');
     Ok(())
 }
 
+fn string_family(ir: &Ir, shape: &Shape) -> bool {
+    match shape {
+        Shape::String => true,
+        Shape::Literal { value } => value.is_string(),
+        Shape::Enum { values, .. } => values.iter().all(Value::is_string),
+        Shape::Union { variants, .. } | Shape::Intersection { variants } => {
+            variants.iter().all(|shape| string_family(ir, shape))
+        }
+        Shape::Ref { name } => ir
+            .types
+            .iter()
+            .find(|named| named.name == *name)
+            .is_some_and(|named| string_family(ir, &named.shape)),
+        _ => false,
+    }
+}
+
 fn accessors(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
+    if fields.iter().any(|p| {
+        p.wire_name == "effects"
+            && matches!(&p.shape, Shape::Array { items } if string_family(ir, items))
+    }) {
+        out.push_str("    def supports(self, effect: str) -> bool:\n        \"\"\"Advertised family membership only, never authorization or grant checks.\"\"\"\n        return effect in self.get(\"effects\", ())\n\n");
+    }
     // Accessors leave the wire mapping intact. Optional fields return None when
     // absent; required fields raise KeyError on malformed, manually mutated data.
     let mut accessors = HashSet::new();
@@ -621,6 +763,8 @@ fn accessors(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Resu
             "setdefault",
             "update",
             "values",
+            "from_dict",
+            "supports",
             "content_sources",
             "to_wire",
             "bind_content_source",
@@ -944,3 +1088,111 @@ fn ergonomic_modules(
     effect.push_str("deny = Deny\n");
     Ok(())
 }
+
+// Decode once with the same engine used by parse_*; hydration deliberately does
+// not recurse through public constructors or silently apply constructor defaults.
+const MODEL_RUNTIME: &str = r#"from decimal import Decimal
+from typing import Self, get_args, get_origin, Union, Literal as _Literal
+from types import UnionType
+from functools import lru_cache
+from .. import generated as _wire
+
+class _ModelValidationError(ValueError):
+    def __init__(self, result: Any) -> None:
+        self.result = result
+        self.diagnostics = result["diagnostics"]
+        self.raw = result.get("raw")
+        super().__init__("; ".join(item["message"] for item in self.diagnostics if item["severity"] == "error"))
+
+class _WireModel(dict[str, Any]):
+    def _validate(self) -> None:
+        result = _wire._parse_descriptor(_DESCRIPTORS[type(self).__name__], self)
+        if not result["ok"]:
+            raise _ModelValidationError(result)
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> Self:
+        if not isinstance(value, dict):
+            raise TypeError("from_dict requires a dictionary")
+        cache: dict[Any, Any] = {}
+        result = _wire._parse_descriptor(_DESCRIPTORS[cls.__name__], value, cache)
+        if not result["ok"]:
+            raise _ModelValidationError(result)
+        return cls._hydrate_validated(result["value"], "", cache)
+
+    @classmethod
+    def _hydrate_validated(cls, value: Any, path: str, cache: dict[Any, Any]) -> Self:
+        model = cls.__new__(cls)
+        fields = _field_types(cls.__name__)
+        dict.__init__(model, {
+            key: _hydrate(fields[key], child, _wire._join_path(path, key), cache) if key in fields else child
+            for key, child in value.items()
+        })
+        return model
+
+@lru_cache(maxsize=None)
+def _field_types(name: str) -> dict[str, Any]:
+    return {key: eval(annotation, globals()) for key, annotation in _FIELD_TYPES[name].items()}
+
+_SCALAR_SCHEMAS = {
+    str: {"kind": "string"}, bool: {"kind": "boolean"},
+    int: {"kind": "integer"}, float: {"kind": "number"},
+    type(None): {"kind": "null"},
+}
+
+@lru_cache(maxsize=None)
+def _literal_schema(annotation: Any) -> dict[str, Any]:
+    values = get_args(annotation)
+    if len(values) == 1:
+        return {"kind": "literal", "value": values[0]}
+    return {"kind": "enum", "open_strings": False, "values": list(values)}
+
+def _matches(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> bool:
+    if annotation is Any:
+        return True
+    origin = get_origin(annotation)
+    if origin in (Union, UnionType):
+        return any(_matches(arm, value, path, cache) for arm in get_args(annotation))
+    if origin is list:
+        return isinstance(value, list) and all(_matches(get_args(annotation)[0], child, f"{path}/{index}", cache) for index, child in enumerate(value))
+    if isinstance(annotation, type) and issubclass(annotation, _WireModel):
+        diagnostics: list[Any] = []
+        _wire._check_node(_DESCRIPTORS[annotation.__name__], value, path, diagnostics, cache)
+        return not any(item["severity"] == "error" for item in diagnostics)
+    if annotation in _SCALAR_SCHEMAS or origin is _Literal:
+        # Annotation float/int are projections, not Python runtime-type tests:
+        # schema numbers include ints and Decimal; integers include integral
+        # floats/Decimal and enforce the same safe range as the wire parser.
+        schema = _literal_schema(annotation) if origin is _Literal else _SCALAR_SCHEMAS[annotation]
+        scalar_diagnostics: list[Any] = []
+        _wire._check_node(schema, value, path, scalar_diagnostics, cache)
+        return not any(item["severity"] == "error" for item in scalar_diagnostics)
+    if origin is dict:
+        return isinstance(value, dict)
+    return isinstance(value, annotation) if isinstance(annotation, type) else True
+
+def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> Any:
+    if value is None or annotation is Any:
+        return value
+    origin = get_origin(annotation)
+    if origin is list and isinstance(value, list):
+        item_type = get_args(annotation)[0]
+        return [_hydrate(item_type, child, f"{path}/{index}", cache) for index, child in enumerate(value)]
+    if origin in (Union, UnionType):
+        # Prefer specific object models over an open mapping/Any fallback. The
+        # shared validator's memoized branch decisions avoid rechecking subtrees.
+        for arm in get_args(annotation):
+            if isinstance(arm, type) and issubclass(arm, _WireModel) and isinstance(value, dict):
+                diagnostics: list[Any] = []
+                _wire._check_node(_DESCRIPTORS[arm.__name__], value, path, diagnostics, cache)
+                if not any(item["severity"] == "error" for item in diagnostics):
+                    return arm._hydrate_validated(value, path, cache)
+        for arm in get_args(annotation):
+            if get_origin(arm) is list and _matches(arm, value, path, cache):
+                return _hydrate(arm, value, path, cache)
+        return value
+    if isinstance(annotation, type) and issubclass(annotation, _WireModel) and isinstance(value, dict):
+        return annotation._hydrate_validated(value, path, cache)
+    return value
+
+"#;
