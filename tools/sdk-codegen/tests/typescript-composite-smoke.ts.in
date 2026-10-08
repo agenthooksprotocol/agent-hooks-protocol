@@ -1,0 +1,70 @@
+import type { ExecutionEventMcp, InterceptRequest } from './ahp.generated';
+
+type Connection = ExecutionEventMcp['connection'];
+// UnknownVariant intentionally remains open; probe known-branch constraints
+// separately so its forward-compatible string tag cannot mask a widening.
+type KnownHttp = Extract<Connection, { transport: 'http' }>;
+const http: Connection = { transport: 'http', url: 'https://mcp.example' };
+const gap: Connection = { transport: 'http', gaps: [{ path: 'url', reason: 'redacted' }] };
+// @ts-expect-error A required-only predicate does not replace the transport object.
+const missingTransport: Connection = { gaps: 42 };
+// @ts-expect-error gaps retains its declared array shape inside the intersection.
+const wrongGaps: KnownHttp = { transport: 'http', gaps: 42 };
+// @ts-expect-error transport is required even when a valid gaps array is present.
+const gapsWithoutTransport: Connection = { gaps: [{ path: 'url', reason: 'redacted' }] };
+// @ts-expect-error a known transport needs its location or explicit gaps.
+const missingLocation: KnownHttp = { transport: 'http' };
+
+type Candidate = NonNullable<InterceptRequest['params']['state']>['candidate'];
+const noCandidate: Candidate = null;
+const nullValueCandidate: Candidate = { value: null };
+// @ts-expect-error required nullable candidate does not include undefined.
+const absentCandidate: Candidate = undefined;
+void [http, gap, missingTransport, wrongGaps, gapsWithoutTransport, missingLocation,
+  noCandidate, nullValueCandidate, absentCandidate];
+
+// Construct and consume every schema-described transport without casting to a
+// generic JSON object. The custom branch is selected by its address predicate;
+// its open string tag intentionally also accepts future transports.
+type KnownSse = Extract<Connection, { transport: 'sse' }>;
+type KnownStdio = Extract<Connection, { transport: 'stdio' }>;
+type LocatedCustom = Extract<Connection, { address: unknown }>;
+const typedHttp: KnownHttp = { transport: 'http', url: 'https://mcp.example', gaps: [{ path: 'headers', reason: 'redacted' }] };
+const typedSse: KnownSse = { transport: 'sse', url: 'https://mcp.example/events', gaps: [{ path: 'headers', reason: 'redacted' }] };
+const typedStdio: KnownStdio = { transport: 'stdio', command: 'mcp', args: ['--local'], cwd: '/srv', gaps: [{ path: 'env', reason: 'redacted' }] };
+const typedCustom: LocatedCustom = { transport: 'unix', addressForm: 'path', address: '/tmp/mcp.sock', gaps: [{ path: 'credentials', reason: 'redacted' }] };
+const httpUrl: string | undefined = typedHttp.url;
+const sseUrl: string | undefined = typedSse.url;
+const command: string | undefined = typedStdio.command;
+const args: string[] | undefined = typedStdio.args;
+const cwd: string | undefined = typedStdio.cwd;
+const address: string = typedCustom.address;
+const addressForm: string | undefined = typedCustom.addressForm;
+const reason: string | undefined = typedHttp.gaps?.[0]?.reason;
+// @ts-expect-error typed gap members cannot silently become arbitrary JSON.
+const invalidGap: KnownSse = { transport: 'sse', gaps: [{ path: 'url', reason: 42 }] };
+// @ts-expect-error args must retain their declared array element type.
+const invalidArgs: KnownStdio = { transport: 'stdio', command: 'mcp', args: [42], cwd: '/srv' };
+// @ts-expect-error all three stdio location predicates remain applicable.
+const missingCwd: KnownStdio = { transport: 'stdio', command: 'mcp', args: [] };
+void [httpUrl, sseUrl, command, args, cwd, address, addressForm, reason, invalidGap, invalidArgs, missingCwd];
+
+import type { Event, ObserveNotification } from './ahp.generated';
+const sameEvent = (event: Event): Event => event;
+declare const sharedRequest: InterceptRequest;
+declare const sharedObservation: ObserveNotification;
+sameEvent(sharedRequest.params.event);
+sameEvent(sharedObservation.params.event);
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
+const interceptUsesEvent: Equal<InterceptRequest['params']['event'], Event> = true;
+const observeUsesEvent: Equal<ObserveNotification['params']['event'], Event> = true;
+
+import { effectNames, supports } from './ahp.generated';
+import type { Capabilities, EffectName } from './ahp.generated';
+declare const declaredCapabilities: Capabilities;
+const family: EffectName = 'vendor.custom';
+supports(declaredCapabilities, effectNames.deny);
+supports(sharedRequest.params.capabilities, family);
+supports({effects: ['deny'] as const}, effectNames.deny);
+// @ts-expect-error effect-family identifiers are strings, not numbers.
+supports(declaredCapabilities, 42);

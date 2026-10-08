@@ -1,6 +1,45 @@
 use super::*;
 
 pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> Result<()> {
+    // Reuse the schema's open effect vocabulary, including extension strings.
+    if let Some(fields) = context.ergonomic_fields.get("Capabilities") {
+        if let Some((_, effect_vec)) = fields.iter().find(|(name, _)| name == "effects") {
+            let item = effect_vec
+                .strip_prefix("Vec<")
+                .and_then(|ty| ty.strip_suffix('>'));
+            if let Some(known) = item
+                .and_then(|item| context.ergonomic_arms.get(item))
+                .and_then(|arms| arms.iter().find(|(arm, _)| arm == "Known"))
+                .map(|(_, ty)| ty.clone())
+            {
+                writeln!(
+                    out,
+                    "/// Schema effect-family identifier, including `Unknown(String)` extensions.\npub type EffectId = {known};"
+                )?;
+                let item = item.expect("effect array item");
+                writeln!(
+                    out,
+                    "impl {item} {{ pub fn as_str(&self) -> &str {{ match self {{ Self::Known(value) => value.as_str(), Self::Custom(value) => value.as_str() }} }} }}"
+                )?;
+                for named in &ir.types {
+                    let name = context.type_name(&named.name);
+                    if !name.ends_with("Capabilities") {
+                        continue;
+                    }
+                    let Some(fields) = context.ergonomic_fields.get(&name) else {
+                        continue;
+                    };
+                    if !fields.iter().any(|(name, _)| name == "effects") {
+                        continue;
+                    }
+                    writeln!(
+                        out,
+                        "impl {name} {{\n    /// Query advertised effect-family membership only. This is not authorization,\n    /// target/operation admission, or canonical/contextual protocol validation.\n    pub fn supports(&self, effect: EffectId) -> bool {{\n        self.effects.iter().any(|item| item.as_str() == effect.as_str())\n    }}\n}}"
+                    )?;
+                }
+            }
+        }
+    }
     let events = boundary_inventory(ir);
     if !events.is_empty() {
         out.push_str("\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\npub enum EventType {\n");
@@ -215,8 +254,6 @@ pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> 
                 }
                 out.push_str("}\n");
                 let ty = context.render_type(&state.shape, "ErgonomicInitialState")?;
-                out.push_str("pub mod state {\nuse super::*;\n#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]\npub struct Candidate { pub value: serde_json::Value, #[serde(skip_serializing_if = \"Option::is_none\")] pub provenance: Option<BTreeMap<String, serde_json::Value>> }\nimpl Candidate { pub fn new(value: serde_json::Value) -> Self { Self { value, provenance: None } }\npub fn try_new<T: serde::Serialize>(value: T) -> Result<Self, serde_json::Error> { serde_json::to_value(value).map(Self::new) }
-pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> Self { self.provenance = Some(provenance); self } }\n");
                 let state_fields = &context.ergonomic_fields[&ty];
                 let candidate_ty = &state_fields
                     .iter()
@@ -230,7 +267,12 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
                     .1;
                 let candidate_obj = &context.ergonomic_arms[candidate_ty]
                     .iter()
-                    .find(|(n, _)| n == "Object")
+                    .find(|(_, ty)| {
+                        context
+                            .ergonomic_fields
+                            .get(ty)
+                            .is_some_and(|fields| fields.iter().any(|(name, _)| name == "value"))
+                    })
                     .unwrap()
                     .1;
                 let provenance_ty = &context.ergonomic_fields[candidate_obj]
@@ -249,7 +291,7 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
                     .join(", ");
                 writeln!(
                     out,
-                    "pub type InitialState = {ty};\npub fn initial(permission: Permission) -> InitialState {{ {ty}::new((), match permission {{ {matches} }}) }}\n}}\nimpl {ty} {{\npub fn candidate(mut self, candidate: state::Candidate) -> Self {{\nlet mut value = {candidate_obj}::new(candidate.value);\nif let Some(provenance) = candidate.provenance {{ value.provenance = Presence::Present({provenance_ty} {{ additional_properties: provenance }}); }}\nself.candidate = value.into(); self\n}}\n}}"
+                    "pub mod state {{\nuse super::*;\n/// The canonical candidate descriptor, including extension members.\npub type Candidate = {candidate_obj};\nimpl Candidate {{\npub fn try_new<T: serde::Serialize>(value: T) -> Result<Self, serde_json::Error> {{ serde_json::to_value(value).map(Self::new) }}\npub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> Self {{ self.provenance = Presence::Present({provenance_ty} {{ additional_properties: provenance }}); self }}\n}}\npub type InitialState = {ty};\npub fn initial(permission: Permission) -> InitialState {{ {ty}::new((), match permission {{ {matches} }}) }}\n}}\nimpl {ty} {{\npub fn candidate(mut self, candidate: state::Candidate) -> Self {{ self.candidate = candidate.into(); self }}\n}}"
                 )?;
             }
         }
@@ -257,7 +299,7 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
     if let Some(effect) = ir.types.iter().find(|t| t.name == "Effect") {
         if let Shape::Union { variants, .. } = &effect.shape {
             out.push_str("\npub mod effects {\nuse super::*;\n");
-            for variant in variants {
+            for (variant, label) in variants.iter().zip(context.try_union_names(variants)?) {
                 let Some(properties) =
                     collect_object_properties(variant, &context.named_shapes, &mut BTreeSet::new())
                 else {
@@ -281,7 +323,6 @@ pub fn provenance(mut self, provenance: BTreeMap<String, serde_json::Value>) -> 
                     tag,
                     op.map(|s| format!("_{s}")).unwrap_or_default()
                 ));
-                let label = type_identifier(&context.union_label(variant).unwrap());
                 let arm = &context.ergonomic_arms["Effect"]
                     .iter()
                     .find(|(n, _)| n == &label)

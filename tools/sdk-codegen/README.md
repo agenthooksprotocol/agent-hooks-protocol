@@ -31,6 +31,34 @@ Use `--emit-ir` instead of `--language` to inspect the language-neutral lowering
 
 The current `draft` snapshot permits integer request IDs and null response IDs. Generated codecs accept only integers that are safely interoperable across all supported SDKs. String-only request IDs require a future schema change; generation does not silently alter the schema.
 
+## Public API naming
+
+Public union alternatives describe their schema meaning, not their position in `oneOf` or `anyOf`. References retain canonical model names when tags are ambiguous; unique required literal tags (including `transport`) provide concise names. The declared literal `"unknown"` is `UnknownValue`, distinct from the forward-compatible `Unknown` arm. Hashes, ordinal collision suffixes, and concatenated constraint descriptions are not public naming fallbacks. An ambiguous anonymous schema must gain a canonical reference or a distinguishing semantic tag; generation fails with a naming error rather than inventing an identifier.
+
+Public model projection is separate from validation. Exactly identical alternatives may share one public arm, whose projection retains all original source indices. The original validation descriptors, branch multiplicity, order, and `oneOf`/`anyOf` modes remain intact. Distinct canonical references are not collapsed merely because they have the same discriminator or runtime representation. In particular, all eight elicitation primitive schema references remain distinct.
+
+For an enum-plus-string union, `Known` names the enum-typed arm and `Custom` names the raw-string arm. An extensible enum still accepts future strings; decoding can therefore select `Known` for an unrecognized value according to the existing branch order. These names are not a new known/unknown classification rule.
+
+TypeScript uses structural unions and quoted wire-property names. Parentheses preserve nested intersection/union precedence; required-only constraints cannot escape their containing object. Its open `UnknownVariant` type still accepts arbitrary tagged objects: canonical parsing, not static typing alone, enforces validity of known tags.
+
+Runtime loop indexes, schema-descriptor `variants`, generic parameters, and underscore-prefixed Python implementation hints are not public naming defects. Whole-output regression gates also inspect public declarations, enum arms, facade methods, parameters, and aliases.
+
+### Go nullability and presence
+
+A conservatively recognized `null | T` is `Nullable[T]`; an optional nullable property is `Optional[Nullable[T]]`. These dimensions are independent:
+
+| Wire state | Model state |
+| --- | --- |
+| Optional member absent | `Optional.Present == false` |
+| Member explicitly null | `Nullable.Valid == false` |
+| Non-null member (including `false`, `0`, or `""`) | `Nullable.Valid == true`, with its payload in `Value` |
+
+`Null[T]()` creates explicit null; `NonNull(value)` selects a payload. Encoding rejects a selected payload that itself serializes to JSON null, including nil pointers, slices, maps, or raw messages. Decoding null clears an earlier non-null payload. Named nullable references are values, not nullable pointers that could bypass wrapper decoding.
+
+`state.NoCandidate()` encodes null. `state.Candidate(nil)` encodes `{ "value": null }`, a present candidate with a null application value. Required nullable absence is rejected by the original descriptor checks in the named `Parse*` entrypoints. Generated object unmarshalling also rejects a missing required nullable member specifically, so absence cannot silently become the wrapper’s zero/null state; this is not universal required-member enforcement, and direct `json.Unmarshal` is not a complete schema validator.
+
+Renaming generated symbols and introducing `Nullable[T]` are source-level API changes even when JSON is unchanged. Consumers must migrate renamed members and types; positional aliases are not retained. Regenerate artifacts from a committed generator revision and update SDK CI source pins with their locks.
+
 ## SDK synchronization
 
 A push to `main` that changes schema snapshots, the generator, or draft conformance metadata runs `.github/workflows/sync-sdks.yml`. The workflow regenerates the TypeScript, Python, Go, and Rust SDKs and opens or updates one `automation/schema-sync` pull request in each SDK repository. Each SDK records the exact source commit, schema snapshot, manifest digest, and language in `ahp-codegen.lock.json`.
@@ -292,3 +320,182 @@ a declaration (Python also rejects booleans/fractions and missing continue count
 TypeScript already enforces this range; Rust uses unsigned counts and rejects
 values above the safe range. Raw manifests still undergo ordinary canonical
 validation; structural parsing alone does not prove numeric validity.
+
+## Go structural decoding contract
+
+Every generated concrete model decoder uses the same `checkNode` descriptor
+engine as `Parse*`. Named primitives, literal/enum values, objects (including
+flattened intersections), arrays, and unions reject applicable structural errors.
+Reference aliases inherit their target's decoder. Nullable aliases use generic
+`Nullable[T]`: it handles null and delegates non-null decoding to its payload model.
+Numeric, array, and constrained raw-backed nullable payloads receive checked model types when the built-in
+Go JSON decoder cannot enforce their structural rules.
+
+Descriptors are cached at package initialization. Public decoding validates once,
+then private hydration methods decode the checked subtree; pointer and slice
+traversal retain this private path. `Parse*` validates for structured diagnostics
+and hydrates through the same path, rather than validating every nested object
+again. Union hydration still checks alternatives to select the public arm. No
+process-global validation bypass or caller-controlled unchecked API is exposed.
+Same-tag alternatives retain source ordering and multiplicity: `oneOf` rejects
+multiple matches, while `anyOf` accepts a match. Unknown tags and open enum values
+remain warnings for `Parse*`, not direct-decoding errors. Raw JSON and exact
+`json.Number` representations are retained by their existing model types.
+
+The contract is generated structural validation, **not full canonical JSON Schema
+validation**. The IR does not carry string length/pattern/format, numeric bounds,
+or all array/object constraints. The SDK forward-compatible profile preserves
+unknown object members, including canonical closed objects; it does not enforce
+`additionalProperties: false`. Canonical server validators and caller/request-
+dependent checks remain separate. Neither direct decoding nor `Parse*` replaces
+those validators.
+
+Direct decoding of previously tolerated invalid models is a behavioral break.
+Named primitive aliases become defined types to attach decoders (for example,
+`ReverseDnsName(existingString)`); reference aliases use target values instead
+of pointers so null cannot bypass decoding. Nullable aliases retain their generic
+target types. Explicit caller-owned pointers still follow Go null-pointer semantics. The Go facade converts its string backend-ID argument
+without changing the convenience constructor signature.
+
+### Cross-language decoding and construction contract
+
+All SDK-owned wire decoding entrypoints share the original structural descriptor
+engine with their rich `Parse` APIs. Public projection does not remove constraints
+from validation. Parse retains diagnostics, warnings, and raw data; successful
+decoding is not canonical validation or authorization.
+
+| SDK | Checked entrypoints | Unchecked construction boundary |
+| --- | --- | --- |
+| Go | Generated `json.Unmarshal` / `Decoder.Decode` and `Parse*` | Struct literals, field assignment, and explicit caller-owned nullable pointers |
+| Rust | Generated Serde `Deserialize` and `parse_*` | Struct literals, infallible builders, and later mutation; validate at a decode/parse boundary |
+| Python | Wire facade constructors, `Model.from_dict`, and generated `parse_*` | `json.loads`, TypedDict annotations, input projections, and later dictionary mutation |
+| TypeScript | Generated `parse*` on JSON text or JSON-compatible values | `JSON.parse`, interfaces, type assertions, object literals, and later mutation |
+
+Direct decoders reject structural errors such as absent required fields, malformed
+known variants, literal mismatches, forbidden-property combinations, and ambiguous
+`oneOf` alternatives. Unknown enum strings and unknown variants retain their
+warning-based forward compatibility, and unrelated extensions survive roundtrip.
+Canonical validators and request-context admission checks remain separate.
+
+Descriptors are cached. Go uses private checked hydration; Rust uses private,
+synchronous scoped hydration so nested Serde model calls do not repeatedly validate
+whole subtrees. Python wire parsing validates a supplied tree without recursively
+calling public constructors. TypeScript parses the original descriptor directly
+and does not introduce a separate model-hydration validator.
+
+| SDK | Absent / null / value | Numeric policy |
+| --- | --- | --- |
+| Go | `Optional[T]` for absence; `Nullable[T]` for null, composed when needed | `json.Number` and raw JSON retain exact numeric text |
+| Rust | `Presence::Missing` / `Present`; generated nullable alternatives for null | `JsonNumber` with arbitrary precision; checked `Integer` for schema integers |
+| Python | Mapping membership distinguishes absence; `None` means explicit null | Integer values and `Decimal` decoding retain precision; caller-provided floats already have float precision |
+| TypeScript | Missing member versus present member; `null` remains distinct | Finite IEEE-754 `number`; JSON parsing cannot retain arbitrary numeric precision or token spelling |
+
+Schema integer positions are restricted to mathematically integral values within
+±9,007,199,254,740,991. This is not a blanket bound on unconstrained JSON payloads.
+Candidate null and candidate `{value: null}` remain distinct, as do zero, false,
+and empty values. A required nullable member must still be present.
+
+The shared `tests/structural-acceptance.json` matrix exercises expected acceptance,
+not merely agreement between two potentially incorrect paths. Every target also
+checks warnings and accepted roundtrips. Language-specific exported consumer tests
+cover original composed constraints, direct nested types, and numeric boundaries.
+
+These changes are behavior-breaking for previously tolerated invalid direct
+Rust decoding and Python wire construction. Rust constrained primitive aliases
+may become checked newtypes. Capability queries are additive. TypeScript rejects
+non-JSON object inputs rather than silently discarding properties; its existing
+native raw-JSON/type-annotation boundary remains unchanged.
+
+Python wire constructors and `from_dict` both hydrate nested mappings into typed
+models after validation. Explicit Python-name/wire-name duplicate assignments
+(for example `tool_name=` with `toolName=`) raise `TypeError`, even when values
+agree. A lone wire spelling for an optional/defaulted field is preserved and
+validated; required constructor arguments retain their documented Python spelling.
+`from_dict` does not reinterpret aliases, so distinct wire and extension keys stay
+distinct. Family queries include composed per-occurrence capability arrays, not
+only the generic capability model; effect-payload arrays do not expose queries.
+
+### Typed composition payloads
+
+Composition is a validation rule, not a reason to erase a model's fields. Object
+intersections project their declared fields into typed public models, including
+location/evidence predicates such as “url or gaps” and “command, args, cwd or
+gaps.” Predicate alternatives affect presence requirements; they do not replace
+the sibling declaration of a gap array with arbitrary JSON. Properties required
+only by some alternatives remain optional in the projected model. The original
+schema descriptor—not the projection—checks the alternatives and intersections
+at each language's existing validation boundary.
+
+MCP HTTP, SSE, stdio, and custom-transport payloads expose typed location fields
+and gap records. Construction and field access do not require maps, raw JSON, or
+serialization. Unknown object members and unknown transport variants retain the
+existing forward-compatible behavior. TypeScript already represents these
+constraints with native intersections/unions; its consumer probes check the
+known branches separately from the intentionally open unknown-variant arm.
+
+Actual application-owned JSON remains JSON: native event payloads, tool inputs
+and outputs, candidate values, extension values, and genuinely unconstrained
+schema fields are not assigned invented protocol models. Public model typing is
+not a replacement for canonical validators or caller-context checks. In
+particular, the generated structural IR still omits canonical constraints such
+as string patterns, numeric bounds, and some conditional keywords.
+
+This is a source-level API migration: former Rust JSON newtypes become structs,
+arrays, scalar models, or semantic enums; Go raw composition arms become typed
+models; Python facade parameters now name their generated nested models. Build
+those models instead of supplying raw JSON where a schema describes the fields.
+`ModelVisibleItem` exposes composed content variants with a typed required role.
+
+Python facade objects remain mappings and now also provide typed read-only
+attributes. An optional attribute returns `None` when absent; mapping membership
+continues to distinguish absence from an explicit null. Accessors colliding with
+dictionary methods use a trailing underscore (`items_`), leaving `dict.items()`
+usable. Wire parsers still return their lossless mapping/TypedDict API, not
+hydrated facade instances. Attribute access is available on constructed facade
+objects. Type annotations do not replace runtime parsing or validate arbitrary
+manual mapping mutations.
+
+### Go capability queries
+
+Go exposes `req.Params.Capabilities.Supports(ahp.EffectDeny)` and
+`capabilities.Supports(ahp.EffectName("vendor.custom"))`. The generated
+`EffectNameDeny`, `EffectNameModify`, and the other `EffectName*` constants
+identify effect families; `EffectDeny` aliases `EffectNameDeny`. This avoids
+collisions with existing payload types such as `EffectModify`. Queries inspect typed fields
+without serialization and accept the known and custom string representations.
+Capability grant builders use the same family membership query for deduplication.
+
+`Supports` reports only advertised family membership: it does not authorize
+execution or imply a target, operation, delivery mode, or per-call grant. A nested
+modify grant without the `modify` family returns false; a `modify` family alone
+does not grant any modification operation. Continue to use the existing grant
+builders and host/request validation for operation constraints. Equivalent queries
+are available in every SDK without a new operation-authorization API:
+
+| SDK | Family query |
+| --- | --- |
+| Go | `caps.Supports(ahp.EffectDeny)` |
+| Rust | `caps.supports(EffectId::Deny)` |
+| Python | `caps.supports(capability.EffectName.DENY)` |
+| TypeScript | `supports(caps, effectNames.deny)` |
+
+These work on generic and incoming per-occurrence capabilities. Custom family
+strings remain supported. Shared semantic identifiers are derived from the schema;
+query helpers do not infer family membership from nested grants.
+
+### Shared constrained references
+
+The `Event` root is the shared public event type for intercept and observe. A
+method-specific subset is expressed as `$ref: event.schema.json` with a sibling
+`oneOf` containing the permitted original event references. Codegen retains both
+constraints in its validation descriptor, but projects that constrained reference
+to the same named public model in all four targets, without a wrapper or adapter.
+Known events excluded by the subset are rejected; truly unknown event tags retain
+forward-compatible unknown-variant diagnostics. Do not replace this constraint
+with an open string enum or a nested object predicate.
+
+Explicit `not: {required: [...]}` predicates, including unconditional `allOf`
+branches, are carried as forbidden-property sets. Thus `ContentReference` rejects
+receipt-only `size` and `sha256` by presence (including null), while unrelated
+unknown extra fields retain the existing forward-compatible parser behavior.
+`ContentUploadReceipt` is a distinct root for upload size and digest metadata.

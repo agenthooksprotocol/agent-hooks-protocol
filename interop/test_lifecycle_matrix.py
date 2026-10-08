@@ -3,7 +3,7 @@ from copy import deepcopy
 import base64
 import hashlib
 import unittest
-from lifecycle_matrix import HERE, load, verify, accepted_observation, transport_scenarios
+from lifecycle_matrix import HERE, load, verify, accepted_observation, transport_scenarios, content_sources
 
 def evidence(scenarios):
     entries=[]
@@ -55,12 +55,12 @@ class VerifierTests(unittest.TestCase):
         receipt = next(e for e in entries if e['kind'] == kind and
                        any('body' in item for item in e['message']['params']['event'].get('items', [])))
         item = next(item for item in receipt['message']['params']['event']['items'] if 'body' in item)
-        original = deepcopy(item['body'])
+        original = deepcopy(next(source['descriptor'] for source in content_sources(self.scenarios) if source['descriptor']['ref'] == item['body']['ref']))
         descriptor = {**original, 'ref': 'sdk-confirmed:' + original['ref']}
         confirmation = {'sourceRef': original['ref'], 'descriptor': descriptor,
                         'method': receipt['message']['method'], 'eventId': receipt['message']['params']['event']['id']}
         self.report['contentUploads'] = [confirmation]
-        item['body'] = deepcopy(descriptor)
+        item['body'] = {'ref': descriptor['ref']}
         if kind == 'observed':
             receipt['event'] = deepcopy(receipt['message']['params']['event'])
         upload = {'kind': 'upload', 'status': 201, **descriptor}

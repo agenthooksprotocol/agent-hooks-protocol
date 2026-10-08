@@ -107,3 +107,20 @@ pub enum UnionMode {
     AnyOf,
     OneOf,
 }
+
+impl Shape {
+    /// A named union narrowed by inline alternatives has the same public model.
+    /// This is a projection only: serializers retain both validation conjuncts.
+    pub fn constrained_reference(&self) -> Option<&Shape> {
+        match self {
+            Shape::Intersection { variants }
+                if variants.len() == 2
+                    && matches!(&variants[0], Shape::Ref { .. })
+                    && matches!(&variants[1], Shape::Union { .. }) =>
+            {
+                Some(&variants[0])
+            }
+            _ => None,
+        }
+    }
+}

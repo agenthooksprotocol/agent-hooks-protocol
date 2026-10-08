@@ -44,22 +44,28 @@
           "type": "string",
           "minLength": 1
         },
-        "size": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "sha256": {
-          "type": "string",
-          "pattern": "^[a-f0-9]{64}$",
-          "minLength": 64,
-          "maxLength": 64
-        },
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
         }
       },
-      "additionalProperties": false
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": {
+            "required": [
+              "size"
+            ]
+          }
+        },
+        {
+          "not": {
+            "required": [
+              "sha256"
+            ]
+          }
+        }
+      ]
     },
     {
       "type": "object",

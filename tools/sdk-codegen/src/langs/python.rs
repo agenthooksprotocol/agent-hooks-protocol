@@ -11,7 +11,7 @@ use serde_json::Value;
 use crate::model::{AdditionalProperties, Ir, Property, Shape};
 
 pub fn emit(ir: &Ir) -> Result<String> {
-    let identifiers = IdentifierMap::new(ir);
+    let identifiers = IdentifierMap::new(ir)?;
     let renderer = Renderer {
         ir,
         names: &identifiers.types,
@@ -99,12 +99,12 @@ struct IdentifierMap {
 }
 
 impl IdentifierMap {
-    fn new(ir: &Ir) -> Self {
+    fn new(ir: &Ir) -> Result<Self> {
         let mut occupied = reserved_identifiers();
         let mut types = HashMap::new();
         for named in &ir.types {
             if !types.contains_key(&named.name) {
-                let identifier = allocate_identifier(&named.name, "Type", &mut occupied);
+                let identifier = public_identifier(&named.name, "Type", &mut occupied)?;
                 types.insert(named.name.clone(), identifier);
             }
         }
@@ -112,9 +112,9 @@ impl IdentifierMap {
         let mut roots = Vec::with_capacity(ir.roots.len());
         for root in &ir.roots {
             let candidate = snake_case(&root.name);
-            roots.push(allocate_root_identifier(&candidate, "root", &mut occupied));
+            roots.push(allocate_root_identifier(&candidate, "root", &mut occupied)?);
         }
-        Self { types, roots }
+        Ok(Self { types, roots })
     }
 
     fn type_name(&self, source: &str) -> &str {
@@ -125,35 +125,45 @@ impl IdentifierMap {
     }
 }
 
-fn allocate_identifier(value: &str, fallback: &str, occupied: &mut HashSet<String>) -> String {
-    let base = sanitize_identifier(value, fallback);
-    let mut identifier = base.clone();
-    let mut suffix = 2;
-    while occupied.contains(&identifier) {
-        identifier = format!("{base}_{suffix}");
-        suffix += 1;
+// Public Python keyword escapes use the conventional trailing underscore.
+// Distinct schema names must never acquire traversal-dependent numeric suffixes.
+fn public_identifier(
+    value: &str,
+    fallback: &str,
+    occupied: &mut HashSet<String>,
+) -> Result<String> {
+    let mut name = sanitize_identifier(value, fallback);
+    if reserved_identifiers().contains(&name) || matches!(name.as_str(), "self" | "extra") {
+        name.push('_');
     }
-    occupied.insert(identifier.clone());
-    identifier
+    anyhow::ensure!(
+        name.len() <= 100,
+        "public Python identifier is too long: {name}"
+    );
+    anyhow::ensure!(
+        occupied.insert(name.clone()),
+        "public Python identifier collision: {name}"
+    );
+    Ok(name)
 }
 
-fn allocate_root_identifier(value: &str, fallback: &str, occupied: &mut HashSet<String>) -> String {
-    let base = sanitize_identifier(value, fallback);
-    let mut identifier = base.clone();
-    let mut suffix = 2;
-    while occupied.contains(&identifier)
-        || occupied.contains(&format!("parse_{identifier}"))
-        || occupied.contains(&format!("encode_{identifier}"))
-        || occupied.contains(&format!("{identifier}_schema_revision"))
-    {
-        identifier = format!("{base}_{suffix}");
-        suffix += 1;
+fn allocate_root_identifier(
+    value: &str,
+    fallback: &str,
+    occupied: &mut HashSet<String>,
+) -> Result<String> {
+    let identifier = public_identifier(value, fallback, occupied)?;
+    for generated in [
+        format!("parse_{identifier}"),
+        format!("encode_{identifier}"),
+        format!("{identifier}_schema_revision"),
+    ] {
+        anyhow::ensure!(
+            occupied.insert(generated.clone()),
+            "public Python root identifier collision: {generated}"
+        );
     }
-    occupied.insert(identifier.clone());
-    occupied.insert(format!("parse_{identifier}"));
-    occupied.insert(format!("encode_{identifier}"));
-    occupied.insert(format!("{identifier}_schema_revision"));
-    identifier
+    Ok(identifier)
 }
 
 fn sanitize_identifier(value: &str, fallback: &str) -> String {
@@ -271,6 +281,41 @@ struct Renderer<'a> {
 }
 
 impl Renderer<'_> {
+    // Distribute a referenced object union only in the public projection.
+    // Inline predicate unions instead contribute optional/common fields below.
+    fn composed_union(&self, shape: &Shape) -> Option<Shape> {
+        let Shape::Intersection { variants } = shape else {
+            return None;
+        };
+        for (index, variant) in variants.iter().enumerate() {
+            let Shape::Ref { name } = variant else {
+                continue;
+            };
+            let named = self.ir.types.iter().find(|n| n.name == *name)?;
+            let Shape::Union {
+                variants: arms,
+                mode,
+                discriminator,
+            } = &named.shape
+            else {
+                continue;
+            };
+            return Some(Shape::Union {
+                mode: *mode,
+                discriminator: discriminator.clone(),
+                variants: arms
+                    .iter()
+                    .map(|arm| {
+                        let mut parts = variants.clone();
+                        parts[index] = arm.clone();
+                        Shape::Intersection { variants: parts }
+                    })
+                    .collect(),
+            });
+        }
+        None
+    }
+
     fn emit_declarations(
         &self,
         shape: &Shape,
@@ -278,6 +323,12 @@ impl Renderer<'_> {
         public: bool,
         output: &mut String,
     ) -> Result<()> {
+        if shape.constrained_reference().is_some() {
+            return Ok(());
+        }
+        if let Some(projected) = self.composed_union(shape) {
+            return self.emit_declarations(&projected, hint, public, output);
+        }
         // References are declared by their own stable-name entry. Following them here
         // causes direct and mutual recursive object graphs to recurse forever.
         if matches!(shape, Shape::Ref { .. }) {
@@ -338,14 +389,20 @@ impl Renderer<'_> {
             Shape::Array { items } => {
                 self.emit_declarations(items, &format!("{hint}Item"), false, output)?
             }
-            Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-                for (index, variant) in variants.iter().enumerate() {
+            Shape::Union { variants, .. } => {
+                for arm in super::naming::projected_union(variants)? {
                     self.emit_declarations(
-                        variant,
-                        &format!("{hint}Variant{index}"),
+                        &variants[arm.source_indices[0]],
+                        &format!("{hint}{}", arm.name),
                         false,
                         output,
                     )?;
+                }
+            }
+            // Intersections are constraints, not public union alternatives.
+            Shape::Intersection { variants } => {
+                for (index, variant) in variants.iter().enumerate() {
+                    self.emit_declarations(variant, &format!("{hint}Field{index}"), false, output)?;
                 }
             }
             Shape::Any
@@ -364,6 +421,12 @@ impl Renderer<'_> {
     }
 
     fn render(&self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render(reference, hint);
+        }
+        if let Some(projected) = self.composed_union(shape) {
+            return self.render(&projected, hint);
+        }
         Ok(match shape {
             Shape::Any => "JsonValue".into(),
             Shape::Never => "Never".into(),
@@ -391,8 +454,8 @@ impl Renderer<'_> {
             } => {
                 let mut rendered = variants
                     .iter()
-                    .enumerate()
-                    .map(|(index, variant)| self.render(variant, &format!("{hint}Variant{index}")))
+                    .zip(super::naming::try_union_names(variants)?)
+                    .map(|(variant, name)| self.render(variant, &format!("{hint}{name}")))
                     .collect::<Result<Vec<_>>>()?;
                 if discriminator.is_some() {
                     rendered.push("UnknownVariant".into());
@@ -405,10 +468,10 @@ impl Renderer<'_> {
                 } else {
                     let rendered = variants
                         .iter()
-                        .filter(|variant| !matches!(variant, Shape::Any))
                         .enumerate()
+                        .filter(|(_, variant)| !matches!(variant, Shape::Any))
                         .map(|(index, variant)| {
-                            self.render(variant, &format!("{hint}Variant{index}"))
+                            self.render(variant, &format!("{hint}Field{index}"))
                         })
                         .collect::<Result<Vec<_>>>()?;
                     if rendered.is_empty() {
@@ -420,9 +483,15 @@ impl Renderer<'_> {
                             .reduce(intersect_shapes)
                             .expect("non-empty intersection");
                         if matches!(simplified, Shape::Intersection { .. }) {
-                            // Python has no general intersection type. An unresolved
-                            // intersection can still be satisfiable, so stay conservative.
-                            "JsonValue".into()
+                            // Every satisfying value satisfies each conjunct. Python has
+                            // no intersection operator: expose a typed conjunct while
+                            // the untouched descriptor validates all constraints.
+                            let (index, variant) = variants
+                                .iter()
+                                .enumerate()
+                                .find(|(_, variant)| !matches!(variant, Shape::Any))
+                                .expect("non-empty typed intersection");
+                            self.render(variant, &format!("{hint}Field{index}"))?
                         } else {
                             self.render(&simplified, hint)?
                         }
@@ -509,7 +578,56 @@ impl Renderer<'_> {
                     if matches!(variant, Shape::Any) {
                         continue;
                     }
-                    for property in self.model_properties_inner(variant, visiting)? {
+                    // Project predicate alternatives only inside an intersection. The
+                    // original oneOf/anyOf remains authoritative at parse time.
+                    let fields = if let Shape::Union { variants, .. } = variant {
+                        let alternatives = variants
+                            .iter()
+                            .map(|arm| self.model_properties_inner(arm, visiting))
+                            .collect::<Option<Vec<_>>>()?;
+                        let mut fields = Vec::<Property>::new();
+                        for alternative in &alternatives {
+                            for field in alternative {
+                                if fields.iter().any(|p| p.wire_name == field.wire_name) {
+                                    continue;
+                                }
+                                let mut projected = field.clone();
+                                projected.required = alternatives.iter().all(|arm| {
+                                    arm.iter()
+                                        .any(|p| p.wire_name == field.wire_name && p.required)
+                                });
+                                let shapes = alternatives
+                                    .iter()
+                                    .map(|arm| {
+                                        arm.iter()
+                                            .find(|p| p.wire_name == field.wire_name)
+                                            .map(|p| p.shape.clone())
+                                            .unwrap_or(Shape::Any)
+                                    })
+                                    .collect::<Vec<_>>();
+                                projected.shape = if shapes.iter().any(|s| matches!(s, Shape::Any))
+                                {
+                                    Shape::Any
+                                } else if shapes.iter().all(|s| {
+                                    is_subshape(s, &shapes[0]) && is_subshape(&shapes[0], s)
+                                }) {
+                                    shapes[0].clone()
+                                } else {
+                                    Shape::Union {
+                                        variants: shapes,
+                                        mode: crate::model::UnionMode::AnyOf,
+                                        discriminator: None,
+                                    }
+                                };
+                                fields.push(projected);
+                            }
+                        }
+                        fields.sort_by(|a, b| a.wire_name.cmp(&b.wire_name));
+                        fields
+                    } else {
+                        self.model_properties_inner(variant, visiting)?
+                    };
+                    for property in fields {
                         if let Some(existing) = merged
                             .iter_mut()
                             .find(|item| item.wire_name == property.wire_name)
@@ -728,6 +846,10 @@ ParseResult: TypeAlias = ParseSuccess[T] | ParseFailure
 "#;
 
 const RUNTIME: &str = r#"def _parse_root(name: str, input: str | JsonValue) -> ParseResult[JsonValue]:
+    return _parse_descriptor(_SCHEMAS[name], input)
+
+
+def _parse_descriptor(schema: _SchemaNode, input: str | JsonValue, cache: dict[tuple[str, str], tuple[ParseDiagnostic, ...]] | None = None) -> ParseResult[JsonValue]:
     try:
         raw = _to_safe_json(
             json.loads(
@@ -749,14 +871,36 @@ const RUNTIME: &str = r#"def _parse_root(name: str, input: str | JsonValue) -> P
             },),
         }
     diagnostics: list[ParseDiagnostic] = []
-    _check_node(_SCHEMAS[name], raw, "", diagnostics)
+    _check_node(schema, raw, "", diagnostics, cache)
     frozen = tuple(diagnostics)
     if any(item["severity"] == "error" for item in diagnostics):
         return {"ok": False, "raw": raw, "diagnostics": frozen}
     return {"ok": True, "value": raw, "raw": raw, "diagnostics": frozen}
 
 
-def _check_node(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: list[ParseDiagnostic]) -> None:
+_SCHEMA_KEYS: dict[int, tuple[_SchemaNode, str]] = {}
+
+
+def _schema_key(schema: _SchemaNode) -> str:
+    identity = id(schema)
+    if identity not in _SCHEMA_KEYS:
+        _SCHEMA_KEYS[identity] = (schema, _encode_json_value(cast(JsonValue, schema)))
+    return _SCHEMA_KEYS[identity][1]
+
+
+def _check_node(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: list[ParseDiagnostic], cache: dict[tuple[str, str], tuple[ParseDiagnostic, ...]] | None = None) -> None:
+    if cache is None:
+        _check_node_impl(schema, value, path, diagnostics, cache)
+        return
+    key = (_schema_key(schema), path)
+    if key not in cache:
+        checked: list[ParseDiagnostic] = []
+        _check_node_impl(schema, value, path, checked, cache)
+        cache[key] = tuple(checked)
+    diagnostics.extend(cache[key])
+
+
+def _check_node_impl(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: list[ParseDiagnostic], cache: dict[tuple[str, str], tuple[ParseDiagnostic, ...]] | None) -> None:
     kind = schema["kind"]
     if kind == "any":
         return
@@ -797,7 +941,7 @@ def _check_node(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: l
             _error(diagnostics, path, "invalid_type", "Expected array")
             return
         for index, item in enumerate(value):
-            _check_node(schema["items"], item, f"{path}/{index}", diagnostics)
+            _check_node(schema["items"], item, f"{path}/{index}", diagnostics, cache)
     elif kind == "object":
         if not isinstance(value, dict):
             _error(diagnostics, path, "invalid_type", "Expected object")
@@ -821,17 +965,17 @@ def _check_node(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: l
                         "Required property is absent",
                     )
             else:
-                _check_node(property["shape"], value[wire_name], _join_path(path, wire_name), diagnostics)
+                _check_node(property["shape"], value[wire_name], _join_path(path, wire_name), diagnostics, cache)
     elif kind == "intersection":
         for variant in schema["variants"]:
-            _check_node(variant, value, path, diagnostics)
+            _check_node(variant, value, path, diagnostics, cache)
     elif kind == "ref":
-        _check_node(_SCHEMAS[schema["name"]], value, path, diagnostics)
+        _check_node(_SCHEMAS[schema["name"]], value, path, diagnostics, cache)
     elif kind == "union":
-        _check_union(schema, value, path, diagnostics)
+        _check_union(schema, value, path, diagnostics, cache)
 
 
-def _check_union(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: list[ParseDiagnostic]) -> None:
+def _check_union(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: list[ParseDiagnostic], cache: dict[tuple[str, str], tuple[ParseDiagnostic, ...]] | None) -> None:
     discriminator = schema.get("discriminator")
     if discriminator is not None:
         if not isinstance(value, dict) or not isinstance(value.get(discriminator), str):
@@ -855,7 +999,7 @@ def _check_union(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: 
             })
             return
         branch_diagnostics: list[ParseDiagnostic] = []
-        _check_node(branch, value, path, branch_diagnostics)
+        _check_node(branch, value, path, branch_diagnostics, cache)
         diagnostics.extend(branch_diagnostics)
         if any(item["severity"] == "error" for item in branch_diagnostics):
             diagnostics.append({
@@ -869,7 +1013,7 @@ def _check_union(schema: _SchemaNode, value: JsonValue, path: str, diagnostics: 
     attempts: list[list[ParseDiagnostic]] = []
     for variant in schema["variants"]:
         attempt: list[ParseDiagnostic] = []
-        _check_node(variant, value, path, attempt)
+        _check_node(variant, value, path, attempt, cache)
         attempts.append(attempt)
     matches = [
         attempt
@@ -1132,7 +1276,7 @@ mod tests {
     #[test]
     fn renders_legal_enums_literals_arrays_and_intersections() {
         let ir = sample_ir();
-        let identifiers = IdentifierMap::new(&ir);
+        let identifiers = IdentifierMap::new(&ir).unwrap();
         let renderer = Renderer {
             ir: &ir,
             names: &identifiers.types,
@@ -1182,7 +1326,7 @@ mod tests {
                     "Impossible"
                 )
                 .unwrap(),
-            "JsonValue"
+            "str"
         );
         assert_eq!(
             renderer
@@ -1356,17 +1500,58 @@ mod tests {
             },
         };
 
-        let source = emit(&ir).unwrap();
-        assert!(source.contains("JsonValue_2: TypeAlias = str"));
-        assert!(source.contains("class_2: TypeAlias = str"));
-        assert!(source.contains("A_B: TypeAlias = str"));
-        assert!(source.contains("A_B_2: TypeAlias = str"));
-        assert!(source.contains("__debug___2: TypeAlias = str"));
-        assert!(source.contains("_FooField0ChildModel_2 = TypedDict("));
-        assert!(source.contains("def parse_class_3("));
-        assert!(!source.contains("def parse_a_b("));
-        assert!(source.contains("def parse_a_b_2("));
-        assert!(source.contains("def parse_a_b_3("));
+        assert!(emit(&ir).unwrap_err().to_string().contains("collision"));
+        let mut occupied = reserved_identifiers();
+        assert_eq!(
+            public_identifier("class", "Type", &mut occupied).unwrap(),
+            "class_"
+        );
+        assert!(public_identifier("class_", "Type", &mut occupied).is_err());
+    }
+
+    #[test]
+    fn union_model_names_follow_semantics_and_preserve_unknown_fallback() {
+        let ir = sample_ir();
+        let identifiers = IdentifierMap::new(&ir).unwrap();
+        let renderer = Renderer {
+            ir: &ir,
+            names: &identifiers.types,
+        };
+        let tagged = |tag: &str| Shape::Object {
+            properties: vec![Property {
+                wire_name: "kind".into(),
+                required: true,
+                constructor_default: None,
+                shape: Shape::Literal {
+                    value: Value::String(tag.into()),
+                },
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let variants = vec![tagged("alpha"), tagged("beta"), tagged("future")];
+        let labels = super::super::naming::union_names(&variants);
+        let union = Shape::Union {
+            variants: variants.clone(),
+            discriminator: Some("kind".into()),
+            mode: UnionMode::OneOf,
+        };
+        let mut declarations = String::new();
+        renderer
+            .emit_declarations(&union, "Choice", true, &mut declarations)
+            .unwrap();
+        let annotation = renderer.render(&union, "Choice").unwrap();
+        for label in &labels {
+            assert!(declarations.contains(&format!("_Choice{label}Model")));
+            assert!(annotation.contains(&format!("_Choice{label}Model")));
+        }
+        assert!(annotation.ends_with(", UnknownVariant]"));
+        assert!(!declarations.contains("Variant0"));
+        let mut reversed = variants;
+        reversed.reverse();
+        let mut reversed_labels = super::super::naming::union_names(&reversed);
+        reversed_labels.reverse();
+        assert_eq!(labels, reversed_labels);
     }
 
     #[test]

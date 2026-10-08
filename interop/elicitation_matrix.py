@@ -54,7 +54,7 @@ def envelopes(name,request,result,selection="body"):
     def make(stage,payload):
         raw=bytes_json(payload);ref=reference(name+':'+stage,raw)
         item={'id':name+':'+stage+':item','kind':'elicitation.'+stage,'mediaType':'application/json','selection':selection}
-        if selection=='body':item['body']=ref
+        if selection=='body':item['body']={'ref':ref['ref']}
         meta={'server':'asserted-not-authenticated','mode':mode}
         if selection!='omit':meta[stage]=item
         if stage=='result':meta['action']=payload.get('action','accept') if payload.get('action') in ('accept','decline','cancel') else 'accept'
@@ -215,7 +215,7 @@ def replace_refs(value, refs):
     if isinstance(value, list):return [replace_refs(item, refs) for item in value]
     if not isinstance(value, dict):return value
     result={key:replace_refs(item, refs) for key,item in value.items()}
-    if set(value)=={'ref','size','sha256'} and value['ref'] in refs:
+    if 'ref' in value and set(value) <= {'ref','size','sha256'} and value['ref'] in refs:
         result['ref']=refs[value['ref']]['ref']
     return result
 
@@ -258,7 +258,8 @@ def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=
         for original,step,expected_status,result in zip(steps[offset:end],batch,statuses[offset:end],replies):
             if step['path']=='/hooks/intercept':message=json.loads(base64.b64decode(step['bytes']))
             if result['status']!=expected_status:
-                raise AssertionError(f"{step['path']} expected {expected_status}, got {result['status']}")
+                identity = message.get("id", "unknown") if step["path"] == "/hooks/intercept" else step.get("localRef", "upload")
+                raise AssertionError(f"{step['path']} ({identity}) expected {expected_status}, got {result['status']}")
             if step['path']=='/upload' and expected_status==201:
                 descriptor=json.loads(result['body']);raw=base64.b64decode(step['bytes'])
                 if not isinstance(descriptor,dict) or set(descriptor)!={'ref','size','sha256'}:
@@ -283,9 +284,9 @@ def transmit_steps(command, endpoint, token, steps, statuses, env, upload_token=
                     raise AssertionError('content upload descriptor integrity')
                 if descriptor['ref'] in immutable and immutable[descriptor['ref']]!=raw:
                     raise AssertionError('receiver ref mutated')
-                # Ref replacements are restricted to exact descriptors already present
+                # Ref replacements are restricted to exact references already present
                 # in this planned message. The adapter cannot rewrite the envelope.
-                if not has_descriptor(message,reference(source,raw)):
+                if not has_descriptor(message,{'ref':source}):
                     raise AssertionError('unselected content upload source')
                 replacements[source]=descriptor
                 immutable[descriptor['ref']]=raw

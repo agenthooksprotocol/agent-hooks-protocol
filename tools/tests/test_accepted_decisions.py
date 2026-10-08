@@ -85,16 +85,41 @@ class AcceptedDecisionTests(unittest.TestCase):
         value['flow'] = 'unknown'
         self.assertTrue(self.errors(value, 'intercept-request', pointer))
 
-    def test_canonical_upload_descriptor(self):
+    def test_canonical_upload_receipt(self):
         value = {'ref': 'receiver-ref', 'size': 0, 'sha256': 'a' * 64}
-        self.assertFalse(self.errors(value, 'content-reference'))
+        self.assertFalse(self.errors(value, 'content-upload-receipt'))
         for field, invalid in [('ref', ''), ('size', -1), ('sha256', 'bad')]:
             with self.subTest(field=field):
                 broken = dict(value, **{field: invalid})
-                self.assertTrue(self.errors(broken, 'content-reference'))
+                self.assertTrue(self.errors(broken, 'content-upload-receipt'))
                 broken = dict(value)
                 del broken[field]
-                self.assertTrue(self.errors(broken, 'content-reference'))
+                self.assertTrue(self.errors(broken, 'content-upload-receipt'))
+
+    def test_event_reference_has_only_receiver_owned_identity(self):
+        self.assertFalse(self.errors({'ref': 'receiver-ref'}, 'content-reference'))
+        for value in [{}, {'ref': ''}, {'ref': 'receiver-ref', 'size': 0},
+                      {'ref': 'receiver-ref', 'sha256': 'a' * 64}]:
+            with self.subTest(value=value):
+                self.assertTrue(self.errors(value, 'content-reference'))
+
+    def test_shared_event_preserves_intercept_subset(self):
+        path = ROOT / 'fixtures/draft/http/observe-session-end.valid.json'
+        observe = json.loads(path.read_text())
+        event = observe['params']['event']
+        self.assertFalse(self.errors(event, 'event'))
+        self.assertFalse(self.errors(observe, 'observe-notification'))
+        intercept = copy.deepcopy(observe)
+        intercept.update(method='hooks/intercept', id=event['id'])
+        intercept['params']['capabilities'] = {'effects': []}
+        self.assertTrue(self.errors(intercept, 'intercept-request'))
+        intercept['params']['event'] = self.event()
+        intercept['id'] = intercept['params']['event']['id']
+        self.assertFalse(self.errors(intercept, 'intercept-request'))
+        unknown = {**self.event(), 'type': 'vendor.future'}
+        self.assertTrue(self.errors(unknown, 'event'))
+        # Canonical event membership stays closed; generated SDK forward-compatible
+        # unknown variants are a separate structural decoding policy.
 
     def test_unknown_effect_or_operation_rejects_whole_response(self):
         value = {'jsonrpc': '2.0', 'id': 'event', 'result': {

@@ -20,7 +20,20 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
         "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom enum import StrEnum\nfrom copy import deepcopy\nimport json\n_UNSET: Any = object()\n\n"
     );
     let mut builders = String::new();
-    let mut exports = vec!["Declaration".to_owned(), "Mode".to_owned()];
+    let mut exports = vec![
+        "Declaration".to_owned(),
+        "Mode".to_owned(),
+        "EffectName".to_owned(),
+    ];
+    out.push_str("class EffectName(StrEnum):\n    \"\"\"Schema effect-family identifiers; queries also accept custom strings.\"\"\"\n");
+    for effect in &vocabulary {
+        writeln!(
+            out,
+            "    {} = {effect:?}",
+            snake_case(effect).to_uppercase()
+        )?;
+    }
+    out.push('\n');
     let mut modes = std::collections::BTreeSet::new();
     for named in &ir.types {
         if named.name.ends_with("Subscription") {
@@ -200,7 +213,7 @@ fn grant(
     fields: &[Property],
     ir: &Ir,
 ) -> Result<()> {
-    constructor(out, name, fields, ir)?;
+    constructor(out, name, fields, ir, false)?;
     out.pop();
     out.push_str("        details = dict(self)\n        self.clear()\n");
     let effects = effect.into_iter().collect::<Vec<_>>();
@@ -223,7 +236,7 @@ fn grant(
 }
 
 fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
-    let method = allocate_identifier(&snake_case(name), "grant", &mut reserved_identifiers());
+    let method = public_identifier(&snake_case(name), "grant", &mut reserved_identifiers())?;
     write!(out, "    def {method}(self")?;
     if !fields.is_empty() {
         out.push_str(", *");
@@ -236,7 +249,7 @@ fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) ->
             out,
             ", {}: {}{}",
             snake_case(&field.wire_name),
-            annotation(ir, &field.shape),
+            annotation(ir, &field.shape, &field_hint(name, &field.wire_name)?, "")?,
             if optional { " = _UNSET" } else { "" }
         )?;
     }

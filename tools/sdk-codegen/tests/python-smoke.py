@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import importlib.util
+from copy import deepcopy
 import json
 import pathlib
 import sys
@@ -42,6 +43,20 @@ def main() -> None:
 
     sdk = load_module(pathlib.Path(sys.argv[1]).resolve())
     repository = pathlib.Path(sys.argv[2]).resolve()
+
+    # Presence (including null), not value, forbids receipt-only metadata.
+    for key in ("size", "sha256"):
+        for value in (None, 0, "a" * 64):
+            assert not sdk.parse_content_reference({"ref": "opaque", key: value})["ok"]
+    assert sdk.parse_content_reference({"ref": "opaque", "future": {"preserved": True}})["ok"]
+
+    shared_request = fixture(repository, "fixtures/draft/http/intercept-request.valid.json")
+    shared_request["params"]["event"] = {"type": "session.end", "id": "id", "source": "test", "time": "2026-01-01T00:00:00Z"}
+    assert not sdk.parse_intercept_request(shared_request)["ok"]
+    shared_request["params"]["event"] = {"type": "future.event", "extension": True}
+    future_event = sdk.parse_intercept_request(shared_request)
+    assert future_event["ok"] and "unknown_variant" in diagnostic_codes(future_event)
+    assert sdk.parse_content_upload_receipt({"ref": "opaque", "size": 0, "sha256": "a" * 64})["ok"]
 
     registration = fixture(
         repository, "fixtures/draft/registration/portable.valid.json"
@@ -126,6 +141,25 @@ def main() -> None:
     request = fixture(
         repository, "fixtures/draft/http/intercept-request.valid.json"
     )
+    # Required nullable state is not optional; candidate value can itself be null.
+    missing_candidate = deepcopy(request)
+    missing_candidate["params"]["state"] = {"permission": "allow"}
+    if sdk.parse_intercept_request(missing_candidate)["ok"]:
+        fail("missing required candidate was treated as explicit null")
+    for candidate in (None, {"value": None}):
+        nullable = deepcopy(request)
+        nullable["params"]["state"] = {"permission": "allow", "candidate": candidate}
+        parsed = sdk.parse_intercept_request(nullable)
+        if not parsed["ok"]:
+            fail(f"valid nullable candidate rejected: {parsed['diagnostics']}")
+        encoded = json.loads(sdk.encode_intercept_request(parsed["value"]))
+        if encoded["params"]["state"]["candidate"] != candidate:
+            fail("candidate null state changed during round-trip")
+    missing_value = deepcopy(request)
+    missing_value["params"]["state"] = {"permission": "allow", "candidate": {}}
+    if sdk.parse_intercept_request(missing_value)["ok"]:
+        fail("present candidate with missing value was treated as value null")
+
     integral_request = json.dumps(request, separators=(",", ":")).replace(
         json.dumps(request["id"]), "1.0", 1
     )
@@ -218,6 +252,17 @@ def main() -> None:
         missing = fixture(repository, f"fixtures/draft/http/mcp-{transport}-location-missing.invalid.json")["params"]["event"]
         if sdk.parse_tool_before_event(missing)["ok"]:
             fail(f"required-only {transport} location predicate was lost")
+
+    # Type projections must never replace the original constraint graph.
+    visible_schema = sdk._SCHEMAS["ModelVisibleItem"]
+    assert visible_schema["kind"] == "intersection"
+    assert visible_schema["variants"][0] == {"kind": "ref", "name": "ContentItem"}
+    connection_schema = next(p["shape"] for p in sdk._SCHEMAS["ExecutionEventMcp"]["properties"] if p["wire_name"] == "connection")
+    assert connection_schema["kind"] == "union"
+    assert connection_schema["mode"] == "oneOf"
+    assert connection_schema["discriminator"] == "transport"
+    assert len(connection_schema["variants"]) == 4
+    assert all(arm["kind"] == "intersection" for arm in connection_schema["variants"])
 
     print("generated Python codec smoke tests passed")
 

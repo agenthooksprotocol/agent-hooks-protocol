@@ -233,8 +233,8 @@ pub fn rust(ir: &Ir) -> Result<String> {
         return Ok(String::new());
     };
     let mut out = String::from(RUST_PRELUDE);
-    out.push_str("pub use super::EventType as Event;\n");
-    for (name, values) in [("EffectType", &m.effects), ("ModifyTarget", &m.targets)] {
+    out.push_str("pub use super::EventType as Event;\npub use super::EffectId as EffectType;\n");
+    for (name, values) in [("ModifyTarget", &m.targets)] {
         writeln!(
             out,
             "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)] pub enum {name} {{"

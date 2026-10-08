@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 mod ergonomics;
 use std::fmt::Write;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use serde_json::Value;
 
 use crate::model::{Ir, Property, Shape};
@@ -21,6 +21,9 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
     "DiagnosticSeverity",
     "Deref",
     "Integer",
+    "Hydration",
+    "ValidatedHydration",
+    "EffectId",
     "Into",
     "From",
     "JsonNumber",
@@ -84,6 +87,18 @@ fn boundary_literals(
     visiting: &mut BTreeSet<String>,
     names: &mut BTreeSet<String>,
 ) {
+    if let Shape::Intersection { variants } = shape {
+        if variants
+            .iter()
+            .any(|variant| matches!(variant, Shape::Never))
+        {
+            return;
+        }
+        if shape.constrained_reference().is_some() {
+            boundary_literals(ir, &variants[1], path, visiting, names);
+            return;
+        }
+    }
     match shape {
         Shape::Ref { name } => {
             if visiting.insert(name.clone()) {
@@ -238,7 +253,7 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     output.push_str(PRELUDE);
     emit_boundaries(ir, &mut output)?;
 
-    let mut context = EmitContext::new(ir);
+    let mut context = EmitContext::try_new(ir)?;
     context.defaults = defaults
         .into_iter()
         .map(|((name, field), value)| ((context.type_name(&name), field), value))
@@ -268,9 +283,11 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
             | "interaction-event"
             | "task-workspace-event"
             | "catalogue-event" => "event",
-            "content-item" | "content-reference" | "content-selection" | "content-upload" => {
-                "content"
-            }
+            "content-item"
+            | "content-reference"
+            | "content-selection"
+            | "content-upload"
+            | "content-upload-receipt" => "content",
             "effects" | "effect" | "deny-effect" => "effect",
             "jsonrpc" | "json-rpc" | "json-rpc-message" => "transport",
             other => other,
@@ -355,6 +372,63 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     Ok(output)
 }
 
+/// Validate the original descriptor, never the ergonomic public projection.
+fn validated_declaration(name: &str, shape: &Shape, declaration: String) -> Result<String> {
+    // Primitive intersections and `never` cannot be aliases: aliases cannot
+    // own Deserialize, and their primitive projection omits source predicates.
+    let declaration = if matches!(shape, Shape::Intersection { .. } | Shape::Never)
+        && declaration.starts_with("pub type ")
+    {
+        let target = declaration
+            .split_once(" = ")
+            .expect("alias target")
+            .1
+            .trim()
+            .trim_end_matches(';');
+        format!(
+            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub {target});\n\nimpl {name} {{ pub fn new(value: impl Into<{target}>) -> Self {{ Self(value.into()) }} }}\n"
+        )
+    } else {
+        declaration
+    };
+    let descriptor = serde_json::to_string(shape)?;
+    let check = format!("let _validated = validate_decode::<D::Error>(&value, {descriptor:?})?;");
+    if declaration.contains("impl<'de> Deserialize<'de>") {
+        return Ok(declaration.replacen(
+            "let value = JsonValue::deserialize(deserializer)?;",
+            &format!("let value = JsonValue::deserialize(deserializer)?;\n        {check}"),
+            1,
+        ));
+    }
+    if !declaration.starts_with("#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]") {
+        return Ok(declaration);
+    }
+    let start = declaration
+        .find("pub struct ")
+        .or_else(|| declaration.find("pub enum "))
+        .expect("derived model declaration");
+    let tail = &declaration[start..];
+    let end = if tail.starts_with(&format!("pub struct {name}(")) {
+        start + tail.find(";\n").expect("tuple declaration end") + 2
+    } else {
+        start + tail.find("\n}\n").expect("model declaration end") + 3
+    };
+    let remote = declaration[..end]
+        .replacen(
+            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]",
+            &format!("// Mirror the public representation exactly; do not rename arms or remove recursive indirection.\n#[allow(clippy::vec_box, clippy::enum_variant_names)]\n#[derive(Deserialize)]\n#[serde(remote = {name:?})]"),
+            1,
+        )
+        .replacen(&format!("pub struct {name}"), "struct Hydration", 1)
+        .replacen(&format!("pub enum {name}"), "enum Hydration", 1);
+    let mut output = declaration.replacen("Serialize, Deserialize", "Serialize", 1);
+    writeln!(
+        output,
+        "impl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        {check}\n        {remote}\n        Hydration::deserialize(value).map_err(<D::Error as serde::de::Error>::custom)\n    }}\n}}"
+    )?;
+    Ok(output)
+}
+
 struct EmitContext<'a> {
     named_shapes: BTreeMap<&'a str, &'a Shape>,
     type_names: BTreeMap<String, String>,
@@ -367,7 +441,12 @@ struct EmitContext<'a> {
 }
 
 impl<'a> EmitContext<'a> {
+    #[cfg(test)]
     fn new(ir: &'a Ir) -> Self {
+        Self::try_new(ir).unwrap()
+    }
+
+    fn try_new(ir: &'a Ir) -> Result<Self> {
         let mut used_type_names = RESERVED_TYPE_NAMES
             .iter()
             .map(|name| (*name).to_owned())
@@ -382,10 +461,10 @@ impl<'a> EmitContext<'a> {
         for original in originals {
             type_names.insert(
                 original.to_owned(),
-                unique_type_identifier(original, &mut used_type_names),
+                unique_type_identifier(original, &mut used_type_names)?,
             );
         }
-        Self {
+        Ok(Self {
             named_shapes: ir
                 .types
                 .iter()
@@ -398,7 +477,7 @@ impl<'a> EmitContext<'a> {
             ergonomic_fields: BTreeMap::new(),
             ergonomic_arms: BTreeMap::new(),
             defaults: BTreeMap::new(),
-        }
+        })
     }
 
     fn type_name(&self, original: &str) -> String {
@@ -409,6 +488,11 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_declaration(&mut self, name: &str, shape: &Shape) -> Result<String> {
+        let declaration = self.emit_unvalidated_declaration(name, shape)?;
+        validated_declaration(name, shape, declaration)
+    }
+
+    fn emit_unvalidated_declaration(&mut self, name: &str, shape: &Shape) -> Result<String> {
         if matches!(shape, Shape::Intersection { .. }) {
             if let Some(value) = self.fixed_value(shape, &mut BTreeSet::new()).cloned() {
                 return self.emit_literal(name, &value);
@@ -422,6 +506,8 @@ impl<'a> EmitContext<'a> {
                     collect_object_properties(shape, &self.named_shapes, &mut visiting)
                 {
                     self.emit_struct(name, &properties)
+                } else if let Some(projected) = project_intersection(shape, &self.named_shapes) {
+                    self.emit_unvalidated_declaration(name, &projected)
                 } else {
                     Ok(format!(
                         "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub JsonValue);\n\nimpl {name} {{ pub fn new(value: impl Into<JsonValue>) -> Self {{ Self(value.into()) }} }}\n\n"
@@ -441,7 +527,7 @@ impl<'a> EmitContext<'a> {
             Shape::Array { items } => {
                 let item = self.render_type(items, &format!("{name} item"))?;
                 Ok(format!(
-                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Vec<{item}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<Vec<{item}>> for {name} {{ fn from(value: Vec<{item}>) -> Self {{ Self::new(value) }} }}\n\n"
+                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Vec<{item}>);\n\nimpl {name} {{ pub fn new(value: impl Into<Vec<{item}>>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<Vec<{item}>> for {name} {{ fn from(value: Vec<{item}>) -> Self {{ Self::new(value) }} }}\n\nimpl Deref for {name} {{ type Target = [{item}]; fn deref(&self) -> &Self::Target {{ &self.0 }} }}\n\n"
                 ))
             }
             Shape::Ref { name: target } => {
@@ -607,48 +693,10 @@ impl<'a> EmitContext<'a> {
         ty.to_owned()
     }
 
-    fn union_label(&self, shape: &Shape) -> Option<String> {
-        let properties =
-            collect_object_properties(shape, &self.named_shapes, &mut BTreeSet::new())?;
-        let literals = properties
-            .iter()
-            .filter(|property| property.required)
-            .filter_map(|property| {
-                self.fixed_value(&property.shape, &mut BTreeSet::new())
-                    .and_then(Value::as_str)
-                    .map(|value| (property.wire_name.as_str(), value))
-            })
-            .collect::<BTreeMap<_, _>>();
-        let key = [
-            "type",
-            "kind",
-            "mode",
-            "method",
-            "selection",
-            "action",
-            "status",
-        ]
-        .into_iter()
-        .find(|key| literals.contains_key(key))?;
-        let mut label = literals[key].to_owned();
-        // Secondary tags distinguish flow stop/continue and similar typed operations.
-        for (other, value) in &literals {
-            if *other != key && !matches!(*other, "jsonrpc" | "protocolVersion") {
-                label.push(' ');
-                label.push_str(value);
-            }
-        }
-        if key == "selection"
-            && properties
-                .iter()
-                .any(|property| property.required && property.wire_name == "gap")
-        {
-            label.push_str(" gap");
-        }
-        Some(label)
-    }
-
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render_type(reference, hint);
+        }
         Ok(match shape {
             Shape::Any | Shape::Never => "JsonValue".into(),
             Shape::Null => "()".into(),
@@ -669,7 +717,7 @@ impl<'a> EmitContext<'a> {
     }
 
     fn ensure_helper(&mut self, hint: &str, shape: &Shape) -> Result<String> {
-        let name = unique_type_identifier(hint, &mut self.used_type_names);
+        let name = unique_type_identifier(hint, &mut self.used_type_names)?;
         let declaration = self.emit_declaration(&name, shape)?;
         writeln!(self.helpers, "/// Inline schema model.")?;
         self.helpers.push_str(&declaration);
@@ -688,11 +736,9 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_enum(&self, name: &str, values: &[Value], open_strings: bool) -> Result<String> {
-        let mut used = BTreeSet::from(["Unknown".to_owned()]);
-        let variants = values
-            .iter()
-            .enumerate()
-            .map(|(index, value)| (unique_variant_identifier(value, index, &mut used), value))
+        let variants = super::naming::try_literal_names(values)?
+            .into_iter()
+            .zip(values)
             .collect::<Vec<_>>();
         let mut output = String::new();
         writeln!(
@@ -706,6 +752,19 @@ impl<'a> EmitContext<'a> {
             writeln!(output, "    Unknown(String),")?;
         }
         writeln!(output, "}}\n")?;
+        if values.iter().all(Value::is_string) {
+            writeln!(
+                output,
+                "impl {name} {{ pub fn as_str(&self) -> &str {{ match self {{"
+            )?;
+            for (variant, value) in &variants {
+                writeln!(output, "Self::{variant} => {:?},", value.as_str().unwrap())?;
+            }
+            if open_strings {
+                writeln!(output, "Self::Unknown(value) => value.as_str(),")?;
+            }
+            writeln!(output, "}} }} }}")?;
+        }
         writeln!(
             output,
             "impl Serialize for {name} {{\n    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n        match self {{"
@@ -748,15 +807,99 @@ impl<'a> EmitContext<'a> {
         Ok(output)
     }
 
+    /// Resolve tagged references only for naming. Payload types and codec shapes
+    /// remain the original alternatives, including their reference boundaries.
+    #[cfg(test)]
+    fn union_names(&self, variants: &[Shape]) -> Vec<String> {
+        self.try_union_names(variants).unwrap()
+    }
+
+    fn try_union_names(&self, variants: &[Shape]) -> Result<Vec<String>> {
+        fn resolve(
+            context: &EmitContext<'_>,
+            shape: &Shape,
+            visiting: &mut BTreeSet<String>,
+        ) -> Shape {
+            match shape {
+                Shape::Ref { name } if visiting.insert(name.clone()) => {
+                    let resolved = context
+                        .named_shapes
+                        .get(name.as_str())
+                        .map(|shape| resolve(context, shape, visiting))
+                        .unwrap_or_else(|| shape.clone());
+                    visiting.remove(name);
+                    resolved
+                }
+                Shape::Intersection { variants } => Shape::Intersection {
+                    variants: variants
+                        .iter()
+                        .map(|shape| resolve(context, shape, visiting))
+                        .collect(),
+                },
+                Shape::Object {
+                    properties,
+                    forbidden_property_sets,
+                    additional,
+                } => Shape::Object {
+                    properties: properties
+                        .iter()
+                        .map(|property| {
+                            let mut property = property.clone();
+                            if let Some(value) =
+                                context.fixed_value(&property.shape, &mut BTreeSet::new())
+                            {
+                                property.shape = Shape::Literal {
+                                    value: value.clone(),
+                                };
+                            }
+                            property
+                        })
+                        .collect(),
+                    forbidden_property_sets: forbidden_property_sets.clone(),
+                    additional: additional.clone(),
+                },
+                _ => shape.clone(),
+            }
+        }
+        let resolved = variants
+            .iter()
+            .map(|shape| resolve(self, shape, &mut BTreeSet::new()))
+            .collect::<Vec<_>>();
+        let mut counts = BTreeMap::new();
+        for shape in &resolved {
+            if let Some(tag) = super::naming::tagged_label(shape) {
+                *counts.entry(tag).or_insert(0usize) += 1;
+            }
+        }
+        let naming_shapes = variants
+            .iter()
+            .zip(resolved)
+            .map(
+                |(original, resolved)| match super::naming::tagged_label(&resolved) {
+                    Some(tag) if counts[&tag] == 1 => resolved,
+                    _ => original.clone(),
+                },
+            )
+            .collect::<Vec<_>>();
+        super::naming::try_union_names(&naming_shapes)
+    }
+
     fn emit_union(
         &mut self,
         name: &str,
         variants: &[Shape],
         discriminator: Option<&str>,
     ) -> Result<String> {
-        let mut used = BTreeSet::from(["Unknown".to_owned()]);
+        let names = self
+            .try_union_names(variants)
+            .with_context(|| format!("naming union {name}"))?;
+        let projection = super::naming::projected_union_with_names(variants, &names)
+            .with_context(|| format!("projecting union {name}"))?;
         let mut rendered = Vec::new();
-        for (index, shape) in variants.iter().enumerate() {
+        for arm in projection {
+            let index = arm.source_indices[0];
+            let shape = &variants[index];
+            let variant = arm.name;
             if matches!(shape, Shape::Never) {
                 continue;
             }
@@ -764,14 +907,6 @@ impl<'a> EmitContext<'a> {
                 shape_discriminator_value(shape, property, &self.named_shapes, &mut BTreeSet::new())
                     .map(str::to_owned)
             });
-            let semantic = self
-                .union_label(shape)
-                .or_else(|| discriminator_value.clone());
-            let variant = if let Some(label) = semantic {
-                unique_upper_camel_identifier(type_identifier(&label), &mut used)
-            } else {
-                unique_union_variant_identifier(shape, index, &mut used)
-            };
             let ty = self.render_type(shape, &format!("{name} {variant}"))?;
             rendered.push((variant, ty, discriminator_value));
         }
@@ -878,6 +1013,77 @@ fn root_function_names(ir: &Ir) -> BTreeMap<String, String> {
     result
 }
 
+/// Select a lossless public representation, never a replacement validator.
+/// A value satisfying allOf satisfies each conjunct. Arrays and scalar values
+/// can therefore use a typed conjunct while retaining all constraints in IR.
+/// Object unions instead distribute allOf so fields from every sibling remain
+/// typed in each branch (not hidden in an extension map).
+fn project_intersection(shape: &Shape, named: &BTreeMap<&str, &Shape>) -> Option<Shape> {
+    fn expand(
+        shape: &Shape,
+        named: &BTreeMap<&str, &Shape>,
+        visiting: &mut BTreeSet<String>,
+        out: &mut Vec<Shape>,
+    ) {
+        match shape {
+            Shape::Ref { name } if visiting.insert(name.clone()) => {
+                if let Some(target) = named.get(name.as_str()) {
+                    expand(target, named, visiting, out);
+                } else {
+                    out.push(shape.clone());
+                }
+                visiting.remove(name);
+            }
+            Shape::Intersection { variants } => {
+                for variant in variants {
+                    expand(variant, named, visiting, out);
+                }
+            }
+            Shape::Any => {}
+            other => out.push(other.clone()),
+        }
+    }
+    let mut conjuncts = Vec::new();
+    expand(shape, named, &mut BTreeSet::new(), &mut conjuncts);
+    if let Some(typed) = conjuncts.iter().find(|shape| {
+        matches!(
+            shape,
+            Shape::Array { .. }
+                | Shape::String
+                | Shape::Boolean
+                | Shape::Integer
+                | Shape::Number
+                | Shape::Enum { .. }
+                | Shape::Literal { .. }
+        )
+    }) {
+        return Some(typed.clone());
+    }
+    for (index, conjunct) in conjuncts.iter().enumerate() {
+        if let Shape::Union {
+            variants,
+            mode,
+            discriminator,
+        } = conjunct
+        {
+            let variants = variants
+                .iter()
+                .map(|variant| {
+                    let mut siblings = conjuncts.clone();
+                    siblings[index] = variant.clone();
+                    Shape::Intersection { variants: siblings }
+                })
+                .collect();
+            return Some(Shape::Union {
+                variants,
+                mode: mode.clone(),
+                discriminator: discriminator.clone(),
+            });
+        }
+    }
+    None
+}
+
 fn collect_object_properties(
     shape: &Shape,
     named_shapes: &BTreeMap<&str, &Shape>,
@@ -887,7 +1093,13 @@ fn collect_object_properties(
         Shape::Object { properties, .. } => Some(properties.clone()),
         Shape::Intersection { variants } => {
             let mut merged: Vec<Property> = Vec::new();
+            let mut object_constrained = false;
             for variant in variants {
+                // An unconstrained allOf member does not erase typed siblings.
+                if matches!(variant, Shape::Any) {
+                    continue;
+                }
+                object_constrained = true;
                 for property in collect_object_properties(variant, named_shapes, visiting)? {
                     if let Some(existing) = merged
                         .iter_mut()
@@ -903,7 +1115,46 @@ fn collect_object_properties(
                     }
                 }
             }
-            Some(merged)
+            object_constrained.then_some(merged)
+        }
+        Shape::Union { variants, .. } => {
+            // Projection only: predicate branches describe presence alternatives,
+            // not a new value type. Keep conditional fields optional unless every
+            // branch requires them. The ORIGINAL schema graph below remains the
+            // authority for anyOf/oneOf counts and forbidden combinations.
+            let branches = variants
+                .iter()
+                .map(|variant| collect_object_properties(variant, named_shapes, visiting))
+                .collect::<Option<Vec<_>>>()?;
+            if branches.is_empty() {
+                return None;
+            }
+            // A property omitted by an open predicate branch is unconstrained
+            // in that branch. Its overall projection is Any, which lets typed
+            // allOf siblings supply its actual representation (e.g. booleans).
+            for property in branches.iter().flatten() {
+                if !matches!(property.shape, Shape::Any)
+                    && !variants.iter().any(|variant| matches!(variant,
+                        Shape::Object { properties, additional: crate::model::AdditionalProperties::Allowed, .. }
+                        if !properties.iter().any(|candidate| candidate.wire_name == property.wire_name)))
+                {
+                    return None;
+                }
+            }
+            let mut merged = BTreeMap::<String, Property>::new();
+            for property in branches.iter().flatten() {
+                merged.entry(property.wire_name.clone()).or_insert_with(|| {
+                    let mut projected = property.clone();
+                    projected.shape = Shape::Any;
+                    projected.required = branches.iter().all(|branch| {
+                        branch.iter().any(|candidate| {
+                            candidate.wire_name == property.wire_name && candidate.required
+                        })
+                    });
+                    projected
+                });
+            }
+            Some(merged.into_values().collect())
         }
         Shape::Ref { name } => {
             if !visiting.insert(name.clone()) {
@@ -1030,62 +1281,21 @@ fn unique_field_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
     candidate
 }
 
-fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> String {
-    unique_upper_camel_identifier(type_identifier(value), used)
-}
-
-fn unique_variant_identifier(value: &Value, index: usize, used: &mut BTreeSet<String>) -> String {
-    let label = match value {
-        Value::Null => "Null".to_owned(),
-        Value::Bool(true) => "True".to_owned(),
-        Value::Bool(false) => "False".to_owned(),
-        Value::Number(number) if number.to_string().starts_with('-') => {
-            format!("Negative {}", &number.to_string()[1..])
-        }
-        Value::Number(number) => format!("Value {number}"),
-        Value::String(value) if value.is_empty() => "Empty".to_owned(),
-        Value::String(value) => value.clone(),
-        Value::Array(_) => format!("Array {}", index + 1),
-        Value::Object(_) => format!("Object {}", index + 1),
-    };
-    unique_upper_camel_identifier(type_identifier(&label), used)
-}
-
-fn unique_union_variant_identifier(
-    shape: &Shape,
-    index: usize,
-    used: &mut BTreeSet<String>,
-) -> String {
-    let label = match shape {
-        Shape::Any => "Any".to_owned(),
-        Shape::Never => "Never".to_owned(),
-        Shape::Null => "Null".to_owned(),
-        Shape::Boolean => "Boolean".to_owned(),
-        Shape::Integer => "Integer".to_owned(),
-        Shape::Number => "Number".to_owned(),
-        Shape::String => "String".to_owned(),
-        Shape::Literal { value } => {
-            let mut local = BTreeSet::new();
-            unique_variant_identifier(value, index, &mut local)
-        }
-        Shape::Enum { .. } => "Enum".to_owned(),
-        Shape::Array { .. } => "Array".to_owned(),
-        Shape::Object { .. } => "Object".to_owned(),
-        Shape::Union { .. } => "Union".to_owned(),
-        Shape::Intersection { .. } => "Intersection".to_owned(),
-        Shape::Ref { name } => name.clone(),
-    };
-    unique_upper_camel_identifier(type_identifier(&label), used)
-}
-
-fn unique_upper_camel_identifier(base: String, used: &mut BTreeSet<String>) -> String {
-    let mut candidate = base.clone();
-    let mut suffix = 2;
-    while !used.insert(candidate.clone()) {
-        candidate = format!("{base}{suffix}");
-        suffix += 1;
-    }
-    candidate
+fn unique_type_identifier(value: &str, used: &mut BTreeSet<String>) -> Result<String> {
+    anyhow::ensure!(
+        !identifier_words(value).is_empty(),
+        "public model {value:?} has no semantic identifier; provide a canonical schema name"
+    );
+    let name = type_identifier(value);
+    anyhow::ensure!(
+        name.len() <= 96,
+        "public model name {name:?} is too long; provide a concise canonical schema name"
+    );
+    anyhow::ensure!(
+        used.insert(name.clone()),
+        "public Rust model name {name:?} from {value:?} is reserved or already used; provide a distinct canonical schema name instead of an ordinal alias"
+    );
+    Ok(name)
 }
 
 fn identifier_words(value: &str) -> Vec<String> {
@@ -1405,6 +1615,39 @@ fn schemas() -> &'static BTreeMap<String, SchemaNode> {
     })
 }
 
+// Private, synchronous, panic-safe hydration scope. Generated models have no
+// consumer callbacks: their fields contain only generated models and JSON values.
+thread_local! {
+    static VALIDATED_HYDRATION: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+struct ValidatedHydration;
+impl ValidatedHydration {
+    fn enter() -> Self {
+        VALIDATED_HYDRATION.with(|depth| depth.set(depth.get() + 1));
+        Self
+    }
+}
+impl Drop for ValidatedHydration {
+    fn drop(&mut self) {
+        VALIDATED_HYDRATION.with(|depth| depth.set(depth.get() - 1));
+    }
+}
+fn validate_decode<E: serde::de::Error>(value: &JsonValue, descriptor: &'static str) -> Result<ValidatedHydration, E> {
+    if !VALIDATED_HYDRATION.with(|depth| depth.get() > 0) {
+        static DESCRIPTORS: OnceLock<std::sync::Mutex<BTreeMap<&'static str, std::sync::Arc<SchemaNode>>>> = OnceLock::new();
+        let schema = {
+            let mut cache = DESCRIPTORS.get_or_init(Default::default).lock().expect("descriptor cache lock");
+            cache.entry(descriptor).or_insert_with(|| std::sync::Arc::new(serde_json::from_str(descriptor).expect("generated descriptor"))).clone()
+        };
+        let mut diagnostics = Vec::new();
+        check_node(&schema, value, "", &mut diagnostics);
+        if has_errors(&diagnostics) {
+            return Err(E::custom(format!("structural decode failed: {diagnostics:?}")));
+        }
+    }
+    Ok(ValidatedHydration::enter())
+}
+
 fn parse_root<T: DeserializeOwned>(name: &str, input: &str) -> ParseResult<T> {
     match serde_json::from_str(input) {
         Ok(raw) => parse_root_value(name, raw),
@@ -1432,6 +1675,7 @@ fn parse_root_value<T: DeserializeOwned>(name: &str, raw: JsonValue) -> ParseRes
             diagnostics,
         };
     }
+    let _validated = ValidatedHydration::enter();
     match serde_json::from_value(raw.clone()) {
         Ok(value) => ParseResult::Success {
             value,
@@ -1802,6 +2046,292 @@ mod tests {
     use crate::model::{AdditionalProperties, NamedType, PublicRoot, UnionMode};
 
     #[test]
+    fn tagged_reference_arms_preserve_existing_semantic_names_and_payloads() {
+        let object = |tag: &str| Shape::Object {
+            properties: vec![Property {
+                wire_name: "type".into(),
+                required: true,
+                shape: Shape::Literal { value: tag.into() },
+                constructor_default: None,
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![],
+            types: vec![
+                NamedType {
+                    name: "HttpTransport".into(),
+                    source: "test".into(),
+                    shape: object("http"),
+                },
+                NamedType {
+                    name: "DenyEffect".into(),
+                    source: "test".into(),
+                    shape: object("deny"),
+                },
+                NamedType {
+                    name: "TurnStartEvent".into(),
+                    source: "test".into(),
+                    shape: object("turn.start"),
+                },
+                NamedType {
+                    name: "AuthenticationBearer".into(),
+                    source: "test".into(),
+                    shape: object("bearer"),
+                },
+            ],
+        };
+        let mut variants = vec![
+            Shape::Ref {
+                name: "HttpTransport".into(),
+            },
+            Shape::Ref {
+                name: "DenyEffect".into(),
+            },
+            Shape::Ref {
+                name: "TurnStartEvent".into(),
+            },
+            Shape::Intersection {
+                variants: vec![
+                    Shape::Ref {
+                        name: "AuthenticationBearer".into(),
+                    },
+                    Shape::Any,
+                ],
+            },
+        ];
+        let mut context = EmitContext::new(&ir);
+        assert_eq!(
+            context.union_names(&variants),
+            ["Http", "Deny", "TurnStart", "Bearer"]
+        );
+        let output = context.emit_union("Test", &variants, None).unwrap();
+        assert!(output.contains("Http(Box<HttpTransport>)"));
+        assert!(output.contains("Deny(Box<DenyEffect>)"));
+        assert!(output.contains("TurnStart(Box<TurnStartEvent>)"));
+        variants.reverse();
+        assert_eq!(
+            context.union_names(&variants),
+            ["Bearer", "TurnStart", "Deny", "Http"]
+        );
+    }
+
+    #[test]
+    fn public_union_and_enum_names_survive_reordering_and_collisions() {
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![],
+            types: vec![],
+        };
+        let mut shapes = vec![
+            Shape::Literal {
+                value: "foo-bar".into(),
+            },
+            Shape::Literal {
+                value: "other".into(),
+            },
+            Shape::Enum {
+                values: vec!["ready".into()],
+                open_strings: false,
+            },
+            Shape::String,
+            Shape::Null,
+            Shape::Object {
+                properties: vec![Property {
+                    wire_name: "result".into(),
+                    required: true,
+                    shape: Shape::Integer,
+                    constructor_default: None,
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Allowed,
+            },
+        ];
+        let mut context = EmitContext::new(&ir);
+        let first = context.emit_union("Payload", &shapes, None).unwrap();
+        let arms = context.ergonomic_arms["Payload"]
+            .iter()
+            .cloned()
+            .collect::<BTreeMap<_, _>>();
+        assert!(first.contains("Custom(String)"));
+        assert!(first.contains("Known(PayloadKnown)"));
+        assert!(first.contains("ResultObject(PayloadResultObject)"));
+        assert!(!first.contains("Variant1"));
+        shapes.reverse();
+        let mut context = EmitContext::new(&ir);
+        context.emit_union("Payload", &shapes, None).unwrap();
+        assert_eq!(
+            arms,
+            context.ergonomic_arms["Payload"].iter().cloned().collect()
+        );
+        let mut values = vec!["ready".into(), "waiting".into(), "unknown".into()];
+        let first = context.emit_enum("Choice", &values, false).unwrap();
+        values.reverse();
+        let second = context.emit_enum("Choice", &values, false).unwrap();
+        for name in super::super::naming::literal_names(&values) {
+            assert!(first.contains(&format!("    {name},")));
+            assert!(second.contains(&format!("    {name},")));
+        }
+    }
+
+    #[test]
+    fn real_schema_public_declarations_are_bounded_semantic_and_order_independent() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let before = serde_json::to_value(&ir).unwrap();
+        let source = emit(&ir).unwrap();
+        assert_eq!(before, serde_json::to_value(&ir).unwrap());
+        let mut declarations = BTreeSet::new();
+        for line in source.lines() {
+            let Some(rest) = line
+                .strip_prefix("pub enum ")
+                .or_else(|| line.strip_prefix("pub struct "))
+                .or_else(|| line.strip_prefix("pub type "))
+            else {
+                continue;
+            };
+            let name = rest
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .next()
+                .unwrap();
+            assert!(name.len() <= 80, "oversized declaration {name}");
+            assert!(
+                !name.contains("Shape")
+                    && !name.contains("Duplicate")
+                    && !name.contains("ObjectOr")
+                    && !name.contains("ObjectAnd"),
+                "structural declaration {name}"
+            );
+            assert!(
+                !name.ends_with(|c: char| c.is_ascii_digit()),
+                "ordinal declaration {name}"
+            );
+            assert!(declarations.insert(name), "duplicate declaration {name}");
+        }
+        let mut in_enum = false;
+        let mut payloads = BTreeSet::new();
+        for line in source.lines() {
+            if line.starts_with("pub enum ") {
+                in_enum = true;
+                payloads.clear();
+                continue;
+            }
+            if in_enum && line == "}" {
+                in_enum = false;
+            }
+            let line = line.trim();
+            if !in_enum || line.starts_with("#") || line.starts_with("/") || line.is_empty() {
+                continue;
+            }
+            let name = line
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                .next()
+                .unwrap();
+            assert!(
+                name.len() <= 80 && !name.contains("Shape") && !name.contains("Duplicate"),
+                "bad arm {name}"
+            );
+            assert!(
+                !name.starts_with("Variant") && !name.ends_with(|c: char| c.is_ascii_digit()),
+                "ordinal arm {name}"
+            );
+            if let Some((_, payload)) = line.split_once('(') {
+                assert!(
+                    payloads.insert(payload.to_owned()),
+                    "duplicate modeled payload {line}"
+                );
+            }
+        }
+        assert!(source.contains("    UnknownValue,"));
+        assert!(declarations.len() > 1000);
+        let primitive = ir
+            .types
+            .iter()
+            .find(|t| t.name == "McpElicitationPrimitiveSchemaDefinition")
+            .unwrap();
+        let Shape::Union { variants, .. } = &primitive.shape else {
+            panic!("expected elicitation union")
+        };
+        assert_eq!(variants.len(), 8);
+        let context = EmitContext::new(&ir);
+        let names = context.union_names(variants);
+        assert_eq!(names.iter().collect::<BTreeSet<_>>().len(), 8);
+        assert!(names.contains(&"McpElicitationStringSchema".into()));
+        assert!(names.contains(&"McpElicitationNumberSchema".into()));
+        for (name, shape) in names.iter().zip(variants) {
+            let Shape::Ref { name: canonical } = shape else {
+                panic!("expected canonical ref")
+            };
+            assert!(source.contains(&format!("    {name}(Box<{canonical}>),")));
+        }
+        let reversed = variants.iter().cloned().rev().collect::<Vec<_>>();
+        assert_eq!(
+            context.union_names(&reversed),
+            names.into_iter().rev().collect::<Vec<_>>()
+        );
+        let connection = source
+            .split("pub enum ExecutionEventMcpConnection {")
+            .nth(1)
+            .unwrap()
+            .split("\n}")
+            .next()
+            .unwrap();
+        for transport in ["Http", "Sse", "Stdio", "CustomTransport"] {
+            assert!(connection.contains(&format!(
+                "    {transport}(ExecutionEventMcpConnection{transport}),"
+            )));
+        }
+    }
+
+    #[test]
+    fn exact_duplicate_public_arms_do_not_change_anyof_or_oneof_descriptors() {
+        for mode in [UnionMode::AnyOf, UnionMode::OneOf] {
+            let shape = Shape::Union {
+                mode,
+                variants: vec![Shape::String, Shape::String],
+                discriminator: None,
+            };
+            let original = serde_json::to_value(&shape).unwrap();
+            let ir = Ir {
+                schema_revision: "test".into(),
+                protocol_version: "test".into(),
+                roots: vec![],
+                types: vec![NamedType {
+                    name: "DuplicateInput".into(),
+                    source: "test.json#".into(),
+                    shape,
+                }],
+            };
+            let output = emit(&ir).unwrap();
+            let declaration = output
+                .split("pub enum DuplicateInput {")
+                .nth(1)
+                .unwrap()
+                .split("\n}")
+                .next()
+                .unwrap();
+            assert_eq!(declaration.matches("String(String)").count(), 1);
+            assert_eq!(serde_json::to_value(&ir.types[0].shape).unwrap(), original);
+            // The generated runtime still checks the original branch cardinality,
+            // so a duplicate oneOf matches twice even though its public arm is shared.
+            assert!(output.contains("matches.len() > 1"));
+            assert!(output.contains("Value matches more than one union branch"));
+            let encoded = output
+                .lines()
+                .find_map(|line| line.strip_prefix("const SCHEMAS_JSON: &str = "))
+                .unwrap()
+                .trim_end_matches(';');
+            let json: String = serde_json::from_str(encoded).unwrap();
+            let descriptors: Value = serde_json::from_str(&json).unwrap();
+            assert_eq!(descriptors["DuplicateInput"], original);
+        }
+    }
+
+    #[test]
     fn boundary_inventory_matches_canonical_schema_and_capabilities() {
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&repository, "draft").unwrap();
@@ -2025,7 +2555,7 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
         let union = context
             .emit_union("Ambiguous", &[Shape::String, Shape::String], None)
             .unwrap();
-        assert!(!union.contains("impl From<String>"));
+        assert!(union.contains("impl From<String>"));
         let union = context
             .emit_union("Unique", &[Shape::String, Shape::Boolean], None)
             .unwrap();
@@ -2157,6 +2687,35 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
     }
 
     #[test]
+    fn draft_compositions_are_typed_without_rewriting_validator_descriptors() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let source = emit(&ir).unwrap();
+        assert!(
+            !source
+                .lines()
+                .any(|line| line.starts_with("pub struct ") && line.ends_with("(pub JsonValue);")),
+            "schema-expressible compositions must not become opaque JSON wrappers"
+        );
+        assert!(source.contains("pub enum ModelVisibleItem {"));
+        assert!(source.contains("pub struct ExecutionEventMcpConnectionHttp {"));
+        assert!(source.contains("pub struct CapabilitiesModifyContent {"));
+        assert!(source.contains("pub type NativeEvent = JsonValue;"));
+        let descriptor = source
+            .lines()
+            .find_map(|line| line.strip_prefix("const SCHEMAS_JSON: &str = "))
+            .unwrap();
+        let encoded: String = serde_json::from_str(descriptor.trim_end_matches(';')).unwrap();
+        let actual: Value = serde_json::from_str(&encoded).unwrap();
+        let expected = ir
+            .types
+            .iter()
+            .map(|named| (named.name.as_str(), &named.shape))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(actual, serde_json::to_value(expected).unwrap());
+    }
+
+    #[test]
     fn intersection_properties_merge_commutatively_with_any_as_identity() {
         fn object(shape: Shape, required: bool) -> Shape {
             Shape::Object {
@@ -2270,18 +2829,8 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
                 })
                 .collect(),
         };
-        let source = emit(&ir).unwrap();
-        assert!(source.contains("pub type FooBar = String"));
-        assert!(source.contains("pub type FooBar2 = String"));
-        assert!(source.contains("pub type JsonValue2 = String"));
-        assert!(source.contains("pub type BTreeMap2 = String"));
-        assert!(source.contains("pub type Deserialize2 = String"));
-        assert!(source.contains("pub type String2 = String"));
-        assert!(source.contains("pub type Vec2 = String"));
-        assert!(source.contains("pub type Box2 = String"));
-        assert!(source.contains("pub type Result2 = String"));
-        assert!(source.contains("pub fn parse_root_2("));
-        assert!(source.contains("pub fn parse_root_3("));
+        let error = emit(&ir).unwrap_err().to_string();
+        assert!(error.contains("distinct canonical schema name"));
     }
 
     #[test]
@@ -2296,28 +2845,11 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
             .iter()
             .map(|name| (*name).to_owned())
             .collect::<BTreeSet<_>>();
+        assert!(unique_type_identifier("json-value", &mut types).is_err());
         assert_eq!(
-            unique_type_identifier("json-value", &mut types),
-            "JsonValue2"
+            unique_type_identifier("foo-bar", &mut types).unwrap(),
+            "FooBar"
         );
-        assert_eq!(unique_type_identifier("foo-bar", &mut types), "FooBar");
-        assert_eq!(unique_type_identifier("foo_bar", &mut types), "FooBar2");
-
-        let mut variants = BTreeSet::from(["Unknown".to_owned()]);
-        assert_eq!(
-            unique_variant_identifier(&Value::String("unknown".into()), 0, &mut variants),
-            "Unknown2"
-        );
-        let mut union_variants = BTreeSet::from(["Unknown".to_owned()]);
-        assert_eq!(
-            unique_union_variant_identifier(
-                &Shape::Ref {
-                    name: "Unknown".into(),
-                },
-                0,
-                &mut union_variants,
-            ),
-            "Unknown2"
-        );
+        assert!(unique_type_identifier("foo_bar", &mut types).is_err());
     }
 }

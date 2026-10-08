@@ -15,6 +15,44 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" | ")
     )?;
+    // Derive identifiers from the capability descriptor, not a copied vocabulary.
+    if let Some(named) = ir.types.iter().find(|t| t.name == "Capabilities") {
+        fn names(ir: &Ir, shape: &Shape, out: &mut std::collections::BTreeSet<String>) {
+            match shape {
+                Shape::Enum { values, .. } => {
+                    out.extend(values.iter().filter_map(|v| v.as_str().map(str::to_owned)))
+                }
+                Shape::Literal { value } => {
+                    if let Some(value) = value.as_str() {
+                        out.insert(value.to_owned());
+                    }
+                }
+                Shape::Array { items } => names(ir, items, out),
+                Shape::Ref { name } => {
+                    if let Some(named) = ir.types.iter().find(|t| t.name == *name) {
+                        names(ir, &named.shape, out);
+                    }
+                }
+                Shape::Union { variants, .. } | Shape::Intersection { variants } => {
+                    for variant in variants {
+                        names(ir, variant, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(effect) = fields(ir, &named.shape)
+            .and_then(|fields| fields.into_iter().find(|p| p.wire_name == "effects"))
+        {
+            let mut values = std::collections::BTreeSet::new();
+            names(ir, &effect.shape, &mut values);
+            out.push_str("\n/** Schema-derived family identifiers; custom strings remain supported. */\nexport const effectNames = Object.freeze({\n");
+            for value in values {
+                writeln!(out, "  {value:?}: {value:?},")?;
+            }
+            out.push_str("} as const);\nexport type EffectName = OpenString<typeof effectNames[keyof typeof effectNames]>;\n/** Advertised membership only, not authorization or target/operation admission. */\nexport function supports(capabilities: { readonly effects: readonly string[] }, effect: EffectName): boolean { return capabilities.effects.includes(effect); }\n");
+        }
+    }
     let mut inventory = Vec::new();
     for named in &ir.types {
         if !named.name.ends_with("Event") {

@@ -595,7 +595,10 @@ def check_fixture_cases(
     observe_path = snapshot.schema_dir / "observe-notification.schema.json"
     observe = store.load(observe_path)
     try:
-        observe_event_branches = observe["allOf"][1]["properties"]["params"]["properties"]["event"]["oneOf"]
+        observe_event = observe["allOf"][1]["properties"]["params"]["properties"]["event"]
+        if "$ref" in observe_event:
+            observe_event, _ = store.resolve(observe_event["$ref"], observe_path)
+        observe_event_branches = observe_event["oneOf"]
     except (KeyError, IndexError, TypeError):
         observe_event_branches = []
         errors.append("observe notification schema event union is missing")

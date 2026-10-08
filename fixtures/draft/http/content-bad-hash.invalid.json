@@ -27,7 +27,6 @@
           "selection": "body",
           "body": {
             "ref": "upload1",
-            "size": 3,
             "sha256": "bad"
           }
         }

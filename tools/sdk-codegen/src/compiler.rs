@@ -220,18 +220,49 @@ impl Compiler<'_> {
         }
 
         if let Some(reference) = object.get("$ref").and_then(Value::as_str) {
-            ensure!(
-                object
-                    .keys()
-                    .all(|key| key == "$ref" || annotation_keyword(key)),
-                "$ref with structural siblings is not supported at {document}#{pointer}"
-            );
             let (target_document, target_pointer) = resolve_reference(document, reference)?;
             let key = format!("{target_document}#{target_pointer}");
             let name = self.profile.stable_names.get(&key).ok_or_else(|| {
                 anyhow!("reference target {key} needs a stable name in the schema manifest")
             })?;
-            return Ok(Shape::Ref { name: name.clone() });
+            let reference = Shape::Ref { name: name.clone() };
+            let mut siblings = object.clone();
+            siblings.remove("$ref");
+            if siblings.keys().all(|key| annotation_keyword(key)) {
+                return Ok(reference);
+            }
+            // Keep sibling constraints in the wire descriptor. Renderers may expose
+            // the named model for a constrained union reference without an adapter.
+            let mut constraint = self.lower(document, pointer, &Value::Object(siblings))?;
+            // Preserve forward-compatible unknown tags, but a tag known to the
+            // shared union and excluded by this method must fail, not become an
+            // unknown variant. Impossible branches retain those known selectors.
+            if let Shape::Union {
+                variants,
+                discriminator: Some(_),
+                ..
+            } = &mut constraint
+            {
+                if let Shape::Union { variants: all, .. } = self.lower(
+                    &target_document,
+                    &target_pointer,
+                    self.node(&target_document, &target_pointer)?,
+                )? {
+                    for variant in all {
+                        let encoded = serde_json::to_value(&variant)?;
+                        if !variants.iter().any(|allowed| {
+                            serde_json::to_value(allowed).ok().as_ref() == Some(&encoded)
+                        }) {
+                            variants.push(Shape::Intersection {
+                                variants: vec![variant, Shape::Never],
+                            });
+                        }
+                    }
+                }
+            }
+            return Ok(Shape::Intersection {
+                variants: vec![reference, constraint],
+            });
         }
         if let Some(value) = object.get("const") {
             ensure_no_structural_siblings(object, &["const", "type"], "const", document, pointer)?;
@@ -459,8 +490,24 @@ fn forbidden_property_sets(
     document: &str,
     pointer: &str,
 ) -> Result<Vec<Vec<String>>> {
+    // Unconditional negative property predicates in allOf apply to the same
+    // object. They must not disappear with constructor-only conditionals.
+    let mut sets = Vec::new();
+    if let Some(branches) = schema.get("allOf").and_then(Value::as_array) {
+        for (index, branch) in branches.iter().enumerate() {
+            if let Some(branch) = branch.as_object() {
+                sets.extend(forbidden_property_sets(
+                    branch,
+                    document,
+                    &child_pointer(pointer, "allOf", index),
+                )?);
+            }
+        }
+    }
     let Some(not_schema) = schema.get("not") else {
-        return Ok(Vec::new());
+        sets.sort();
+        sets.dedup();
+        return Ok(sets);
     };
     let not_object = not_schema
         .as_object()
@@ -470,7 +517,6 @@ fn forbidden_property_sets(
     } else {
         vec![not_schema]
     };
-    let mut sets = Vec::new();
     for candidate in candidates {
         let candidate = candidate
             .as_object()
@@ -540,25 +586,42 @@ fn const_string_properties(
     document: &str,
     schema: &Value,
 ) -> Result<BTreeMap<String, String>> {
-    let mut document = document.to_owned();
-    let mut schema = schema;
-    if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
-        let (target_document, pointer) = resolve_reference(&document, reference)?;
-        document = target_document;
-        schema = compiler.node(&document, &pointer)?;
+    fn visit(
+        compiler: &Compiler<'_>,
+        document: &str,
+        schema: &Value,
+        visiting: &mut BTreeSet<String>,
+    ) -> Result<BTreeMap<String, String>> {
+        let mut properties = BTreeMap::new();
+        if let Some(reference) = schema.get("$ref").and_then(Value::as_str) {
+            let (target, pointer) = resolve_reference(document, reference)?;
+            let key = format!("{target}#{pointer}");
+            if visiting.insert(key.clone()) {
+                properties.extend(visit(
+                    compiler,
+                    &target,
+                    compiler.node(&target, &pointer)?,
+                    visiting,
+                )?);
+                visiting.remove(&key);
+            }
+        }
+        if let Some(branches) = schema.get("allOf").and_then(Value::as_array) {
+            for branch in branches {
+                properties.extend(visit(compiler, document, branch, visiting)?);
+            }
+        }
+        if let Some(fields) = schema.get("properties").and_then(Value::as_object) {
+            properties.extend(fields.iter().filter_map(|(name, property)| {
+                property
+                    .get("const")
+                    .and_then(Value::as_str)
+                    .map(|value| (name.clone(), value.to_owned()))
+            }));
+        }
+        Ok(properties)
     }
-    Ok(schema
-        .get("properties")
-        .and_then(Value::as_object)
-        .into_iter()
-        .flatten()
-        .filter_map(|(name, property)| {
-            property
-                .get("const")
-                .and_then(Value::as_str)
-                .map(|value| (name.clone(), value.to_owned()))
-        })
-        .collect())
+    visit(compiler, document, schema, &mut BTreeSet::new())
 }
 
 fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
@@ -915,6 +978,116 @@ mod tests {
         );
     }
     use super::*;
+
+    #[test]
+    fn constrained_event_references_keep_shared_models_and_wire_subsets() {
+        let event = serde_json::json!({"oneOf": [
+            {"type":"object", "properties":{"type":{"const":"first"}}, "required":["type"]},
+            {"type":"object", "properties":{"type":{"const":"second"}}, "required":["type"]}
+        ]});
+        let documents = BTreeMap::from([("event.json".to_owned(), event.clone())]);
+        let profile = Profile {
+            stable_names: BTreeMap::from([("event.json#".to_owned(), "Event".to_owned())]),
+        };
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let subset = serde_json::json!({"$ref":"event.json", "oneOf":[event["oneOf"][0].clone()]});
+        let narrowed = compiler.lower("request.json", "", &subset).unwrap();
+        assert!(
+            matches!(narrowed.constrained_reference(), Some(Shape::Ref { name }) if name == "Event")
+        );
+        let descriptor = serde_json::to_value(&narrowed).unwrap();
+        assert_eq!(
+            descriptor["variants"][1]["variants"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let request = compiler
+            .lower(
+                "request.json",
+                "",
+                &serde_json::json!({
+                    "type":"object", "required":["event"], "properties":{"event":subset}
+                }),
+            )
+            .unwrap();
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "0.1".into(),
+            roots: vec![],
+            types: vec![
+                NamedType {
+                    name: "Event".into(),
+                    source: "event.json#".into(),
+                    shape: compiler.lower("event.json", "", &event).unwrap(),
+                },
+                NamedType {
+                    name: "Request".into(),
+                    source: "request.json#".into(),
+                    shape: request,
+                },
+            ],
+        };
+        let ts = crate::langs::typescript::emit(&ir).unwrap();
+        assert!(ts.contains("\"event\": Event"), "{ts}");
+        let go = crate::langs::go::emit(&ir).unwrap();
+        assert!(
+            go.lines()
+                .any(|line| line.split_whitespace().collect::<Vec<_>>() == vec!["Event", "*Event"]),
+            "{go}"
+        );
+        let rust = crate::langs::rust::emit(&ir).unwrap();
+        assert!(rust.contains("pub event: Box<Event>"), "{rust}");
+        let python = crate::langs::python::emit(&ir).unwrap();
+        assert!(
+            python.contains("\"event\": Required[\"Event\"]"),
+            "{python}"
+        );
+    }
+
+    #[test]
+    fn unconditional_all_of_forbidden_metadata_survives_lowering() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let shape = compiler
+            .lower(
+                "reference.json",
+                "",
+                &serde_json::json!({
+                    "type":"object", "properties":{"ref":{"type":"string"}},
+                    "additionalProperties":false,
+                    "allOf":[{"not":{"required":["size"]}},{"not":{"required":["sha256"]}}]
+                }),
+            )
+            .unwrap();
+        let Shape::Object {
+            forbidden_property_sets,
+            ..
+        } = &shape
+        else {
+            panic!("reference must remain an object")
+        };
+        assert_eq!(
+            forbidden_property_sets,
+            &vec![vec!["sha256".to_owned()], vec!["size".to_owned()]]
+        );
+        // The descriptor carries explicit denial separately from the generic
+        // extra-property policy, whose parser remains forward compatible.
+        assert_eq!(
+            serde_json::to_value(shape).unwrap()["forbidden_property_sets"],
+            serde_json::json!([["sha256"], ["size"]])
+        );
+    }
 
     #[test]
     fn rejects_network_references() {

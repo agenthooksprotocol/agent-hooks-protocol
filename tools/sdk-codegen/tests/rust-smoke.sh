@@ -17,6 +17,8 @@ mkdir -p "$temporary/emitter/src" "$temporary/consumer/src" "$temporary/consumer
 cp "$generated" "$temporary/consumer/src/lib.rs"
 cat "$repository/tools/sdk-codegen/tests/rust-boundary-macro-smoke.rs.in" >> "$temporary/consumer/src/lib.rs"
 cp "$repository/tools/sdk-codegen/tests/rust-ergonomics-smoke.rs.in" "$temporary/consumer/tests/ergonomics.rs"
+cp "$repository/tools/sdk-codegen/tests/rust-structural-smoke.rs.in" "$temporary/consumer/tests/structural.rs"
+cp "$repository/tools/sdk-codegen/tests/structural-acceptance.json" "$temporary/consumer/tests/structural-acceptance.json"
 { echo "extern crate agenthooksprotocol as ahp_codegen;"; cat "$repository/tools/sdk-codegen/tests/capability-rust.rs.in"; } > "$temporary/consumer/tests/capability.rs"
 cat >"$temporary/emitter/Cargo.toml" <<'TOML'
 [package]
@@ -30,6 +32,7 @@ publish = false
 anyhow = "=1.0.104"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.151"
+sha2 = "0.10.9"
 TOML
 
 cat >"$temporary/emitter/src/main.rs" <<RS
@@ -39,6 +42,8 @@ mod model;
 mod ergonomics;
 #[path = "$repository/tools/sdk-codegen/src/capability_ergonomics.rs"]
 mod capability_ergonomics;
+#[path = "$repository/tools/sdk-codegen/src/langs/naming.rs"]
+mod naming;
 #[path = "$repository/tools/sdk-codegen/src/langs/rust.rs"]
 mod rust;
 
@@ -46,10 +51,8 @@ fn main() -> anyhow::Result<()> {
     let mut arguments = std::env::args_os().skip(1);
     let recursive_output =
         std::path::PathBuf::from(arguments.next().expect("recursive output argument"));
-    let collision_output =
-        std::path::PathBuf::from(arguments.next().expect("collision output argument"));
 
-    let recursive = model::Ir {
+    let mut recursive = model::Ir {
         schema_revision: "recursive-test".into(),
         protocol_version: "1".into(),
         roots: vec![
@@ -94,7 +97,44 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::Enum { values: vec![serde_json::json!(1)], open_strings: false },
         }],
     };
-    std::fs::write(recursive_output, rust::emit(&recursive)?)?;
+    for (name, mode) in [("DuplicateAny", model::UnionMode::AnyOf), ("DuplicateOne", model::UnionMode::OneOf)] {
+        recursive.roots.push(model::PublicRoot { name: name.into(), schema: format!("{name}.json") });
+        recursive.types.push(model::NamedType {
+            name: name.into(), source: format!("{name}.json#"),
+            shape: model::Shape::Union { mode, variants: vec![model::Shape::String, model::Shape::String], discriminator: None },
+        });
+    }
+    // Typed object projection must not replace the original predicate graph.
+    let property = |name: &str, shape: model::Shape, required: bool| model::Property {
+        constructor_default: None, wire_name: name.into(), required, shape,
+    };
+    let object = |properties| model::Shape::Object {
+        properties, forbidden_property_sets: vec![], additional: model::AdditionalProperties::Allowed,
+    };
+    for (name, mode) in [("EvidenceAny", model::UnionMode::AnyOf), ("EvidenceOne", model::UnionMode::OneOf)] {
+        recursive.roots.push(model::PublicRoot { name: name.into(), schema: format!("{name}.json") });
+        recursive.types.push(model::NamedType {
+            name: name.into(), source: format!("{name}.json#"),
+            shape: model::Shape::Intersection { variants: vec![
+                object(vec![property("evidence", model::Shape::String, false), property("location", model::Shape::String, false)]),
+                model::Shape::Union { mode, discriminator: None, variants: vec![
+                    object(vec![property("evidence", model::Shape::Any, true)]),
+                    object(vec![property("location", model::Shape::Any, true)]),
+                ] },
+            ] },
+        });
+    }
+    recursive.roots.push(model::PublicRoot { name: "ConstrainedString".into(), schema: "constrained.json".into() });
+    recursive.types.push(model::NamedType {
+        name: "ConstrainedString".into(), source: "constrained.json#".into(),
+        shape: model::Shape::Intersection { variants: vec![
+            model::Shape::String,
+            model::Shape::Enum { values: vec![serde_json::json!("yes")], open_strings: false },
+        ] },
+    });
+    let generated = rust::emit(&recursive)?;
+    assert!(!generated.contains("Duplicate2"));
+    std::fs::write(recursive_output, generated)?;
 
     let collision = model::Ir {
         schema_revision: "collision-test".into(),
@@ -110,7 +150,7 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::String,
         }).collect(),
     };
-    std::fs::write(collision_output, rust::emit(&collision)?)?;
+    assert!(rust::emit(&collision).unwrap_err().to_string().contains("distinct canonical schema name"));
     Ok(())
 }
 RS
@@ -118,8 +158,8 @@ RS
 # Test the complete generator crate: repository-aware emitter tests need its compiler.
 "${cargo_command[@]}" test --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml"
 "${cargo_command[@]}" run --quiet --manifest-path "$temporary/emitter/Cargo.toml" -- \
-    "$temporary/consumer/src/recursive.rs" "$temporary/consumer/src/collision.rs"
-printf '\n#[allow(dead_code)]\npub mod recursive;\n#[allow(dead_code)]\npub mod collision;\n' \
+    "$temporary/consumer/src/recursive.rs"
+printf '\n#[allow(dead_code)]\npub mod recursive;\n' \
   >>"$temporary/consumer/src/lib.rs"
 
 cat >"$temporary/consumer/Cargo.toml" <<'TOML'
@@ -148,9 +188,64 @@ use agenthooksprotocol::{
 };
 use serde_json::{Value, json};
 
+#[allow(dead_code)]
+fn shared_event_type(request: &agenthooksprotocol::InterceptRequest, observation: &agenthooksprotocol::ObserveNotification) {
+    fn consume(_: &agenthooksprotocol::Event) {}
+    consume(&request.params.event);
+    consume(&observation.params.event);
+}
+
+#[test]
+fn shared_event_and_content_reference_contracts() {
+    use agenthooksprotocol::{parse_content_reference_value, parse_content_upload_receipt_value};
+    for key in ["size", "sha256"] {
+        for value in [Value::Null, json!(0), json!("hash")] {
+            let mut reference = json!({"ref":"opaque"});
+            reference[key] = value;
+            assert!(matches!(parse_content_reference_value(reference), ParseResult::Failure { .. }));
+        }
+    }
+    success(parse_content_reference_value(json!({"ref":"opaque", "future":true})));
+    let (receipt, _, _) = success(parse_content_upload_receipt_value(json!({"ref":"opaque", "size":0, "sha256":"a".repeat(64)})));
+    let _: agenthooksprotocol::content::ContentUploadReceipt = receipt;
+    let mut request = fixture("fixtures/draft/http/intercept-request.valid.json");
+    request["params"]["event"] = json!({"type":"session.end", "id":"id", "source":"test", "time":"2026-01-01T00:00:00Z"});
+    assert!(matches!(parse_intercept_request(&request.to_string()), ParseResult::Failure { .. }));
+    request["params"]["event"] = json!({"type":"future.event", "extension":true});
+    let (_, _, diagnostics) = success(parse_intercept_request(&request.to_string()));
+    assert!(diagnostics.iter().any(|d| d.code == DiagnosticCode::UnknownVariant));
+}
+
 #[test]
 fn recursively_referenced_models_compile_and_parse() {
+    let projected = recursive::EvidenceAny::new().with_evidence("proof").with_location("file.rs");
+    assert!(matches!(projected.evidence, recursive::Presence::Present(ref value) if value == "proof"));
+    for (input, any_ok, one_ok) in [
+        (r#"{}"#, false, false),
+        (r#"{"evidence":"proof"}"#, true, true),
+        (r#"{"location":"file.rs"}"#, true, true),
+        (r#"{"evidence":"proof","location":"file.rs"}"#, true, false),
+        (r#"{"evidence":7}"#, false, false),
+    ] {
+        assert_eq!(recursive::parse_evidence_any(input).is_ok(), any_ok, "{input}");
+        assert_eq!(recursive::parse_evidence_one(input).is_ok(), one_ok, "{input}");
+        assert_eq!(serde_json::from_str::<recursive::EvidenceAny>(input).is_ok(), any_ok, "direct {input}");
+        assert_eq!(serde_json::from_str::<recursive::EvidenceOne>(input).is_ok(), one_ok, "direct {input}");
+    }
+    let extended = serde_json::json!({"location":"file.rs", "future":{"keep":true}});
+    let parsed = recursive::parse_evidence_any_value(extended.clone());
+    assert_eq!(serde_json::to_value(parsed.value().unwrap()).unwrap(), extended);
+
     assert!(recursive::parse_node("{}").is_ok());
+    assert!(serde_json::from_str::<recursive::DuplicateAny>(r#""value""#).is_ok());
+    assert!(serde_json::from_str::<recursive::DuplicateOne>(r#""value""#).is_err());
+    assert!(serde_json::from_str::<recursive::ConstrainedString>(r#""yes""#).is_ok());
+    assert!(serde_json::from_str::<recursive::ConstrainedString>(r#""no""#).is_err());
+    assert!(!recursive::parse_constrained_string(r#""no""#).is_ok());
+    let any = recursive::parse_duplicate_any(r#""value""#);
+    assert!(any.is_ok());
+    assert!(matches!(any.value(), Some(recursive::DuplicateAny::String(value)) if value == "value"));
+    assert!(!recursive::parse_duplicate_one(r#""value""#).is_ok(), "public projection must not collapse oneOf validation branches");
 
     let exact_text = "1.23456789012345678901234567890123456789";
     let exact = recursive::parse_exact_number(exact_text);
@@ -160,6 +255,12 @@ fn recursively_referenced_models_compile_and_parse() {
         exact_text
     );
     assert!(!recursive::parse_safe_integer("1.0000000000000001").is_ok());
+    assert!(serde_json::from_str::<recursive::SafeInteger>("1.0000000000000001").is_err());
+    assert!(serde_json::from_str::<recursive::SafeInteger>("9007199254740992").is_err());
+    let direct: recursive::ExactNumber = serde_json::from_str(exact_text).unwrap();
+    assert_eq!(serde_json::to_string(&direct).unwrap(),exact_text);
+    assert!(serde_json::from_str::<recursive::NumericLiteral>("2").is_err());
+    assert!(serde_json::from_str::<recursive::NumericEnum>("2").is_err());
 
     let literal = recursive::parse_numeric_literal("1.0");
     assert!(literal.is_ok());

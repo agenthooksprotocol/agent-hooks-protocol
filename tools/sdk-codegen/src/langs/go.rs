@@ -2,7 +2,7 @@ pub mod facade;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use crate::model::{Ir, Property, Shape};
 
@@ -59,6 +59,24 @@ pub fn emit(ir: &Ir) -> Result<String> {
     for declaration in &generator.declarations {
         output.push_str(declaration);
     }
+    facade::capability_queries(&generator, &mut output)?;
+    for name in generator.decoder_shapes.keys() {
+        writeln!(
+            output,
+            "// UnmarshalJSON enforces generated structural rules and retains supported extensions.\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tif err := validateModelJSON(modelDescriptors[{}], data); err != nil {{\n\t\treturn err\n\t}}\n\treturn value.unmarshalValidatedJSON(data)\n}}\n",
+            go_string(name)?
+        )?;
+    }
+    writeln!(
+        output,
+        "var modelDescriptors = loadSchemaDescriptors({})\n",
+        go_string(&serde_json::to_string(&generator.decoder_shapes)?)?
+    )?;
+    writeln!(
+        output,
+        "var unionDescriptors = loadSchemaDescriptors({})\n",
+        go_string(&serde_json::to_string(&generator.union_descriptors)?)?
+    )?;
     writeln!(
         output,
         "var schemaDescriptors = loadSchemaDescriptors({})\n",
@@ -110,6 +128,9 @@ struct Generator<'a> {
     declarations: Vec<String>,
     objects: BTreeMap<String, Vec<RenderedField>>,
     unions: BTreeMap<String, Vec<(String, String)>>,
+    nullables: BTreeMap<String, String>,
+    decoder_shapes: BTreeMap<String, Shape>,
+    union_descriptors: BTreeMap<String, Shape>,
 }
 
 impl<'a> Generator<'a> {
@@ -144,6 +165,9 @@ impl<'a> Generator<'a> {
             declarations: Vec::new(),
             objects: BTreeMap::new(),
             unions: BTreeMap::new(),
+            nullables: BTreeMap::new(),
+            decoder_shapes: BTreeMap::new(),
+            union_descriptors: BTreeMap::new(),
         }
     }
 
@@ -156,18 +180,36 @@ impl<'a> Generator<'a> {
 
     fn emit_named(&mut self, name: &str, source: &str, shape: &Shape) -> Result<()> {
         if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
-            self.emit_struct(name, Some(source), properties)?;
+            self.emit_struct(name, Some(source), properties, shape)?;
+        } else if let Some(projected) = self.intersection_union(shape) {
+            self.emit_union(name, Some(source), &projected)?;
+            self.decoder_shapes.insert(name.to_owned(), shape.clone());
         } else if matches!(shape, Shape::Literal { .. } | Shape::Enum { .. }) {
             self.emit_value_type(name, Some(source), shape)?;
         } else if let Shape::Union { .. } = shape {
             self.emit_union(name, Some(source), shape)?;
         } else {
             let rendered = self.render_type(shape, &format!("{name}Value"))?;
-            let mut declaration = String::new();
-            writeln!(declaration, "// {name} is generated from {source}.")?;
-            writeln!(declaration, "type {name} = {rendered}\n")?;
-            self.declarations.push(declaration);
+            if matches!(shape, Shape::Ref { .. }) {
+                // A pointer alias lets encoding/json accept null without calling
+                // the target decoder. Value aliases inherit its validation methods.
+                let rendered = rendered.trim_start_matches('*');
+                self.declarations.push(format!(
+                    "// {name} is generated from {source}.\ntype {name} = {rendered}\n\n"
+                ));
+            } else {
+                self.emit_checked_type(name, &rendered, shape)?;
+            }
         }
+        Ok(())
+    }
+
+    fn emit_checked_type(&mut self, name: &str, rendered: &str, shape: &Shape) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
+        let declaration = format!(
+            "// {name} is a structurally validated schema value.\ntype {name} {rendered}\n\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tvar decoded {rendered}\n\tif err := decodeValidatedJSON(data, &decoded); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(decoded)\n\treturn nil\n}}\n\nfunc (value {name}) MarshalJSON() ([]byte, error) {{\n\treturn json.Marshal({rendered}(value))\n}}\n\n"
+        );
+        self.declarations.push(declaration);
         Ok(())
     }
 
@@ -182,8 +224,14 @@ impl<'a> Generator<'a> {
             Shape::Object { properties, .. } => Some(properties.clone()),
             Shape::Intersection { variants } => {
                 let mut merged = Vec::<Property>::new();
+                if variants.iter().all(|variant| matches!(variant, Shape::Any)) {
+                    return None;
+                }
                 for variant in variants {
-                    for property in self.structural_properties(variant, visiting)? {
+                    if matches!(variant, Shape::Any) {
+                        continue;
+                    }
+                    for property in self.intersection_properties(variant, visiting)? {
                         if let Some(existing) = merged
                             .iter_mut()
                             .find(|existing| existing.wire_name == property.wire_name)
@@ -220,12 +268,134 @@ impl<'a> Generator<'a> {
         }
     }
 
+    /// Project predicate unions only inside intersections. A property absent in
+    /// one branch is unconstrained there (unknown fields are retained), so it
+    /// cannot narrow the enclosing object's property type or requiredness.
+    /// This is a representation only: emit_struct keeps the original descriptor.
+    fn intersection_properties(
+        &self,
+        shape: &Shape,
+        visiting: &mut BTreeSet<String>,
+    ) -> Option<Vec<Property>> {
+        let Shape::Union { variants, .. } = shape else {
+            return self.structural_properties(shape, visiting);
+        };
+        if variants.is_empty() {
+            return None;
+        }
+        let branches = variants
+            .iter()
+            .map(|variant| self.intersection_properties(variant, visiting))
+            .collect::<Option<Vec<_>>>()?;
+        let names = branches
+            .iter()
+            .flatten()
+            .map(|p| p.wire_name.clone())
+            .collect::<BTreeSet<_>>();
+        Some(
+            names
+                .into_iter()
+                .map(|wire_name| {
+                    let members = branches
+                        .iter()
+                        .map(|branch| branch.iter().find(|p| p.wire_name == wire_name))
+                        .collect::<Vec<_>>();
+                    let required = members.iter().all(|p| p.is_some_and(|p| p.required));
+                    let mut shapes = members
+                        .iter()
+                        .map(|p| p.map_or(Shape::Any, |p| p.shape.clone()))
+                        .collect::<Vec<_>>();
+                    shapes.sort_by_cached_key(|s| {
+                        serde_json::to_string(s).expect("shape serializes")
+                    });
+                    shapes.dedup_by(|a, b| {
+                        serde_json::to_value(a).unwrap() == serde_json::to_value(b).unwrap()
+                    });
+                    let shape = if shapes.iter().any(|s| matches!(s, Shape::Any)) {
+                        Shape::Any
+                    } else if shapes.len() == 1 {
+                        shapes.pop().expect("one property shape")
+                    } else {
+                        Shape::Union {
+                            mode: crate::model::UnionMode::AnyOf,
+                            variants: shapes,
+                            discriminator: None,
+                        }
+                    };
+                    Property {
+                        wire_name,
+                        required,
+                        shape,
+                        constructor_default: None,
+                    }
+                })
+                .collect(),
+        )
+    }
+
+    /// Distribute an object intersection over a referenced object union for
+    /// its public representation (for example ContentItem plus role). The
+    /// original descriptor still owns acceptance; this union only selects fields.
+    fn intersection_union(&self, shape: &Shape) -> Option<Shape> {
+        let Shape::Intersection { variants } = shape else {
+            return None;
+        };
+        for (index, variant) in variants.iter().enumerate() {
+            let mut resolved = variant;
+            let mut visiting = BTreeSet::new();
+            while let Shape::Ref { name } = resolved {
+                if !visiting.insert(name) {
+                    return None;
+                }
+                resolved = &self.ir.types.iter().find(|t| t.name == *name)?.shape;
+            }
+            if let Shape::Union {
+                mode,
+                variants: arms,
+                discriminator,
+            } = resolved
+            {
+                if arms.is_empty()
+                    || !arms.iter().all(|arm| {
+                        self.structural_properties(arm, &mut BTreeSet::new())
+                            .is_some()
+                    })
+                {
+                    continue;
+                }
+                return Some(Shape::Union {
+                    mode: *mode,
+                    discriminator: discriminator.clone(),
+                    variants: arms
+                        .iter()
+                        .map(|arm| Shape::Intersection {
+                            variants: variants
+                                .iter()
+                                .enumerate()
+                                .map(|(i, other)| {
+                                    if i == index {
+                                        arm.clone()
+                                    } else {
+                                        other.clone()
+                                    }
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                });
+            }
+        }
+        None
+    }
+
     fn emit_struct(
         &mut self,
         name: &str,
         source: Option<&str>,
         mut properties: Vec<Property>,
+        shape: &Shape,
     ) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         properties.sort_by(|left, right| left.wire_name.cmp(&right.wire_name));
         let mut fields = Vec::with_capacity(properties.len());
         let mut field_names = BTreeSet::from(["AdditionalProperties".to_owned()]);
@@ -291,7 +461,7 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "func (value *{name}) UnmarshalJSON(data []byte) error {{"
+            "func (value *{name}) unmarshalValidatedJSON(data []byte) error {{"
         )?;
         writeln!(
             declaration,
@@ -312,13 +482,13 @@ impl<'a> Generator<'a> {
             if field.required {
                 writeln!(
                     declaration,
-                    "\t\tif err := json.Unmarshal(raw, &decoded.{}); err != nil {{",
+                    "\t\tif err := decodeValidatedJSON(raw, &decoded.{}); err != nil {{",
                     field.field_name
                 )?;
             } else {
                 writeln!(
                     declaration,
-                    "\t\tdecoded.{}.Present = true\n\t\tif err := json.Unmarshal(raw, &decoded.{}.Value); err != nil {{",
+                    "\t\tdecoded.{}.Present = true\n\t\tif err := decodeValidatedJSON(raw, &decoded.{}.Value); err != nil {{",
                     field.field_name, field.field_name
                 )?;
             }
@@ -380,6 +550,7 @@ impl<'a> Generator<'a> {
     }
 
     fn emit_value_type(&mut self, name: &str, source: Option<&str>, shape: &Shape) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         let values = match shape {
             Shape::Literal { value } => std::slice::from_ref(value),
             Shape::Enum { values, .. } => values.as_slice(),
@@ -403,7 +574,7 @@ impl<'a> Generator<'a> {
             writeln!(declaration, "type {name} json.RawMessage")?;
             writeln!(
                 declaration,
-                "\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tif _, err := decodeJSON(data); err != nil {{\n\t\treturn err\n\t}}\n\t*value = append((*value)[:0], data...)\n\treturn nil\n}}"
+                "\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tif _, err := decodeJSON(data); err != nil {{\n\t\treturn err\n\t}}\n\t*value = append((*value)[:0], data...)\n\treturn nil\n}}"
             )?;
             writeln!(
                 declaration,
@@ -411,8 +582,10 @@ impl<'a> Generator<'a> {
             )?;
         } else {
             writeln!(declaration, "type {name} {base}\n")?;
-            for (index, value) in values.iter().enumerate() {
-                let suffix = value_constant_suffix(value, index);
+            let names = super::naming::try_literal_names(&values)
+                .with_context(|| format!("cannot name Go enum {name}"))?;
+            for (value, suffix) in values.iter().zip(names) {
+                let suffix = go_semantic_identifier(&suffix);
                 let constant = self.allocate_package_name(&format!("{name}{suffix}"));
                 let rendered = match value {
                     serde_json::Value::String(value) => go_string(value)?,
@@ -422,11 +595,11 @@ impl<'a> Generator<'a> {
                 };
                 writeln!(declaration, "const {constant} {name} = {rendered}")?;
             }
+            writeln!(
+                declaration,
+                "\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tvar decoded {base}\n\tif err := json.Unmarshal(data, &decoded); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(decoded)\n\treturn nil\n}}"
+            )?;
             if base == "json.Number" {
-                writeln!(
-                    declaration,
-                    "\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tvar number json.Number\n\tif err := json.Unmarshal(data, &number); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(number)\n\treturn nil\n}}"
-                )?;
                 writeln!(
                     declaration,
                     "\nfunc (value {name}) MarshalJSON() ([]byte, error) {{\n\treturn json.Marshal(json.Number(value))\n}}"
@@ -442,16 +615,27 @@ impl<'a> Generator<'a> {
         let Shape::Union { variants, .. } = shape else {
             unreachable!("union emitter requires a union");
         };
+        if let Some(payload) = self.nullable_payload(shape) {
+            let payload_type = self.render_nullable_payload(payload, &format!("{name}Value"))?;
+            self.nullables.insert(name.to_owned(), payload_type.clone());
+            self.declarations.push(format!("// {name} distinguishes null from a non-null value.\ntype {name} = Nullable[{payload_type}]\n\n"));
+            return Ok(());
+        }
         let mut fields = Vec::with_capacity(variants.len());
         let mut field_names = BTreeSet::from(["Unknown".to_owned()]);
-        for (index, variant) in variants.iter().enumerate() {
-            let field_type = self.render_type(variant, &format!("{name}Variant{}", index + 1))?;
-            let base = union_variant_name(self, variant, index);
+        let projected = super::naming::projected_union(variants)
+            .with_context(|| format!("cannot name Go union {name}"))?;
+        for arm in &projected {
+            let variant = &variants[arm.source_indices[0]];
+            let base = go_semantic_identifier(&arm.name);
             let field_name = allocate_local_name(&base, &mut field_names);
+            let field_type = self.render_type(variant, &format!("{name}{field_name}"))?;
             fields.push((field_name, field_type));
         }
         self.unions.insert(name.to_owned(), fields.clone());
-        let descriptor = serde_json::to_string(shape)?;
+        self.union_descriptors
+            .insert(name.to_owned(), shape.clone());
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         let mut declaration = String::new();
         match source {
             Some(source) => writeln!(declaration, "// {name} is generated from {source}.")?,
@@ -478,7 +662,7 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "func (value *{name}) UnmarshalJSON(data []byte) error {{"
+            "func (value *{name}) unmarshalValidatedJSON(data []byte) error {{"
         )?;
         writeln!(
             declaration,
@@ -486,19 +670,15 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "\tschema := loadSchemaNode({})",
-            go_string(&descriptor)?
-        )?;
-        writeln!(
-            declaration,
-            "\tdiagnostics := make([]ParseDiagnostic, 0)\n\tcheckNode(schema, rawValue, \"\", &diagnostics)\n\tif hasErrors(diagnostics) {{\n\t\treturn fmt.Errorf({})\n\t}}",
-            go_string(&format!("{name}: value does not match the union"))?
+            "\tschema := unionDescriptors[{}]",
+            go_string(name)?
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
-        for (index, (field_name, field_type)) in fields.iter().enumerate() {
+        for (arm, (field_name, field_type)) in projected.iter().zip(&fields) {
+            let index = arm.source_indices[0];
             writeln!(
                 declaration,
-                "\t{{\n\t\tattempt := make([]ParseDiagnostic, 0)\n\t\tcheckNode(schema.Variants[{index}], rawValue, \"\", &attempt)\n\t\tif !hasErrors(attempt) {{\n\t\t\tvar candidate {field_type}\n\t\t\tif err := json.Unmarshal(data, &candidate); err != nil {{\n\t\t\t\treturn fmt.Errorf({}, err)\n\t\t\t}}\n\t\t\tdecoded.{field_name} = Some(candidate)\n\t\t\t*value = decoded\n\t\t\treturn nil\n\t\t}}\n\t}}",
+                "\t{{\n\t\tattempt := make([]ParseDiagnostic, 0)\n\t\tcheckNode(schema.Variants[{index}], rawValue, \"\", &attempt)\n\t\tif !hasErrors(attempt) {{\n\t\t\tvar candidate {field_type}\n\t\t\tif err := decodeValidatedJSON(data, &candidate); err != nil {{\n\t\t\t\treturn fmt.Errorf({}, err)\n\t\t\t}}\n\t\t\tdecoded.{field_name} = Some(candidate)\n\t\t\t*value = decoded\n\t\t\treturn nil\n\t\t}}\n\t}}",
                 go_string(&format!("{name}.{field_name}: %w"))?
             )?;
         }
@@ -534,6 +714,15 @@ impl<'a> Generator<'a> {
     }
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        if let Some(reference) = shape.constrained_reference() {
+            return self.render_type(reference, hint);
+        }
+        if let Some(payload) = self.nullable_payload(shape) {
+            let payload_type = self.render_nullable_payload(payload, &format!("{hint}Value"))?;
+            let rendered = format!("Nullable[{payload_type}]");
+            self.nullables.insert(rendered.clone(), payload_type);
+            return Ok(rendered);
+        }
         Ok(match shape {
             Shape::Any | Shape::Never | Shape::Null => "json.RawMessage".into(),
             Shape::Boolean => "bool".into(),
@@ -549,25 +738,115 @@ impl<'a> Generator<'a> {
             }
             Shape::Object { properties, .. } => {
                 let name = self.allocate_type_name(hint);
-                self.emit_struct(&name, None, properties.clone())?;
+                self.emit_struct(&name, None, properties.clone(), shape)?;
                 name
             }
-            Shape::Ref { name } => format!("*{}", self.named_name(name)),
+            Shape::Ref { name } => {
+                if self.is_nullable(shape) {
+                    self.named_name(name)
+                } else {
+                    format!("*{}", self.named_name(name))
+                }
+            }
             Shape::Union { .. } => {
                 let name = self.allocate_type_name(hint);
                 self.emit_union(&name, None, shape)?;
                 name
             }
-            Shape::Intersection { .. } => {
+            Shape::Intersection { variants } => {
                 if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
                     let name = self.allocate_type_name(hint);
-                    self.emit_struct(&name, None, properties)?;
+                    self.emit_struct(&name, None, properties, shape)?;
+                    name
+                } else if let Some(projected) = self.intersection_union(shape) {
+                    let name = self.allocate_type_name(hint);
+                    self.emit_union(&name, None, &projected)?;
+                    self.decoder_shapes.insert(name.clone(), shape.clone());
+                    name
+                } else if let Some(representation) = variants
+                    .iter()
+                    .find(|variant| !matches!(variant, Shape::Any | Shape::Never | Shape::Null))
+                {
+                    // Every valid intersection value satisfies each conjunct. Use
+                    // one typed representation but validate the ORIGINAL descriptor,
+                    // including the other conjuncts, on direct and root decoding.
+                    // Value conversion avoids invalid Go receiver types over pointers.
+                    let rendered = self.render_type(representation, &format!("{hint}Value"))?;
+                    let name = self.allocate_type_name(hint);
+                    self.emit_checked_type(&name, rendered.trim_start_matches('*'), shape)?;
                     name
                 } else {
                     "json.RawMessage".into()
                 }
             }
         })
+    }
+
+    fn render_nullable_payload(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        let rendered = self.render_type(shape, hint)?;
+        // Primitive JSON codecs do not enforce numeric restrictions or array item
+        // descriptors. Give these payloads their own model; Nullable stays generic.
+        if matches!(shape, Shape::Integer | Shape::Number | Shape::Array { .. })
+            || rendered == "json.RawMessage"
+        {
+            let name = self.allocate_type_name(hint);
+            self.emit_checked_type(&name, &rendered, shape)?;
+            Ok(name)
+        } else {
+            Ok(rendered)
+        }
+    }
+
+    fn nullable_payload<'s>(&self, shape: &'s Shape) -> Option<&'s Shape> {
+        let payload = nullable_candidate(shape)?;
+        self.excludes_null(payload, &mut BTreeSet::new())
+            .then_some(payload)
+    }
+
+    fn excludes_null(&self, shape: &Shape, visiting: &mut BTreeSet<String>) -> bool {
+        match shape {
+            Shape::Any | Shape::Null => false,
+            Shape::Literal { value } => !value.is_null(),
+            Shape::Enum { values, .. } => values.iter().all(|value| !value.is_null()),
+            Shape::Union { variants, .. } => {
+                variants.iter().all(|v| self.excludes_null(v, visiting))
+            }
+            Shape::Intersection { variants } => {
+                variants.iter().any(|v| self.excludes_null(v, visiting))
+            }
+            Shape::Ref { name } => {
+                if !visiting.insert(name.clone()) {
+                    return false;
+                }
+                let result = self
+                    .ir
+                    .types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .is_some_and(|n| self.excludes_null(&n.shape, visiting));
+                visiting.remove(name);
+                result
+            }
+            _ => true,
+        }
+    }
+
+    fn is_nullable(&self, shape: &Shape) -> bool {
+        fn resolve(g: &Generator<'_>, shape: &Shape, visiting: &mut BTreeSet<String>) -> bool {
+            if let Shape::Ref { name } = shape {
+                if !visiting.insert(name.clone()) {
+                    return false;
+                }
+                return g
+                    .ir
+                    .types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .is_some_and(|n| resolve(g, &n.shape, visiting));
+            }
+            g.nullable_payload(shape).is_some()
+        }
+        resolve(self, shape, &mut BTreeSet::new())
     }
 
     fn allocate_type_name(&mut self, hint: &str) -> String {
@@ -577,6 +856,22 @@ impl<'a> Generator<'a> {
 
     fn allocate_package_name(&mut self, base: &str) -> String {
         allocate_local_name(base, &mut self.used_names)
+    }
+}
+
+// This is a public model projection only; validation retains the original union.
+fn nullable_candidate(shape: &Shape) -> Option<&Shape> {
+    let Shape::Union { variants, .. } = shape else {
+        return None;
+    };
+    if variants.len() != 2 {
+        return None;
+    }
+    match (&variants[0], &variants[1]) {
+        (Shape::Null, payload) | (payload, Shape::Null) if !matches!(payload, Shape::Null) => {
+            Some(payload)
+        }
+        _ => None,
     }
 }
 
@@ -618,38 +913,14 @@ struct RenderedField {
     shape: Shape,
 }
 
-fn union_variant_name(generator: &Generator<'_>, shape: &Shape, index: usize) -> String {
-    match shape {
-        Shape::Ref { name } => generator.named_name(name),
-        Shape::Literal {
-            value: serde_json::Value::String(value),
-        } => go_identifier(value),
-        _ => format!("Variant{}", index + 1),
-    }
-}
-
-fn value_constant_suffix(value: &serde_json::Value, index: usize) -> String {
-    match value {
-        serde_json::Value::String(value) if !value.is_empty() => {
-            let identifier = go_identifier(value);
-            if value.as_bytes()[0].is_ascii_digit() {
-                format!("Value{}", identifier.trim_start_matches("Field"))
-            } else {
-                identifier
-            }
-        }
-        serde_json::Value::Bool(true) => "True".into(),
-        serde_json::Value::Bool(false) => "False".into(),
-        serde_json::Value::Number(_) => format!("Value{}", index + 1),
-        _ => format!("Value{}", index + 1),
-    }
-}
-
 fn runtime_names() -> BTreeSet<String> {
     [
         "SchemaRevision",
         "ProtocolVersionValue",
         "Optional",
+        "Nullable",
+        "Null",
+        "NonNull",
         "Some",
         "DiagnosticCode",
         "DiagnosticInvalidType",
@@ -704,6 +975,17 @@ fn allocate_local_name(base: &str, used: &mut BTreeSet<String>) -> String {
         }
     }
     unreachable!()
+}
+
+// Apply Go initialisms to semantic labels without rewriting the shared helper's
+// structural collision identity (or its duplicate/disambiguation suffix).
+fn go_semantic_identifier(value: &str) -> String {
+    if let Some((stem, suffix)) = value.rsplit_once("Shape") {
+        if suffix.len() >= 16 && suffix.as_bytes()[..16].iter().all(u8::is_ascii_hexdigit) {
+            return format!("{}Shape{suffix}", go_identifier(stem));
+        }
+    }
+    go_identifier(value)
 }
 
 fn go_identifier(value: &str) -> String {
@@ -764,6 +1046,59 @@ type Optional[T any] struct {
 // Some returns a present optional value.
 func Some[T any](value T) Optional[T] {
 	return Optional[T]{Value: value, Present: true}
+}
+
+// Nullable distinguishes JSON null from a non-null value, independently of presence.
+// Its zero value is null. Use Optional[Nullable[T]] for an optional nullable member.
+type Nullable[T any] struct {
+	Value T
+	Valid bool
+}
+
+// Null returns an explicit JSON null.
+func Null[T any]() Nullable[T] { return Nullable[T]{} }
+
+// NonNull returns a non-null payload. Encoding rejects payloads that encode as null.
+func NonNull[T any](value T) Nullable[T] { return Nullable[T]{Value: value, Valid: true} }
+
+func (value *Nullable[T]) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*value = Null[T]()
+		return nil
+	}
+	var payload T
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+	*value = NonNull(payload)
+	return nil
+}
+
+func (value *Nullable[T]) unmarshalValidatedJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*value = Null[T]()
+		return nil
+	}
+	var payload T
+	if err := decodeValidatedJSON(data, &payload); err != nil {
+		return err
+	}
+	*value = NonNull(payload)
+	return nil
+}
+
+func (value Nullable[T]) MarshalJSON() ([]byte, error) {
+	if !value.Valid {
+		return []byte("null"), nil
+	}
+	data, err := json.Marshal(value.Value)
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return nil, fmt.Errorf("Nullable: non-null payload encoded as null")
+	}
+	return data, nil
 }
 
 // DiagnosticCode identifies a structural parse diagnostic.
@@ -838,14 +1173,67 @@ func loadSchemaDescriptors(source string) map[string]*schemaNode {
 	return descriptors
 }
 
-func loadSchemaNode(source string) *schemaNode {
-	decoder := json.NewDecoder(strings.NewReader(source))
-	decoder.UseNumber()
-	var node schemaNode
-	if err := decoder.Decode(&node); err != nil {
-		panic(fmt.Sprintf("invalid generated schema node: %v", err))
+// validateModelJSON and Parse use the same structural descriptor engine. Warnings
+// (open enum values and unknown tagged variants) never become decoding errors.
+func validateModelJSON(schema *schemaNode, input []byte) error {
+	value, err := decodeJSON(input)
+	if err != nil {
+		return err
 	}
-	return &node
+	diagnostics := make([]ParseDiagnostic, 0)
+	checkNode(schema, value, "", &diagnostics)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == SeverityError {
+			return fmt.Errorf("%s: %s: %s", diagnostic.Path, diagnostic.Code, diagnostic.Message)
+		}
+	}
+	return nil
+}
+
+// decodeValidatedJSON only hydrates an already-checked subtree. Generated models
+// use a private method so each nested struct does not revalidate its descendants.
+// Pointer and slice traversal preserves that seam through references and arrays.
+// Union selection may still inspect alternatives to select a public arm.
+func decodeValidatedJSON(input []byte, target any) error {
+	if decoder, ok := target.(interface{ unmarshalValidatedJSON([]byte) error }); ok {
+		return decoder.unmarshalValidatedJSON(input)
+	}
+	if _, ok := target.(json.Unmarshaler); ok {
+		return json.Unmarshal(input, target)
+	}
+	value := reflect.ValueOf(target).Elem()
+	switch value.Kind() {
+	case reflect.Pointer:
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			value.SetZero()
+			return nil
+		}
+		decoded := reflect.New(value.Type().Elem())
+		if err := decodeValidatedJSON(input, decoded.Interface()); err != nil {
+			return err
+		}
+		value.Set(decoded)
+		return nil
+	case reflect.Slice:
+		var items []json.RawMessage
+		if err := json.Unmarshal(input, &items); err != nil {
+			return err
+		}
+		if items == nil {
+			value.SetZero()
+			return nil
+		}
+		decoded := reflect.MakeSlice(value.Type(), len(items), len(items))
+		for index, item := range items {
+			if err := decodeValidatedJSON(item, decoded.Index(index).Addr().Interface()); err != nil {
+				return err
+			}
+		}
+		value.Set(decoded)
+		return nil
+	default:
+		return json.Unmarshal(input, target)
+	}
 }
 
 func parseRoot[T any](name string, input []byte) ParseResult[T] {
@@ -865,7 +1253,7 @@ func parseRoot[T any](name string, input []byte) ParseResult[T] {
 	if hasErrors(diagnostics) {
 		return result
 	}
-	if err := json.Unmarshal(input, &result.Value); err != nil {
+	if err := decodeValidatedJSON(input, &result.Value); err != nil {
 		result.Diagnostics = append(result.Diagnostics, ParseDiagnostic{
 			Code: DiagnosticInvalidType, Severity: SeverityError, Message: err.Error(),
 		})
@@ -1007,28 +1395,42 @@ func checkUnion(schema *schemaNode, value any, path string, diagnostics *[]Parse
 			addError(diagnostics, joinPath(path, *schema.Discriminator), DiagnosticInvalidType, "Expected string discriminator")
 			return
 		}
-		var branch *schemaNode
+		branches := make([]*schemaNode, 0)
 		for _, candidate := range schema.Variants {
 			if discriminatorValue(candidate, *schema.Discriminator) == actual {
-				branch = candidate
-				break
+				branches = append(branches, candidate)
 			}
 		}
-		if branch == nil {
+		if len(branches) == 0 {
 			*diagnostics = append(*diagnostics, ParseDiagnostic{
 				Path: path, Code: DiagnosticUnknownVariant, Severity: SeverityWarning,
 				Message: fmt.Sprintf("Unknown %s variant %s was preserved", *schema.Discriminator, jsonText(actual)),
 			})
 			return
 		}
-		branchDiagnostics := make([]ParseDiagnostic, 0)
-		checkNode(branch, value, path, &branchDiagnostics)
-		*diagnostics = append(*diagnostics, branchDiagnostics...)
-		if hasErrors(branchDiagnostics) {
+		// A tag can identify multiple distinct alternatives. Keep source
+		// multiplicity for oneOf and do not let the first branch hide later ones.
+		matches := make([][]ParseDiagnostic, 0, len(branches))
+		var rejected []ParseDiagnostic
+		for _, branch := range branches {
+			attempt := make([]ParseDiagnostic, 0)
+			checkNode(branch, value, path, &attempt)
+			if hasErrors(attempt) {
+				rejected = append(rejected, attempt...)
+			} else {
+				matches = append(matches, attempt)
+			}
+		}
+		if len(matches) == 0 {
+			*diagnostics = append(*diagnostics, rejected...)
 			*diagnostics = append(*diagnostics, ParseDiagnostic{
 				Path: path, Code: DiagnosticInvalidKnownVariant, Severity: SeverityError,
 				Message: fmt.Sprintf("Known %s variant is malformed", *schema.Discriminator),
 			})
+		} else if schema.Mode == "oneOf" && len(matches) > 1 {
+			addError(diagnostics, path, DiagnosticAmbiguousUnion, "Value matches more than one union branch")
+		} else {
+			*diagnostics = append(*diagnostics, matches[0]...)
 		}
 		return
 	}
@@ -1233,6 +1635,295 @@ mod tests {
     }
 
     #[test]
+    fn nullable_models_preserve_presence_and_payloads() {
+        fn nullable(shape: Shape) -> Shape {
+            Shape::Union {
+                mode: UnionMode::AnyOf,
+                discriminator: None,
+                variants: vec![Shape::Null, shape],
+            }
+        }
+        let object = Shape::Object {
+            properties: vec![Property {
+                wire_name: "value".into(),
+                required: true,
+                shape: Shape::Any,
+                constructor_default: None,
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        let payloads = vec![
+            ("Text", Shape::String),
+            ("Boolean", Shape::Boolean),
+            ("Integer", Shape::Integer),
+            ("Number", Shape::Number),
+            ("Object", object.clone()),
+            (
+                "Array",
+                Shape::Array {
+                    items: Box::new(nullable(Shape::String)),
+                },
+            ),
+            (
+                "Reference",
+                Shape::Ref {
+                    name: "Payload".into(),
+                },
+            ),
+        ];
+        let mut ir = sample_ir();
+        let mut properties = Vec::new();
+        for (name, payload) in &payloads {
+            for (prefix, required) in [("required", true), ("optional", false)] {
+                properties.push(Property {
+                    wire_name: format!("{prefix}{name}"),
+                    required,
+                    shape: nullable(payload.clone()),
+                    constructor_default: None,
+                });
+            }
+            let root = format!("Maybe{name}");
+            ir.types.push(NamedType {
+                name: root.clone(),
+                source: format!("{root}.json#"),
+                shape: nullable(payload.clone()),
+            });
+            ir.roots.push(PublicRoot {
+                name: root.clone(),
+                schema: format!("{root}.json"),
+            });
+        }
+        properties.push(Property {
+            wire_name: "optionalNamed".into(),
+            required: false,
+            shape: Shape::Ref {
+                name: "MaybeText".into(),
+            },
+            constructor_default: None,
+        });
+        ir.types[0].shape = Shape::Object {
+            properties,
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Allowed,
+        };
+        ir.types.push(NamedType {
+            name: "Payload".into(),
+            source: "payload.json#".into(),
+            shape: object,
+        });
+        for (name, mode) in [
+            ("Ambiguous", UnionMode::OneOf),
+            ("Overlapping", UnionMode::AnyOf),
+        ] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: format!("{name}.json#"),
+                shape: Shape::Union {
+                    mode,
+                    discriminator: None,
+                    variants: vec![Shape::Null, Shape::Any],
+                },
+            });
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: format!("{name}.json"),
+            });
+        }
+        for (name, mode) in [
+            ("RepeatedAny", UnionMode::AnyOf),
+            ("RepeatedOne", UnionMode::OneOf),
+        ] {
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: format!("{name}.json#"),
+                shape: Shape::Union {
+                    mode,
+                    discriminator: None,
+                    variants: vec![
+                        Shape::Ref {
+                            name: "Payload".into(),
+                        },
+                        Shape::Ref {
+                            name: "Payload".into(),
+                        },
+                    ],
+                },
+            });
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: format!("{name}.json"),
+            });
+        }
+        let output = emit(&ir).unwrap();
+        assert!(output.contains("Optional[MaybeText]"));
+        assert!(!output.contains("Optional[*MaybeText]"));
+        assert!(output.contains("Optional[Nullable[string]]"));
+        assert!(output.contains("Nullable[MessageRequiredObjectValue]"));
+        assert!(output.contains("type MaybeReference = Nullable[*Payload]"));
+        let mut reversed = Ir {
+            schema_revision: ir.schema_revision.clone(),
+            protocol_version: ir.protocol_version.clone(),
+            roots: ir
+                .roots
+                .iter()
+                .map(|r| PublicRoot {
+                    name: r.name.clone(),
+                    schema: r.schema.clone(),
+                })
+                .collect(),
+            types: ir
+                .types
+                .iter()
+                .map(|n| NamedType {
+                    name: n.name.clone(),
+                    source: n.source.clone(),
+                    shape: n.shape.clone(),
+                })
+                .collect(),
+        };
+        fn reverse(shape: &mut Shape) {
+            match shape {
+                Shape::Union { variants, .. } => {
+                    variants.reverse();
+                    for v in variants {
+                        reverse(v);
+                    }
+                }
+                Shape::Object { properties, .. } => {
+                    for p in properties {
+                        reverse(&mut p.shape);
+                    }
+                }
+                Shape::Array { items } => reverse(items),
+                _ => {}
+            }
+        }
+        for named in &mut reversed.types {
+            reverse(&mut named.shape);
+        }
+        let mut a = Generator::new(&ir);
+        let mut b = Generator::new(&reversed);
+        for named in &ir.types {
+            a.emit_named(&named.name, &named.source, &named.shape)
+                .unwrap();
+        }
+        for named in &reversed.types {
+            b.emit_named(&named.name, &named.source, &named.shape)
+                .unwrap();
+        }
+        let nullable_declarations = |g: &Generator<'_>| {
+            g.declarations
+                .iter()
+                .filter(|d| !d.contains("type Ambiguous") && !d.contains("type Overlapping"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            nullable_declarations(&a),
+            nullable_declarations(&b),
+            "nullable names must not depend on union order"
+        );
+
+        // Exercise generated code without requiring a checked-in synthetic SDK.
+        let dir = std::env::temp_dir().join(format!("ahp-go-nullable-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("go.mod"), "module nullabletest\n\ngo 1.24\n").unwrap();
+        std::fs::write(dir.join("generated.go"), output).unwrap();
+        std::fs::write(dir.join("nullable_test.go"), r#"package ahp
+import ("encoding/json"; "reflect"; "testing")
+func TestNullableMatrix(t *testing.T) {
+    values := map[string]any{"Text":"hello", "Boolean":true, "Integer":float64(3), "Number":1.5,
+        "Object":map[string]any{"value":nil}, "Array":[]any{nil,"hello"}, "Reference":map[string]any{"value":nil}}
+    // Every required field independently rejects absence; every optional field accepts it.
+    for _, requiredNull := range []bool{true,false} {
+      for _, optional := range []string{"absent","null","value"} {
+        doc := map[string]any{}
+        for name, payload := range values {
+          if requiredNull { doc["required"+name] = nil } else { doc["required"+name] = payload }
+          if optional == "null" { doc["optional"+name] = nil }
+          if optional == "value" { doc["optional"+name] = payload }
+        }
+        raw,_ := json.Marshal(doc)
+        parsed := ParseMessage(raw)
+        if !parsed.OK { t.Fatalf("matrix %v %s: %+v", requiredNull, optional, parsed.Diagnostics) }
+        model := reflect.ValueOf(parsed.Value)
+        for name := range values {
+          req := model.FieldByName("Required"+name)
+          opt := model.FieldByName("Optional"+name)
+          if req.FieldByName("Valid").Bool() == requiredNull { t.Fatal("required null/value collapsed",name) }
+          if opt.FieldByName("Present").Bool() != (optional != "absent") { t.Fatal("presence collapsed",name) }
+          if opt.FieldByName("Value").FieldByName("Valid").Bool() != (optional == "value") { t.Fatal("optional null/value collapsed",name) }
+        }
+        encoded,err := EncodeMessage(parsed.Value)
+        if err != nil { t.Fatal(err) }
+        var got any; json.Unmarshal(encoded,&got)
+        if !reflect.DeepEqual(got,doc) { t.Fatalf("roundtrip %s => %s",raw,encoded) }
+        for name := range values {
+          old := doc["required"+name]; delete(doc,"required"+name)
+          missing,_ := json.Marshal(doc)
+          if ParseMessage(missing).OK { t.Fatal("missing required accepted",name) }
+          var direct Message
+          if json.Unmarshal(missing,&direct) == nil { t.Fatal("direct decoder coerced missing to null",name) }
+          doc["required"+name] = old
+        }
+      }
+    }
+    for _, name := range []string{"optionalText", "optionalNamed"} {
+      var reused Message
+      base := map[string]any{}
+      for field := range values { base["required"+field] = nil }
+      base[name] = "old"; raw,_ := json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      base[name] = nil; raw,_ = json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      field := "OptionalText"; if name == "optionalNamed" { field = "OptionalNamed" }
+      state := reflect.ValueOf(reused).FieldByName(field)
+      if !state.FieldByName("Present").Bool() || state.FieldByName("Value").FieldByName("Valid").Bool() { t.Fatal("named null collapsed", name) }
+      delete(base,name); raw,_ = json.Marshal(base)
+      if err := json.Unmarshal(raw,&reused); err != nil { t.Fatal(err) }
+      if reflect.ValueOf(reused).FieldByName(field).FieldByName("Present").Bool() { t.Fatal("absent reuse retained old state", name) }
+    }
+    if !ParseRepeatedAny([]byte(`{"value":null}`)).OK { t.Fatal("grouped anyOf rejected") }
+    if ParseRepeatedOne([]byte(`{"value":null}`)).OK { t.Fatal("grouped public arm changed oneOf validation") }
+    if reflect.TypeOf(RepeatedAny{}).NumField() != 2 { t.Fatal("identical alternatives emitted duplicate public variants") }
+    if ParseAmbiguous([]byte(`null`)).OK { t.Fatal("oneOf ambiguity lost") }
+    ambiguous := ParseAmbiguous([]byte(`null`))
+    if len(ambiguous.Diagnostics) == 0 || ambiguous.Diagnostics[0].Code != DiagnosticAmbiguousUnion { t.Fatal("wrong ambiguity diagnostic", ambiguous.Diagnostics) }
+    if !ParseOverlapping([]byte(`null`)).OK { t.Fatal("anyOf null rejected") }
+    var directAmbiguous Ambiguous
+    if json.Unmarshal([]byte(`null`), &directAmbiguous) == nil { t.Fatal("direct oneOf decoder lost ambiguity") }
+    var directOverlapping Overlapping
+    if json.Unmarshal([]byte(`null`), &directOverlapping) != nil { t.Fatal("direct anyOf decoder rejected null") }
+    if !ParseMaybeText([]byte(`""`)).Value.Valid || !ParseMaybeBoolean([]byte(`false`)).Value.Valid || !ParseMaybeInteger([]byte(`0`)).Value.Valid { t.Fatal("zero values collapsed to null") }
+    if !ParseMaybeText([]byte(`null`)).OK || !ParseMaybeText([]byte(`"x"`)).Value.Valid { t.Fatal("root string") }
+    if ParseMaybeText([]byte(`false`)).OK { t.Fatal("wrong root primitive accepted") }
+    if !ParseMaybeBoolean([]byte(`true`)).Value.Valid || !ParseMaybeInteger([]byte(`4`)).Value.Valid || !ParseMaybeNumber([]byte(`1.5`)).Value.Valid { t.Fatal("primitive roots") }
+    if !ParseMaybeObject([]byte(`{"value":null}`)).Value.Valid || ParseMaybeObject([]byte(`null`)).Value.Valid { t.Fatal("root object") }
+    if !ParseMaybeArray([]byte(`[null,"x"]`)).Value.Valid || !ParseMaybeReference([]byte(`{"value":null}`)).Value.Valid { t.Fatal("array/ref roots") }
+    for _, value := range []any{NonNull((*Payload)(nil)), NonNull([]string(nil)), NonNull(map[string]string(nil)), NonNull(json.RawMessage("null"))} {
+      if _,err := json.Marshal(value); err == nil { t.Fatal("NonNull silently encoded null") }
+    }
+    value := NonNull("old")
+    if err := json.Unmarshal([]byte(" \n null \t"),&value); err != nil || value.Valid || value.Value != "" { t.Fatal("stale nullable payload") }
+    if data,err := json.Marshal(Null[string]()); err != nil || string(data) != "null" { t.Fatal("null constructor") }
+}
+"#).unwrap();
+        let result = std::process::Command::new("go")
+            .args(["test", "./..."])
+            .current_dir(&dir)
+            .output()
+            .expect("Go is required for the nullable codec regression");
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(
+            result.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    #[test]
     fn output_is_deterministic_and_has_lossless_entrypoints() {
         let mut ordered = sample_ir();
         ordered.types.push(NamedType {
@@ -1306,8 +1997,132 @@ mod tests {
                 .any(|line| line.split_whitespace().eq(["ID", "json.Number"]))
         );
         assert!(output.contains("type Choice struct"));
-        assert!(output.contains("Variant1 Optional[string]"));
-        assert!(output.contains("Variant2 Optional[json.Number]"));
+        assert!(
+            output
+                .lines()
+                .any(|line| line.split_whitespace().eq(["String", "Optional[string]"]))
+        );
+        assert!(output.lines().any(|line| {
+            line.split_whitespace()
+                .eq(["Integer", "Optional[json.Number]"])
+        }));
+    }
+
+    #[test]
+    fn union_public_names_are_semantic_and_reorder_stable() {
+        let ir = sample_ir();
+        let mut variants = vec![
+            Shape::Enum {
+                values: vec![serde_json::json!("allow")],
+                open_strings: false,
+            },
+            Shape::String,
+            Shape::Null,
+            Shape::Object {
+                properties: vec![Property {
+                    constructor_default: None,
+                    wire_name: "value".into(),
+                    required: true,
+                    shape: Shape::Any,
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Allowed,
+            },
+        ];
+        let mut arms = None;
+        for _ in 0..2 {
+            let mut generator = Generator::new(&ir);
+            generator
+                .emit_union(
+                    "Choice",
+                    None,
+                    &Shape::Union {
+                        mode: UnionMode::AnyOf,
+                        variants: variants.clone(),
+                        discriminator: None,
+                    },
+                )
+                .unwrap();
+            let current = generator.unions["Choice"]
+                .iter()
+                .cloned()
+                .collect::<BTreeMap<_, _>>();
+            if let Some(previous) = &arms {
+                assert_eq!(previous, &current);
+            }
+            arms = Some(current);
+            let source = generator.declarations.join("\n");
+            assert!(!source.contains("Variant1"));
+            assert!(source.contains("type ChoiceValueObject struct"));
+            assert!(source.contains("Unknown"));
+            assert!(source.contains("decoded.Unknown = append(json.RawMessage(nil), data...)"));
+            variants.reverse();
+        }
+    }
+
+    #[test]
+    fn semantic_literal_names_preserve_go_initialisms_and_reject_collisions() {
+        let mut ir = sample_ir();
+        ir.types.push(NamedType {
+            name: "HttpTransportType".into(),
+            source: "http.json#".into(),
+            shape: Shape::Literal {
+                value: serde_json::json!("http"),
+            },
+        });
+        let output = emit(&ir).unwrap();
+        assert!(output.contains("const HttpTransportTypeHTTP HttpTransportType = \"http\""));
+        let variants = vec![
+            Shape::Literal {
+                value: serde_json::json!("http"),
+            },
+            Shape::Literal {
+                value: serde_json::json!("HTTP"),
+            },
+        ];
+        assert!(
+            super::super::naming::projected_union(&variants).is_err(),
+            "collisions require explicit semantic disambiguation, not fingerprints"
+        );
+    }
+
+    #[test]
+    fn numeric_constants_follow_values_not_enum_positions() {
+        let mut ir = sample_ir();
+        let mut values = vec![
+            serde_json::json!(-7),
+            serde_json::json!(42),
+            serde_json::json!(1.5),
+        ];
+        let mut constants = None;
+        for _ in 0..2 {
+            ir.types.push(NamedType {
+                name: "Code".into(),
+                source: "code.json#".into(),
+                shape: Shape::Enum {
+                    values: values.clone(),
+                    open_strings: false,
+                },
+            });
+            let output = emit(&ir).unwrap();
+            let current = output
+                .lines()
+                .filter(|line| line.starts_with("const Code"))
+                .map(str::to_owned)
+                .collect::<BTreeSet<_>>();
+            assert_eq!(current.len(), 3);
+            assert!(
+                !current
+                    .iter()
+                    .any(|line| line.starts_with("const CodeValue1 "))
+            );
+            if let Some(previous) = &constants {
+                assert_eq!(previous, &current);
+            }
+            constants = Some(current);
+            ir.types.pop();
+            values.reverse();
+        }
     }
 
     #[test]
@@ -1346,7 +2161,7 @@ mod tests {
         let output = emit(&ir).unwrap();
         assert!(output.contains("type Optional2 struct"));
         assert!(output.contains("Next                 Optional[*Optional2]"));
-        assert!(output.contains("type Optional3 = string"));
+        assert!(output.contains("type Optional3 string"));
         assert!(output.contains("func ParseOptional2"));
     }
 
@@ -1424,3 +2239,6 @@ mod tests {
         assert_eq!(go_identifier("123"), "Field123");
     }
 }
+
+#[cfg(test)]
+mod decode_tests;

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/content-upload-receipt.schema.json",
+  "title": "AHP ContentUploadReceipt (Draft)",
+  "type": "object",
+  "required": [
+    "ref",
+    "size",
+    "sha256"
+  ],
+  "properties": {
+    "ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "minLength": 64,
+      "maxLength": 64
+    }
+  },
+  "additionalProperties": false,
+  "$comment": "Mutable AHP draft. ",
+  "description": "HTTP 201 upload confirmation. ref identifies receiver-allocated immutable bytes; size counts exact octets and sha256 is their lowercase SHA-256 digest. Senders verify both before publishing only ref in an event body. This receipt is not event acknowledgement or proof of durable storage."
+}

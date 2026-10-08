@@ -538,7 +538,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "7e5459787ed90bc66e5e58f49e9a06a00774d9615bc8befa1392abfe4a2b0c16"
+      "sha256": "a1bc6b06cba8ffcebd44da8856e517ee8019d2107ad4ca40250ef0e46cd81bd7"
     },
     {
       "id": "http.content-negative-size.invalid",
@@ -550,7 +550,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "f4a41476e74230e62ad6969da276da9c157e73543777a580945279ad175e3126"
+      "sha256": "5a42ed0b6da1e481d7f14659418615d25100fde8447b1733769f0d024bf772e2"
     },
     {
       "id": "http.content-bad-hash.invalid",
@@ -562,7 +562,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "c1301f01e8617bcf2ca3e6e9e36337d05611730c39d271b249bab8850119e378"
+      "sha256": "ebe9af9d8d269542003f9a5269eb03888d66b3195f1a1f2fc51495ef6dc25819"
     },
     {
       "id": "http.content-inline.invalid",
@@ -574,7 +574,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "78b01ce96351789a630f44d9d405b96346ce8a81afe5f674d41930ff4158356a"
+      "sha256": "d2ea1edb3038c0ad5d4152c3b4193945cf63db8c8aac45d7cd4c1d5685758649"
     },
     {
       "id": "http.metadata-body.invalid",
@@ -586,7 +586,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "b8701c5eef1caafaf3296a995fc460eda9b104c74d4d49926d9210b5a44f57d2"
+      "sha256": "9213b012e580d4c9ab1f6d1e67789011ab35feb7261082cf7d4a3dacab098f25"
     },
     {
       "id": "http.parent-empty.invalid",
@@ -598,7 +598,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "37ee6c2c260aed5fa78a76fe333d947a815c166622190e37901a9bccaca8431b"
+      "sha256": "d0af0d18b5039177d40bdbd4dbc33a6a232b12d3fb5d126bec04835d18e7cabd"
     },
     {
       "id": "http.task-id-missing.invalid",
@@ -610,7 +610,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "ea066728943f6a871dacfeb99e53e2b7e2e0bfea2f711f4954b5dc85e97e34a7"
+      "sha256": "4d6aaf2bdf4754b099c33d3bf010a193418e1899c8b2584f8f3340544509d2f6"
     },
     {
       "id": "http.content-gap.valid",
@@ -874,7 +874,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "13f5201dac78e2bfada33af9a17432af1dc908a8bef169c75254cf4ffa22fcce"
+      "sha256": "70a2b7d8d70e4f9de01af4e5aeda26d196b8a94f9c5b9a74f710ddfd388db9dc"
     },
     {
       "id": "http.catalogue-user.elicitation.result.valid",
@@ -886,7 +886,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "7f03a82de57c327c3f6bb9028fdc132fc411f6abbde71fd5bf05c4550f958eec"
+      "sha256": "da0657f9ade9256441b8a8b6daa252d13ccab98eab74a073bd93647bc3363dcd"
     },
     {
       "id": "http.catalogue-user.message.inbound.valid",
@@ -1053,7 +1053,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "874f142833bfbda3d6123d6f40324a76a425074048f3028d2959b6eb2382168d",
+      "sha256": "f27b5f1985e64cd388baf712f484c85e4da8232e29fc6885dece0696376230bd",
       "aggregateExpectedValid": false
     },
     {

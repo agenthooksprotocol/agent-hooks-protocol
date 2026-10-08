@@ -22,6 +22,12 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         }
     }
     capability_options(&g, packages.entry("capability".into()).or_default())?;
+    if ir.types.iter().any(|named| named.name == "Event") {
+        packages
+            .entry("event".into())
+            .or_default()
+            .push_str("type Event = ahp.Event\n");
+    }
     capability_composition(&g, packages.entry("capability".into()).or_default())?;
     state_helpers(&g, &mut packages)?;
     effect_operations(&g, packages.entry("effect".into()).or_default())?;
@@ -329,29 +335,30 @@ fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
                     .map(|p| format!("arg{} bool", go_identifier(&p.wire_name)))
                     .collect::<Vec<_>>()
                     .join(", ");
-                let mut expression = vec![go_string("{")?];
-                for (index, property) in properties.iter().enumerate() {
-                    let key = format!(
-                        "{}{}:",
-                        if index == 0 { "" } else { "," },
-                        serde_json::to_string(&property.wire_name)?
+                let fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
+                    anyhow::anyhow!("modification grant {} has no object model", leaf.wire_name)
+                })?;
+                let mut values = Vec::new();
+                for property in &properties {
+                    let field = fields
+                        .iter()
+                        .find(|field| field.wire_name == property.wire_name)
+                        .context("modification property has no generated field")?;
+                    anyhow::ensure!(
+                        field.required && field.field_type == "bool",
+                        "unsupported modification field {}",
+                        field.wire_name
                     );
-                    expression.push(go_string(&key)?);
-                    expression.push(format!(
-                        "strconv.FormatBool(arg{})",
+                    values.push(format!(
+                        "{}: arg{}",
+                        field.field_name,
                         go_identifier(&property.wire_name)
                     ));
                 }
-                expression.push(go_string("}")?);
-                anyhow::ensure!(
-                    leaf.field_type == "json.RawMessage",
-                    "unsupported modification model {}",
-                    leaf.field_type
-                );
                 (
                     format!("With{}{group_name}", leaf.field_name),
                     args,
-                    format!("json.RawMessage({})", expression.join(" + ")),
+                    format!("{}{{{}}}", qualify(&leaf.field_type), values.join(", ")),
                 )
             } else {
                 let grant_fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
@@ -383,9 +390,61 @@ fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
     Ok(())
 }
 
+// Queries expose family membership without re-encoding wire models.
+pub(super) fn capability_queries(g: &Generator<'_>, out: &mut String) -> Result<()> {
+    let Some(fields) = g.objects.get("Capabilities") else {
+        return Ok(());
+    };
+    let effects = fields
+        .iter()
+        .find(|f| f.wire_name == "effects")
+        .expect("capability effects");
+    out.push_str("// EffectName identifies an advertised effect family, including extension names.\ntype EffectName string\n\n");
+    for name in enum_strings(g, &effects.shape) {
+        writeln!(
+            out,
+            "const EffectName{} EffectName = {name:?}",
+            go_identifier(&name)
+        )?;
+    }
+    out.push_str("\n// EffectDeny is the shorthand family identifier for deny.\nconst EffectDeny = EffectNameDeny\n");
+    for model in ["Capabilities", "InterceptRequestParamsCapabilities"] {
+        let Some(fields) = g.objects.get(model) else {
+            continue;
+        };
+        let effects = fields
+            .iter()
+            .find(|f| f.wire_name == "effects")
+            .expect("capability effects");
+        let item = effects.field_type.strip_prefix("[]").expect("effect list");
+        let arms = &g.unions[item];
+        let (custom, _) = arms
+            .iter()
+            .find(|(_, ty)| ty == "string")
+            .expect("custom effect arm");
+        let (known, _) = arms
+            .iter()
+            .find(|(_, ty)| ty != "string")
+            .expect("known effect arm");
+        writeln!(
+            out,
+            "\n// Supports reports advertised effect-family membership only.\n// It does not grant execution permission or check target, operation, mode, or\n// per-call restrictions. Nested grants alone never imply family support.\nfunc (value {model}) Supports(effect EffectName) bool {{\n\tfor _, item := range value.Effects {{\n\t\tif item.{known}.Present {{\n\t\t\tif string(item.{known}.Value) == string(effect) {{\n\t\t\t\treturn true\n\t\t\t}}\n\t\t}} else if item.{custom}.Present && item.{custom}.Value == string(effect) {{\n\t\t\treturn true\n\t\t}}\n\t}}\n\treturn false\n}}"
+        )?;
+    }
+    out.push('\n');
+    Ok(())
+}
+
 // Functional declarations allocate fresh wire models for every composition.
 fn capability_composition(g: &Generator<'_>, out: &mut String) -> Result<()> {
-    out.push_str(r#"
+    let effects_field = g.objects["Capabilities"]
+        .iter()
+        .find(|f| f.wire_name == "effects")
+        .unwrap();
+    let item = effects_field.field_type.strip_prefix("[]").unwrap();
+    let arms = &g.unions[item];
+    let (known, known_type) = arms.iter().find(|(_, ty)| ty != "string").unwrap();
+    out.push_str(&r#"
 type Mode = ahp.StaticCapabilityManifestEventsItemModesItem
 const (InterceptMode Mode = "intercept"; ObserveMode Mode = "observe")
 type Event struct { Modes []Mode; Capabilities *ahp.Capabilities }
@@ -406,11 +465,11 @@ func Intercept(grants ...Grant) (Event, error) {
     return Event{Modes: []Mode{InterceptMode, ObserveMode}, Capabilities: value}, nil
 }
 func Observe() Event { return Event{Modes: []Mode{ObserveMode}} }
-func addEffect(v *ahp.Capabilities, name string) {
-    for _, effect := range v.Effects { if effect.Variant2.Present && effect.Variant2.Value == name { return }; if effect.Variant1.Present && string(effect.Variant1.Value) == name { return } }
-    v.Effects = append(v.Effects, ahp.CapabilitiesEffectsItem{Variant1: ahp.Some(ahp.CapabilitiesEffectsItemVariant1(name))})
+func addEffect(v *ahp.Capabilities, name ahp.EffectName) {
+    if v.Supports(name) { return }
+    v.Effects = append(v.Effects, ahp.$ITEM{$KNOWN: ahp.Some(ahp.$KNOWN_TYPE(name))})
 }
-"#);
+"#.replace("$KNOWN_TYPE", known_type).replace("$KNOWN", known).replace("$ITEM", item));
     let effects = &g.objects["Capabilities"]
         .iter()
         .find(|f| f.wire_name == "effects")
@@ -422,7 +481,8 @@ func addEffect(v *ahp.Capabilities, name string) {
         }
         writeln!(
             out,
-            "func {}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ addEffect(v, {effect:?}); return nil }} }} }}",
+            "func {}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ addEffect(v, ahp.EffectName{}); return nil }} }} }}",
+            go_identifier(&effect),
             go_identifier(&effect)
         )?;
     }
@@ -440,11 +500,24 @@ func addEffect(v *ahp.Capabilities, name string) {
     }
     for leaf in &g.objects["CapabilitiesModify"] {
         let name = &leaf.field_name;
-        let flags = capability_declarations(&leaf.shape)
-            .iter()
-            .map(|p| format!("{:?}:false", p.wire_name))
-            .collect::<Vec<_>>()
-            .join(",");
+        let fields = g
+            .objects
+            .get(&leaf.field_type)
+            .context("modification grant has no object model")?;
+        let mut cases = String::new();
+        for field in fields {
+            anyhow::ensure!(
+                field.required && field.field_type == "bool",
+                "unsupported modification field {}",
+                field.wire_name
+            );
+            writeln!(
+                cases,
+                "case {}: grant.{} = true",
+                go_string(&field.wire_name)?,
+                field.field_name
+            )?;
+        }
         writeln!(
             out,
             r#"
@@ -452,18 +525,14 @@ func Modify{name}(operations ...ModifyOperation) Grant {{
     operations = append([]ModifyOperation(nil), operations...)
     return Grant{{apply: func(v *ahp.Capabilities) error {{
         if len(operations) == 0 {{ return fmt.Errorf("modification requires an operation") }}
-        flags := map[string]bool{{{flags}}}
+        grant := v.Modify.Value.{name}.Value
         for _, operation := range operations {{
-            if _, known := flags[string(operation)]; !known {{ return fmt.Errorf("unknown modify operation %q", operation) }}
-            flags[string(operation)] = true
+            switch string(operation) {{
+            {cases}
+            default: return fmt.Errorf("unknown modify operation %q", operation)
+            }}
         }}
-        if v.Modify.Present && v.Modify.Value.{name}.Present {{
-            var previous map[string]bool
-            if err := json.Unmarshal(v.Modify.Value.{name}.Value, &previous); err != nil {{ return err }}
-            for operation, enabled := range previous {{ flags[operation] = flags[operation] || enabled }}
-        }}
-        raw, err := json.Marshal(flags); if err != nil {{ return err }}
-        v.Modify.Present = true; v.Modify.Value.{name} = ahp.Some(json.RawMessage(raw)); addEffect(v, "modify"); return nil
+        v.Modify.Present = true; v.Modify.Value.{name} = ahp.Some(grant); addEffect(v, "modify"); return nil
     }} }}
 }}
 "#
@@ -560,25 +629,36 @@ fn state_helpers(g: &Generator<'_>, packages: &mut BTreeMap<String, String>) -> 
     packages.insert("permission".into(), body);
     let mut body = String::new();
     constructor(g, &mut body, name, "", fields)?;
-    body.push_str(r#"
+    let candidate_type = &fields
+        .iter()
+        .find(|f| f.wire_name == "candidate")
+        .unwrap()
+        .field_type;
+    let object_type = &g.nullables[candidate_type];
+    let provenance_type = &g.objects[object_type]
+        .iter()
+        .find(|f| f.wire_name == "provenance")
+        .unwrap()
+        .field_type;
+    body.push_str(&r#"
 // Initial represents a native decision already made for this occurrence, not authorization.
 func Initial(value permission.Permission, opts ...Option) *ahp.InterceptRequestParamsState {
     v := &ahp.InterceptRequestParamsState{Permission: value, Candidate: NoCandidate()}
     for _, opt := range opts { if opt != nil { opt(v) } }; return v
 }
-func NoCandidate() ahp.InterceptRequestParamsStateCandidate {
-    return ahp.InterceptRequestParamsStateCandidate{Variant1: ahp.Some(json.RawMessage("null"))}
+func NoCandidate() ahp.Nullable[ahp.$OBJECT_TYPE] {
+    return ahp.Null[ahp.$OBJECT_TYPE]()
 }
 // Candidate preserves payload encoding errors instead of silently dropping the value.
-func Candidate[T any](value T, provenance ...ahp.InterceptRequestParamsStateCandidateVariant2Provenance) (ahp.InterceptRequestParamsStateCandidate, error) {
-    if len(provenance) > 1 { return ahp.InterceptRequestParamsStateCandidate{}, fmt.Errorf("candidate accepts at most one provenance") }
-    raw, err := json.Marshal(value); if err != nil { return ahp.InterceptRequestParamsStateCandidate{}, err }
-    candidate := ahp.InterceptRequestParamsStateCandidateVariant2{Value: raw}
+func Candidate[T any](value T, provenance ...ahp.$PROVENANCE_TYPE) (ahp.Nullable[ahp.$OBJECT_TYPE], error) {
+    if len(provenance) > 1 { return ahp.Nullable[ahp.$OBJECT_TYPE]{}, fmt.Errorf("candidate accepts at most one provenance") }
+    raw, err := json.Marshal(value); if err != nil { return ahp.Nullable[ahp.$OBJECT_TYPE]{}, err }
+    candidate := ahp.$OBJECT_TYPE{Value: raw}
     if len(provenance) == 1 { candidate.Provenance = ahp.Some(provenance[0]) }
-    return ahp.InterceptRequestParamsStateCandidate{Variant2: ahp.Some(candidate)}, nil
+    return ahp.NonNull(candidate), nil
 }
-func WithCandidate(value ahp.InterceptRequestParamsStateCandidate) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
-"#);
+func WithCandidate(value ahp.Nullable[ahp.$OBJECT_TYPE]) Option { return func(v *ahp.InterceptRequestParamsState) { v.Candidate = value } }
+"#.replace("$PROVENANCE_TYPE", provenance_type).replace("$OBJECT_TYPE", object_type));
     packages.insert("state".into(), body);
     Ok(())
 }
@@ -855,7 +935,11 @@ fn constructor(
             match (name, f.wire_name.as_str()) {
                 ("Backend", "id") => {
                     args.push(format!("{arg} string"));
-                    format!("&{arg}")
+                    format!(
+                        "func() {} {{ v := {}({arg}); return &v }}()",
+                        qualify(&f.field_type),
+                        qualify(f.field_type.trim_start_matches('*'))
+                    )
                 }
                 ("Backend", "subscriptions") => {
                     args.push(format!("{arg} ahp.BackendSubscriptionsItem"));
@@ -1291,6 +1375,44 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn facade_resolves_semantic_union_names_after_reordering() {
+        fn reverse_unions(shape: &mut Shape) {
+            match shape {
+                Shape::Union { variants, .. } => {
+                    variants.reverse();
+                    for variant in variants {
+                        reverse_unions(variant);
+                    }
+                }
+                Shape::Intersection { variants } => {
+                    for variant in variants {
+                        reverse_unions(variant);
+                    }
+                }
+                Shape::Object { properties, .. } => {
+                    for property in properties {
+                        reverse_unions(&mut property.shape);
+                    }
+                }
+                Shape::Array { items, .. } => reverse_unions(items),
+                _ => {}
+            }
+        }
+        let mut ir = draft();
+        let before = emit(&ir).unwrap();
+        for named in &mut ir.types {
+            reverse_unions(&mut named.shape);
+        }
+        let after = emit(&ir).unwrap();
+        for path in ["state/generated.go", "capability/generated.go"] {
+            assert_eq!(before[path], after[path]);
+            assert!(!after[path].contains("Variant1"));
+            assert!(!after[path].contains("Variant2"));
+            assert!(!after[path].contains('$'));
+        }
+    }
+
+    #[test]
     fn accepted_ergonomics_use_shared_fields_slots_and_codes() {
         let ir = draft();
         let files = emit(&ir).unwrap();
@@ -1368,6 +1490,27 @@ mod tests {
                 additional: crate::model::AdditionalProperties::Forbidden,
             };
         }
+        // Keep the synthetic typed projections aligned with the edited schema.
+        let projected = targets
+            .iter()
+            .map(|target| {
+                let fields = capability_declarations(&target.shape)
+                    .into_iter()
+                    .map(|property| RenderedField {
+                        field_name: go_identifier(&property.wire_name),
+                        wire_name: property.wire_name,
+                        field_type: "bool".into(),
+                        required: property.required,
+                        constructor_default: None,
+                        shape: property.shape,
+                    })
+                    .collect();
+                (target.field_type.clone(), fields)
+            })
+            .collect::<Vec<_>>();
+        for (name, fields) in projected {
+            g.objects.insert(name, fields);
+        }
         let mut source = String::new();
         capability_composition(&g, &mut source).unwrap();
         assert_eq!(
@@ -1398,11 +1541,11 @@ mod tests {
             .split("func ")
             .next()
             .unwrap();
-        assert!(first.contains("flags := map[string]bool{\"patch\":false}"));
+        assert!(first.contains("case \"patch\": grant.Patch = true"));
         assert!(!first.contains("\"splice\""));
-        assert!(second.contains("flags := map[string]bool{\"splice\":false}"));
+        assert!(second.contains("case \"splice\": grant.Splice = true"));
         assert!(!second.contains("\"patch\""));
-        assert!(source.contains("known := flags[string(operation)]"));
+        assert!(source.contains("switch string(operation)"));
     }
 
     #[test]

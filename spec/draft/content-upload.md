@@ -42,12 +42,12 @@ clients decode it once before counting, hashing, and sending bytes.
 The sender supplies neither a content reference nor subscription identity. The
 receiver allocates an opaque immutable reference after validating and authorizing
 the bytes. Only `201 Created` with `Content-Type: application/json` and a canonical
-[content-reference](../../schema/draft/content-reference.schema.json) JSON body
+[content-upload-receipt](../../schema/draft/content-upload-receipt.schema.json) JSON body
 `{"ref": "receiver-allocated-reference", "size": 3, "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"}`
 confirms synchronous availability within the authorized scope. Before publishing
-an event, the sender MUST validate this descriptor and verify that `size` and
+an event, the sender MUST validate this receipt and verify that `size` and
 `sha256` match the exact bytes sent. It MUST use the returned `ref`, not construct
-one. A missing, malformed, or mismatched descriptor fails the upload. `202` and
+one. A missing, malformed, or mismatched receipt fails the upload. `202` and
 `204` are not confirmation. The receiver uses:
 
 | Status | Meaning |
@@ -59,7 +59,7 @@ one. A missing, malformed, or mismatched descriptor fails the upload. `202` and
 | 413 | Receiver size limit exceeded |
 
 Other statuses fail the upload. An event receiver MAY return 404 when referenced
-content is unavailable. The 201 descriptor is an upload confirmation, not an event
+content is unavailable. The 201 receipt is an upload confirmation, not an event
 acknowledgement. No renewal, expiry negotiation, or protocol-level retrieval route
 is introduced.
 
@@ -80,12 +80,14 @@ inline bytes, a local path, or an arbitrary retrieval URL. Selection is not
 authorization; permissions are checked before transfer. Observations remain best
 effort and a failed upload MUST NOT reopen settlement.
 
-A normalized item's `body` is `{ref, size, sha256}`. `size` and hash describe exact
-uploaded bytes. A receiver MUST resolve and verify this descriptor against confirmed
-`(authorized scope, ref, size, sha256)` storage. Metadata and omitted views have no body.
-Body-selection gaps have a `gap` instead of `body`. Optional descriptor `size` and
-`sha256` metadata must agree with body metadata when both are present; JSON Schema
-cannot enforce cross-field equality.
+A normalized item's `body` is `{ref}`. Upload-confirmation `size` and `sha256`
+belong only to the separate receipt and MUST NOT appear in the body reference or
+on a body-selected item with a ready body. A receiver MUST resolve the reference
+against confirmed `(authorized scope, ref)` storage; the verified byte size and
+digest remain associated with that upload, not repeated in the event.
+Metadata and omitted views have no body. Body-selection gaps have a `gap` instead
+of `body`. These metadata-only, omitted, and gap descriptors may still disclose
+optional `size` and `sha256` metadata under the selected content policy.
 
 Content selection uses a required `default` plus category-name keys whose values
 are `body`, `metadata`, or `omit`. Unknown categories use the default. Explicit

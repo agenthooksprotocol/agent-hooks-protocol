@@ -147,11 +147,123 @@ mod tests {
     }
 
     #[test]
+    fn complete_draft_public_surface_has_no_structural_fallback_names() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = compiler::compile(&repository, "draft").unwrap();
+        let mut outputs = vec![
+            ("go".to_owned(), langs::go::emit(&ir).unwrap()),
+            ("rust".to_owned(), langs::rust::emit(&ir).unwrap()),
+            (
+                "typescript".to_owned(),
+                langs::typescript::emit(&ir).unwrap(),
+            ),
+        ];
+        outputs.extend(
+            langs::python::facade::emit(&ir)
+                .unwrap()
+                .into_iter()
+                .map(|(path, source)| (format!("python/{path}"), source)),
+        );
+        outputs.extend(
+            langs::go::facade::emit(&ir)
+                .unwrap()
+                .into_iter()
+                .map(|(path, source)| (format!("go/{path}"), source)),
+        );
+        for (target, source) in outputs {
+            for line in source.lines() {
+                // Inspect declared public type names, rather than private parser
+                // variables or JSON descriptor text embedded in the runtime.
+                let declaration = [
+                    "pub struct ",
+                    "pub enum ",
+                    "pub type ",
+                    "type ",
+                    "export type ",
+                    "export interface ",
+                    "class ",
+                ]
+                .iter()
+                .find_map(|prefix| line.strip_prefix(prefix));
+                if let Some(declaration) = declaration {
+                    let name = declaration
+                        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .next()
+                        .unwrap();
+                    assert!(name.len() <= 96, "{target}: unbounded public type {name}");
+                    assert!(
+                        !name.contains("ObjectOr") && !name.contains("ObjectAnd"),
+                        "{target}: structural public type {name}"
+                    );
+                }
+                // Fingerprints and positional variant names are unacceptable in
+                // public declarations AND references to their generated helpers.
+                for token in line.split(|c: char| !c.is_ascii_alphanumeric() && c != '_') {
+                    if let Some((_, suffix)) = token.split_once("Shape") {
+                        assert!(
+                            !(suffix.len() >= 16
+                                && suffix.as_bytes()[..16].iter().all(u8::is_ascii_hexdigit)),
+                            "{target}: public structural fingerprint {token}"
+                        );
+                    }
+                    for stem in [
+                        "String",
+                        "Object",
+                        "Array",
+                        "Union",
+                        "Intersection",
+                        "Duplicate",
+                    ] {
+                        if let Some((_, suffix)) = token.rsplit_once(stem) {
+                            assert!(
+                                suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()),
+                                "{target}: ordinal public fallback {token}"
+                            );
+                        }
+                    }
+                    if let Some((_, suffix)) = token.split_once("Variant") {
+                        assert!(
+                            !suffix.starts_with(|c: char| c.is_ascii_digit()),
+                            "{target}: positional variant {token}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn elicitation_validation_retains_all_eight_distinct_canonical_alternatives() {
+        let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = compiler::compile(&repository, "draft").unwrap();
+        let named = ir
+            .types
+            .iter()
+            .find(|item| item.name == "McpElicitationPrimitiveSchemaDefinition")
+            .unwrap();
+        let model::Shape::Union { variants, .. } = &named.shape else {
+            panic!("elicitation union")
+        };
+        let names = variants
+            .iter()
+            .map(|shape| match shape {
+                model::Shape::Ref { name } => name.as_str(),
+                _ => panic!("elicitation alternatives must retain canonical references"),
+            })
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(variants.len(), 8);
+        assert_eq!(names.len(), 8);
+        assert!(names.contains("McpElicitationStringSchema"));
+        assert!(names.contains("McpElicitationTitledSingleSelectEnumSchema"));
+        assert!(names.contains("McpElicitationUntitledSingleSelectEnumSchema"));
+    }
+
+    #[test]
     fn current_profile_compiles() {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = compiler::compile(&repository, "draft").unwrap();
         assert_eq!(ir.schema_revision, "draft");
-        assert_eq!(ir.roots.len(), 26);
+        assert_eq!(ir.roots.len(), 28);
         assert!(ir.types.iter().any(|item| item.name == "InterceptRequest"));
         // Union selectors must be exact literals, not an open enum that also
         // accepts supplied_result and creates an ambiguous known execution.

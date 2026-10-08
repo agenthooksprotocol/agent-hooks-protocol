@@ -28,13 +28,18 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
+      - name: Test generated TypeScript structural constraints
+        run: >-
+          npx --yes --package typescript@5.9.3 --call
+          'AHP_TYPESCRIPT_RUNTIME_TESTS=1 cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml langs::typescript'
       - name: Compile generated TypeScript
         run: |
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
             generate --revision draft --language typescript \
             --output "$RUNNER_TEMP/ahp.generated.ts"
           mkdir -p "$RUNNER_TEMP/ahp-codegen"
-          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" \
+          cp tools/sdk-codegen/tests/typescript-composite-smoke.ts.in "$RUNNER_TEMP/ahp.composite-smoke.ts"
+          npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" "$RUNNER_TEMP/ahp.composite-smoke.ts" \
             --outDir "$RUNNER_TEMP/ahp-codegen" --strict --target ES2022 --module commonjs \
             --skipLibCheck --noUncheckedIndexedAccess --exactOptionalPropertyTypes
           node tools/sdk-codegen/tests/typescript-smoke.cjs \
@@ -44,6 +49,7 @@ jobs:
           python-version: "3.11"
       - name: Test generated Python
         run: |
+          python3 -m pip install mypy==1.20.2
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
             generate --revision draft --language python \
             --output "$RUNNER_TEMP/ahp_generated.py"
@@ -55,7 +61,12 @@ jobs:
             generate --revision draft --language python-facade \
             --output "$RUNNER_TEMP/ahp_python_facade"
           python3 tools/sdk-codegen/tests/python-facade-smoke.py \
-            "$RUNNER_TEMP/ahp_python_facade"
+            "$RUNNER_TEMP/ahp_python_facade" --typing
+          AHP_PYTHON_STRUCTURAL_OUTPUT="$RUNNER_TEMP/ahp_python_structural" \
+            cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml \
+            original_composed_descriptors_and_union_ambiguity_are_cached
+          python3 tools/sdk-codegen/tests/python-structural-smoke.py \
+            "$RUNNER_TEMP/ahp_python_structural"
       - uses: actions/setup-go@v6
         with:
           go-version: "1.27.x"

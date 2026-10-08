@@ -81,6 +81,9 @@ pub fn emit(ir: &Ir) -> Result<String> {
 }
 
 fn render(shape: &Shape, depth: usize) -> Result<String> {
+    if let Some(reference) = shape.constrained_reference() {
+        return render(reference, depth);
+    }
     Ok(match shape {
         Shape::Any => "JsonValue".into(),
         Shape::Never => "never".into(),
@@ -108,7 +111,14 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
         Shape::Ref { name } => name.clone(),
         Shape::Intersection { variants } => variants
             .iter()
-            .map(|variant| render(variant, depth))
+            .map(|variant| {
+                let member = render(variant, depth)?;
+                Ok(if matches!(variant, Shape::Union { .. }) {
+                    format!("({member})")
+                } else {
+                    member
+                })
+            })
             .collect::<Result<Vec<_>>>()?
             .join(" & "),
         Shape::Union {
@@ -279,23 +289,40 @@ function discriminatorValue(schema: SchemaNode, property: string): string | unde
   return undefined;
 }
 
-function toSafeJson(value: unknown): JsonValue {
+function toSafeJson(value: unknown, ancestors = new Set<object>()): JsonValue {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return value.map(toSafeJson);
-  if (typeof value === "object") {
+  if (typeof value !== "object" || value === null || ancestors.has(value)) throw new TypeError("Input is not an acyclic JSON value");
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) throw new TypeError("Expected a plain JSON object");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Reflect.ownKeys(value).length !== value.length + 1) throw new TypeError("Expected a dense JSON array");
+      return Array.from({length: value.length}, (_, index) => {
+        const property = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!property?.enumerable || !("value" in property)) throw new TypeError("Expected JSON array data elements");
+        return toSafeJson(property.value, ancestors);
+      });
+    }
     const result = Object.create(null) as Record<string, JsonValue>;
-    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-      Object.defineProperty(result, key, { value: toSafeJson(child), enumerable: true, configurable: true, writable: true });
+    for (const key of Reflect.ownKeys(value)) {
+      const property = Object.getOwnPropertyDescriptor(value, key)!;
+      if (typeof key !== "string" || !property.enumerable || !("value" in property)) throw new TypeError("Expected enumerable JSON data properties");
+      Object.defineProperty(result, key, { value: toSafeJson(property.value, ancestors), enumerable: true, configurable: true, writable: true });
     }
     return result;
-  }
-  throw new TypeError("Input is not a JSON value");
+  } finally { ancestors.delete(value); }
 }
 
 function encodeJson(value: JsonValue): string { return JSON.stringify(value); }
 function isObject(value: JsonValue): value is Record<string, JsonValue> { return typeof value === "object" && value !== null && !Array.isArray(value); }
-function sameJson(left: JsonValue, right: JsonValue): boolean { return JSON.stringify(left) === JSON.stringify(right); }
+function sameJson(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((value, index) => sameJson(value, right[index]!));
+  if (isObject(left) && isObject(right)) return Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => Object.prototype.hasOwnProperty.call(right, key) && sameJson(left[key]!, right[key]!));
+  return false;
+}
 function joinPath(path: string, key: string): string { return `${path}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`; }
 function error(diagnostics: ParseDiagnostic[], path: string, code: ParseDiagnostic["code"], message: string): void { diagnostics.push({ path, code, severity: "error", message }); }
 "#;
@@ -304,6 +331,209 @@ function error(diagnostics: ParseDiagnostic[], path: string, code: ParseDiagnost
 mod tests {
     use super::*;
     use crate::model::{Ir, NamedType, PublicRoot, Shape};
+
+    #[test]
+    fn intersection_members_preserve_nested_union_precedence() {
+        let shape = Shape::Intersection {
+            variants: vec![
+                Shape::String,
+                Shape::Union {
+                    mode: crate::model::UnionMode::AnyOf,
+                    variants: vec![Shape::Null, Shape::Boolean],
+                    discriminator: None,
+                },
+            ],
+        };
+        assert_eq!(render(&shape, 0).unwrap(), "string & (null | boolean)");
+        // The renderer must not rewrite validation descriptors while choosing
+        // parentheses for the target language's precedence rules.
+        let descriptor = serde_json::to_value(&shape).unwrap();
+        assert_eq!(descriptor["variants"][1]["kind"], "union");
+        assert_eq!(descriptor["variants"][1]["mode"], "anyOf");
+    }
+
+    #[test]
+    fn structural_unions_keep_semantic_names_when_reordered() {
+        use crate::model::UnionMode;
+        let alternatives = vec![
+            Shape::Ref {
+                name: "ToolInputEffect".into(),
+            },
+            Shape::Ref {
+                name: "ResponseEffect".into(),
+            },
+        ];
+        let union = |variants| Shape::Union {
+            mode: UnionMode::OneOf,
+            variants,
+            discriminator: Some("type".into()),
+        };
+        let first = render(&union(alternatives.clone()), 0).unwrap();
+        let reversed = render(&union(alternatives.into_iter().rev().collect()), 0).unwrap();
+        let members = |value: &str| {
+            let mut names = value.split(" | ").map(str::to_owned).collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(members(&first), members(&reversed));
+        assert_eq!(
+            members(&first),
+            members("ToolInputEffect | ResponseEffect | UnknownVariant<\"type\">")
+        );
+        let open = render(
+            &union(vec![
+                Shape::Enum {
+                    values: vec![
+                        serde_json::json!("tool.input"),
+                        serde_json::json!("response"),
+                    ],
+                    open_strings: false,
+                },
+                Shape::String,
+            ]),
+            0,
+        )
+        .unwrap();
+        assert!(open.contains("\"tool.input\" | \"response\" | string"));
+        assert!(!first.contains("Variant1"));
+        let object = Shape::Object {
+            properties: ["a-b", "a_b"]
+                .into_iter()
+                .map(|wire_name| crate::model::Property {
+                    wire_name: wire_name.into(),
+                    required: true,
+                    constructor_default: None,
+                    shape: Shape::String,
+                })
+                .collect(),
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Forbidden,
+        };
+        let output = render(&object, 0).unwrap();
+        assert!(output.contains("\"a-b\": string"));
+        assert!(output.contains("\"a_b\": string"));
+    }
+
+    #[test]
+    fn runtime_preserves_original_composed_descriptors() {
+        // Protocol-only cargo checks run before Node dependencies are installed.
+        // CI opts in after provisioning TypeScript; opt-in failures are fatal.
+        if std::env::var_os("AHP_TYPESCRIPT_RUNTIME_TESTS").is_none() {
+            return;
+        }
+        use crate::model::UnionMode;
+        let shapes = vec![
+            (
+                "Ambiguous",
+                Shape::Union {
+                    mode: UnionMode::OneOf,
+                    discriminator: None,
+                    variants: vec![Shape::String, Shape::String],
+                },
+            ),
+            (
+                "Composed",
+                Shape::Intersection {
+                    variants: vec![
+                        Shape::String,
+                        Shape::Union {
+                            mode: UnionMode::AnyOf,
+                            discriminator: None,
+                            variants: vec![
+                                Shape::Literal {
+                                    value: serde_json::json!("yes"),
+                                },
+                                Shape::Null,
+                            ],
+                        },
+                    ],
+                },
+            ),
+            (
+                "Closed",
+                Shape::Enum {
+                    values: vec![serde_json::json!("yes")],
+                    open_strings: false,
+                },
+            ),
+            (
+                "Literal",
+                Shape::Literal {
+                    value: serde_json::json!({"a":1,"b":2}),
+                },
+            ),
+            ("Anything", Shape::Any),
+        ];
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "1".into(),
+            roots: shapes
+                .iter()
+                .map(|(name, _)| PublicRoot {
+                    name: (*name).into(),
+                    schema: "test.json".into(),
+                })
+                .collect(),
+            types: shapes
+                .into_iter()
+                .map(|(name, shape)| NamedType {
+                    name: name.into(),
+                    source: "test.json#".into(),
+                    shape,
+                })
+                .collect(),
+        };
+        let directory =
+            std::env::temp_dir().join(format!("ahp-ts-descriptors-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("generated.ts"), emit(&ir).unwrap()).unwrap();
+        let compiled = std::process::Command::new("tsc")
+            .args([
+                "--strict",
+                "--target",
+                "ES2022",
+                "--module",
+                "commonjs",
+                "generated.ts",
+            ])
+            .current_dir(&directory)
+            .output()
+            .expect("TypeScript runtime test requires tsc");
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stdout)
+        );
+        let tested = std::process::Command::new("node")
+            .args([
+                "-e",
+                r#"
+const assert = require('node:assert/strict');
+const sdk = require('./generated.js');
+const ambiguous = sdk.parseAmbiguous('"yes"');
+assert.equal(ambiguous.ok, false);
+assert.equal(ambiguous.diagnostics[0].code, 'ambiguous_union');
+for (const input of ['"no"', 'null', '1']) assert.equal(sdk.parseComposed(input).ok, false);
+assert.equal(sdk.parseComposed('"yes"').ok, true);
+assert.equal(sdk.parseClosed('"no"').ok, false);
+assert.equal(sdk.parseClosed('"yes"').ok, true);
+assert.equal(sdk.parseLiteral('{"b":2,"a":1}').ok, true);
+assert.equal(sdk.parseLiteral('{"a":1}').ok, false);
+assert.equal(sdk.parseAnything('9007199254740993').value, 9007199254740992);
+assert.equal(sdk.parseAnything('1e400').ok, false);
+assert.equal(sdk.parseAnything('{"x":null}').ok, true);
+"#,
+            ])
+            .current_dir(&directory)
+            .output()
+            .expect("TypeScript runtime test requires node");
+        assert!(
+            tested.status.success(),
+            "{}",
+            String::from_utf8_lossy(&tested.stderr)
+        );
+        std::fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn output_is_deterministic_and_open() {
