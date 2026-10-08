@@ -334,6 +334,158 @@ func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
 
 EOF
 
+
+# Exercise the same surface consumers use, without private decoding helpers.
+cat >"$tmp/exported_decode_test.go" <<'EOF'
+package ahp_test
+
+import (
+    "bytes"
+    "encoding/json"
+    "os"
+    "path/filepath"
+    "reflect"
+    "testing"
+
+    ahp "github.com/agenthooksprotocol/go-sdk"
+)
+
+func exportedFixture(t *testing.T, path string) []byte {
+    t.Helper()
+    data, err := os.ReadFile(filepath.Join(os.Getenv("AHP_REPOSITORY"), path))
+    if err != nil { t.Fatal(err) }
+    return data
+}
+
+func exportedJSON(t *testing.T, value any) []byte {
+    t.Helper()
+    data, err := json.Marshal(value)
+    if err != nil { t.Fatal(err) }
+    return data
+}
+
+// Both encoding/json entry points must honor the generated structural contract.
+func assertExportedDecode[T any](t *testing.T, data []byte, want bool) T {
+    t.Helper()
+    var unmarshaled, decoded T
+    unmarshalErr := json.Unmarshal(data, &unmarshaled)
+    decodeErr := json.NewDecoder(bytes.NewReader(data)).Decode(&decoded)
+    if (unmarshalErr == nil) != want || (decodeErr == nil) != want {
+        t.Fatalf("acceptance want %t: Unmarshal=%v Decode=%v; input=%s", want, unmarshalErr, decodeErr, data)
+    }
+    if want && !reflect.DeepEqual(unmarshaled, decoded) {
+        t.Fatal("Unmarshal and Decoder.Decode produced different values")
+    }
+    return unmarshaled
+}
+
+func TestExportedCandidateValueRequired(t *testing.T) {
+    for _, input := range []string{`{}`, `{"provenance":{}}`, `null`, `[]`} {
+        t.Run(input, func(t *testing.T) {
+            assertExportedDecode[ahp.InterceptRequestParamsStateCandidateValue](t, []byte(input), false)
+        })
+    }
+    for _, payload := range []string{`null`, `false`, `0`, `""`, `{}`, `[]`} {
+        t.Run("value="+payload, func(t *testing.T) {
+            data := []byte(`{"value":`+payload+`}`)
+            candidate := assertExportedDecode[ahp.InterceptRequestParamsStateCandidateValue](t, data, true)
+            if string(candidate.Value) != payload { t.Fatalf("value changed: %s", candidate.Value) }
+            if encoded := exportedJSON(t, candidate); !bytes.Equal(encoded, data) {
+                t.Fatalf("candidate round-trip: %s", encoded)
+            }
+        })
+    }
+}
+
+func TestExportedRequestStructuralValidation(t *testing.T) {
+    tests := []struct {
+        name string
+        change func(map[string]any, map[string]any, map[string]any)
+        want bool
+    }{
+        {"valid", func(r, p, e map[string]any) {}, true},
+        {"missing-envelope-id", func(r, p, e map[string]any) { delete(r, "id") }, false},
+        {"missing-params", func(r, p, e map[string]any) { delete(r, "params") }, false},
+        {"missing-event-id", func(r, p, e map[string]any) { delete(e, "id") }, false},
+        {"invalid-jsonrpc-literal", func(r, p, e map[string]any) { r["jsonrpc"] = "1.0" }, false},
+        {"invalid-method-literal", func(r, p, e map[string]any) { r["method"] = "hooks/observe" }, false},
+        {"known-tool-before-missing-tool", func(r, p, e map[string]any) { delete(e, "tool") }, false},
+        {"malformed-nested-tool", func(r, p, e map[string]any) { e["tool"] = []any{} }, false},
+        {"malformed-nested-name", func(r, p, e map[string]any) { e["tool"].(map[string]any)["name"] = 42 }, false},
+        {"missing-state-candidate", func(r, p, e map[string]any) { p["state"] = map[string]any{"permission":"allow"} }, false},
+        {"missing-state-permission", func(r, p, e map[string]any) { p["state"] = map[string]any{"candidate":nil} }, false},
+        {"missing-candidate-value", func(r, p, e map[string]any) { p["state"] = map[string]any{"permission":"allow", "candidate":map[string]any{}} }, false},
+        {"nullable-candidate-null", func(r, p, e map[string]any) { p["state"] = map[string]any{"permission":"allow", "candidate":nil} }, true},
+        {"candidate-value-null", func(r, p, e map[string]any) { p["state"] = map[string]any{"permission":"allow", "candidate":map[string]any{"value":nil}} }, true},
+        {"unknown-enum-and-extensions", func(r, p, e map[string]any) {
+            e["tool"].(map[string]any)["origin"] = "future_origin"
+            e["tool"].(map[string]any)["future_tool_field"] = map[string]any{"nested":[]any{nil, false, "retained"}}
+            r["future_envelope_field"] = nil
+        }, true},
+    }
+    for _, tt := range tests {
+        t.Run(tt.name, func(t *testing.T) {
+            var request map[string]any
+            if err := json.Unmarshal(exportedFixture(t, "fixtures/draft/http/intercept-request.valid.json"), &request); err != nil { t.Fatal(err) }
+            params := request["params"].(map[string]any)
+            event := params["event"].(map[string]any)
+            tt.change(request, params, event)
+            data := exportedJSON(t, request)
+            parsed := ahp.ParseInterceptRequest(data)
+            if parsed.OK != tt.want { t.Fatalf("Parse acceptance want %t: %+v", tt.want, parsed.Diagnostics) }
+            decoded := assertExportedDecode[ahp.InterceptRequest](t, data, tt.want)
+            if !tt.want { return }
+            if !reflect.DeepEqual(decoded, parsed.Value) { t.Fatal("Decode and Parse produced different values") }
+            var roundTrip map[string]any
+            if err := json.Unmarshal(exportedJSON(t, decoded), &roundTrip); err != nil { t.Fatal(err) }
+            if !reflect.DeepEqual(request, roundTrip) { t.Fatal("Decode round-trip lost explicit null, enum, or extension data") }
+            if tt.name == "nullable-candidate-null" && (!decoded.Params.State.Present || decoded.Params.State.Value.Candidate.Valid) {
+                t.Fatal("explicit candidate null lost its nullable state")
+            }
+            if tt.name == "candidate-value-null" && (!decoded.Params.State.Present || !decoded.Params.State.Value.Candidate.Valid || string(decoded.Params.State.Value.Candidate.Value.Value) != "null") {
+                t.Fatal("candidate {value:null} collapsed into a null candidate")
+            }
+            if tt.name == "unknown-enum-and-extensions" && decoded.Params.Event.ToolBeforeEvent.Value.Tool.Origin != ahp.ExecutionEventToolOrigin("future_origin") {
+                t.Fatal("unknown enum did not survive typed decoding")
+            }
+        })
+    }
+}
+
+func TestExportedDecodeParseCanonicalFixtureAgreement(t *testing.T) {
+    var manifest struct { Cases []struct {
+        ID string `json:"id"`
+        Path string `json:"path"`
+        Binding string `json:"binding"`
+        ExpectedValid bool `json:"expectedValid"`
+    } `json:"cases"` }
+    if err := json.Unmarshal(exportedFixture(t, "fixtures/draft/manifest.json"), &manifest); err != nil { t.Fatal(err) }
+    positive, negative := 0, 0
+    for _, entry := range manifest.Cases {
+        if entry.Binding != "http-json" && entry.Binding != "registration-json" { continue }
+        if entry.ExpectedValid { positive++ } else { negative++ }
+        t.Run(entry.ID, func(t *testing.T) {
+            data := exportedFixture(t, entry.Path)
+            // Canonical negatives include contextual/schema constraints outside the
+            // SDK structural contract. Require agreement, NOT full schema parity.
+            if entry.Binding == "registration-json" {
+                parsed := ahp.ParseRegistration(data)
+                if entry.ExpectedValid && !parsed.OK { t.Fatalf("positive fixture: %+v", parsed.Diagnostics) }
+                decoded := assertExportedDecode[ahp.Registration](t, data, parsed.OK)
+                if parsed.OK && !reflect.DeepEqual(decoded, parsed.Value) { t.Fatal("Decode/Parse values differ") }
+            } else {
+                parsed := ahp.ParseWireMessage(data)
+                if entry.ExpectedValid && !parsed.OK { t.Fatalf("positive fixture: %+v", parsed.Diagnostics) }
+                decoded := assertExportedDecode[ahp.WireMessage](t, data, parsed.OK)
+                if parsed.OK && !reflect.DeepEqual(decoded, parsed.Value) { t.Fatal("Decode/Parse values differ") }
+            }
+        })
+    }
+    if positive == 0 || negative == 0 { t.Fatalf("expected positive and negative fixtures, got %d/%d", positive, negative) }
+}
+EOF
+"$goroot/bin/gofmt" -w "$tmp/exported_decode_test.go"
+
 gofmt -d "$tmp/ahp_generated.go" >"$tmp/gofmt.diff"
 if [[ -s "$tmp/gofmt.diff" ]]; then
   echo "generated Go is not gofmt-clean" >&2

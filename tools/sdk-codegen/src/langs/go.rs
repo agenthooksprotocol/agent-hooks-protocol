@@ -59,6 +59,18 @@ pub fn emit(ir: &Ir) -> Result<String> {
     for declaration in &generator.declarations {
         output.push_str(declaration);
     }
+    for name in generator.decoder_shapes.keys() {
+        writeln!(
+            output,
+            "// UnmarshalJSON enforces generated structural rules and retains supported extensions.\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tif err := validateModelJSON(modelDescriptors[{}], data); err != nil {{\n\t\treturn err\n\t}}\n\treturn value.unmarshalValidatedJSON(data)\n}}\n",
+            go_string(name)?
+        )?;
+    }
+    writeln!(
+        output,
+        "var modelDescriptors = loadSchemaDescriptors({})\n",
+        go_string(&serde_json::to_string(&generator.decoder_shapes)?)?
+    )?;
     writeln!(
         output,
         "var schemaDescriptors = loadSchemaDescriptors({})\n",
@@ -111,6 +123,7 @@ struct Generator<'a> {
     objects: BTreeMap<String, Vec<RenderedField>>,
     unions: BTreeMap<String, Vec<(String, String)>>,
     nullables: BTreeMap<String, String>,
+    decoder_shapes: BTreeMap<String, Shape>,
 }
 
 impl<'a> Generator<'a> {
@@ -146,6 +159,7 @@ impl<'a> Generator<'a> {
             objects: BTreeMap::new(),
             unions: BTreeMap::new(),
             nullables: BTreeMap::new(),
+            decoder_shapes: BTreeMap::new(),
         }
     }
 
@@ -158,18 +172,33 @@ impl<'a> Generator<'a> {
 
     fn emit_named(&mut self, name: &str, source: &str, shape: &Shape) -> Result<()> {
         if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
-            self.emit_struct(name, Some(source), properties)?;
+            self.emit_struct(name, Some(source), properties, shape)?;
         } else if matches!(shape, Shape::Literal { .. } | Shape::Enum { .. }) {
             self.emit_value_type(name, Some(source), shape)?;
         } else if let Shape::Union { .. } = shape {
             self.emit_union(name, Some(source), shape)?;
         } else {
             let rendered = self.render_type(shape, &format!("{name}Value"))?;
-            let mut declaration = String::new();
-            writeln!(declaration, "// {name} is generated from {source}.")?;
-            writeln!(declaration, "type {name} = {rendered}\n")?;
-            self.declarations.push(declaration);
+            if matches!(shape, Shape::Ref { .. }) {
+                // A pointer alias lets encoding/json accept null without calling
+                // the target decoder. Value aliases inherit its validation methods.
+                let rendered = rendered.trim_start_matches('*');
+                self.declarations.push(format!(
+                    "// {name} is generated from {source}.\ntype {name} = {rendered}\n\n"
+                ));
+            } else {
+                self.emit_checked_type(name, &rendered, shape)?;
+            }
         }
+        Ok(())
+    }
+
+    fn emit_checked_type(&mut self, name: &str, rendered: &str, shape: &Shape) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
+        let declaration = format!(
+            "// {name} is a structurally validated schema value.\ntype {name} {rendered}\n\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tvar decoded {rendered}\n\tif err := decodeValidatedJSON(data, &decoded); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(decoded)\n\treturn nil\n}}\n\nfunc (value {name}) MarshalJSON() ([]byte, error) {{\n\treturn json.Marshal({rendered}(value))\n}}\n\n"
+        );
+        self.declarations.push(declaration);
         Ok(())
     }
 
@@ -227,7 +256,9 @@ impl<'a> Generator<'a> {
         name: &str,
         source: Option<&str>,
         mut properties: Vec<Property>,
+        shape: &Shape,
     ) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         properties.sort_by(|left, right| left.wire_name.cmp(&right.wire_name));
         let mut fields = Vec::with_capacity(properties.len());
         let mut field_names = BTreeSet::from(["AdditionalProperties".to_owned()]);
@@ -293,7 +324,7 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "func (value *{name}) UnmarshalJSON(data []byte) error {{"
+            "func (value *{name}) unmarshalValidatedJSON(data []byte) error {{"
         )?;
         writeln!(
             declaration,
@@ -306,20 +337,6 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
         for field in &fields {
-            // Nullable's zero value is null, so its direct decoder must not silently
-            // turn a missing required member into an explicit null. General schema
-            // requiredness remains the ParseRoot validator's responsibility.
-            if field.required && self.is_nullable(&field.shape) {
-                writeln!(
-                    declaration,
-                    "\tif _, ok := fields[{}]; !ok {{\n\t\treturn fmt.Errorf({})\n\t}}",
-                    go_string(&field.wire_name)?,
-                    go_string(&format!(
-                        "{name}.{}: missing required member",
-                        field.wire_name
-                    ))?
-                )?;
-            }
             writeln!(
                 declaration,
                 "\tif raw, ok := fields[{}]; ok {{",
@@ -328,13 +345,13 @@ impl<'a> Generator<'a> {
             if field.required {
                 writeln!(
                     declaration,
-                    "\t\tif err := json.Unmarshal(raw, &decoded.{}); err != nil {{",
+                    "\t\tif err := decodeValidatedJSON(raw, &decoded.{}); err != nil {{",
                     field.field_name
                 )?;
             } else {
                 writeln!(
                     declaration,
-                    "\t\tdecoded.{}.Present = true\n\t\tif err := json.Unmarshal(raw, &decoded.{}.Value); err != nil {{",
+                    "\t\tdecoded.{}.Present = true\n\t\tif err := decodeValidatedJSON(raw, &decoded.{}.Value); err != nil {{",
                     field.field_name, field.field_name
                 )?;
             }
@@ -396,6 +413,7 @@ impl<'a> Generator<'a> {
     }
 
     fn emit_value_type(&mut self, name: &str, source: Option<&str>, shape: &Shape) -> Result<()> {
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         let values = match shape {
             Shape::Literal { value } => std::slice::from_ref(value),
             Shape::Enum { values, .. } => values.as_slice(),
@@ -419,7 +437,7 @@ impl<'a> Generator<'a> {
             writeln!(declaration, "type {name} json.RawMessage")?;
             writeln!(
                 declaration,
-                "\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tif _, err := decodeJSON(data); err != nil {{\n\t\treturn err\n\t}}\n\t*value = append((*value)[:0], data...)\n\treturn nil\n}}"
+                "\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tif _, err := decodeJSON(data); err != nil {{\n\t\treturn err\n\t}}\n\t*value = append((*value)[:0], data...)\n\treturn nil\n}}"
             )?;
             writeln!(
                 declaration,
@@ -440,11 +458,11 @@ impl<'a> Generator<'a> {
                 };
                 writeln!(declaration, "const {constant} {name} = {rendered}")?;
             }
+            writeln!(
+                declaration,
+                "\nfunc (value *{name}) unmarshalValidatedJSON(data []byte) error {{\n\tvar decoded {base}\n\tif err := json.Unmarshal(data, &decoded); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(decoded)\n\treturn nil\n}}"
+            )?;
             if base == "json.Number" {
-                writeln!(
-                    declaration,
-                    "\nfunc (value *{name}) UnmarshalJSON(data []byte) error {{\n\tvar number json.Number\n\tif err := json.Unmarshal(data, &number); err != nil {{\n\t\treturn err\n\t}}\n\t*value = {name}(number)\n\treturn nil\n}}"
-                )?;
                 writeln!(
                     declaration,
                     "\nfunc (value {name}) MarshalJSON() ([]byte, error) {{\n\treturn json.Marshal(json.Number(value))\n}}"
@@ -461,7 +479,7 @@ impl<'a> Generator<'a> {
             unreachable!("union emitter requires a union");
         };
         if let Some(payload) = self.nullable_payload(shape) {
-            let payload_type = self.render_type(payload, &format!("{name}Value"))?;
+            let payload_type = self.render_nullable_payload(payload, &format!("{name}Value"))?;
             self.nullables.insert(name.to_owned(), payload_type.clone());
             self.declarations.push(format!("// {name} distinguishes null from a non-null value.\ntype {name} = Nullable[{payload_type}]\n\n"));
             return Ok(());
@@ -478,7 +496,7 @@ impl<'a> Generator<'a> {
             fields.push((field_name, field_type));
         }
         self.unions.insert(name.to_owned(), fields.clone());
-        let descriptor = serde_json::to_string(shape)?;
+        self.decoder_shapes.insert(name.to_owned(), shape.clone());
         let mut declaration = String::new();
         match source {
             Some(source) => writeln!(declaration, "// {name} is generated from {source}.")?,
@@ -505,7 +523,7 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "func (value *{name}) UnmarshalJSON(data []byte) error {{"
+            "func (value *{name}) unmarshalValidatedJSON(data []byte) error {{"
         )?;
         writeln!(
             declaration,
@@ -513,20 +531,15 @@ impl<'a> Generator<'a> {
         )?;
         writeln!(
             declaration,
-            "\tschema := loadSchemaNode({})",
-            go_string(&descriptor)?
-        )?;
-        writeln!(
-            declaration,
-            "\tdiagnostics := make([]ParseDiagnostic, 0)\n\tcheckNode(schema, rawValue, \"\", &diagnostics)\n\tif hasErrors(diagnostics) {{\n\t\treturn fmt.Errorf({})\n\t}}",
-            go_string(&format!("{name}: value does not match the union"))?
+            "\tschema := modelDescriptors[{}]",
+            go_string(name)?
         )?;
         writeln!(declaration, "\tvar decoded {name}")?;
         for (arm, (field_name, field_type)) in projected.iter().zip(&fields) {
             let index = arm.source_indices[0];
             writeln!(
                 declaration,
-                "\t{{\n\t\tattempt := make([]ParseDiagnostic, 0)\n\t\tcheckNode(schema.Variants[{index}], rawValue, \"\", &attempt)\n\t\tif !hasErrors(attempt) {{\n\t\t\tvar candidate {field_type}\n\t\t\tif err := json.Unmarshal(data, &candidate); err != nil {{\n\t\t\t\treturn fmt.Errorf({}, err)\n\t\t\t}}\n\t\t\tdecoded.{field_name} = Some(candidate)\n\t\t\t*value = decoded\n\t\t\treturn nil\n\t\t}}\n\t}}",
+                "\t{{\n\t\tattempt := make([]ParseDiagnostic, 0)\n\t\tcheckNode(schema.Variants[{index}], rawValue, \"\", &attempt)\n\t\tif !hasErrors(attempt) {{\n\t\t\tvar candidate {field_type}\n\t\t\tif err := decodeValidatedJSON(data, &candidate); err != nil {{\n\t\t\t\treturn fmt.Errorf({}, err)\n\t\t\t}}\n\t\t\tdecoded.{field_name} = Some(candidate)\n\t\t\t*value = decoded\n\t\t\treturn nil\n\t\t}}\n\t}}",
                 go_string(&format!("{name}.{field_name}: %w"))?
             )?;
         }
@@ -563,7 +576,7 @@ impl<'a> Generator<'a> {
 
     fn render_type(&mut self, shape: &Shape, hint: &str) -> Result<String> {
         if let Some(payload) = self.nullable_payload(shape) {
-            let payload_type = self.render_type(payload, &format!("{hint}Value"))?;
+            let payload_type = self.render_nullable_payload(payload, &format!("{hint}Value"))?;
             let rendered = format!("Nullable[{payload_type}]");
             self.nullables.insert(rendered.clone(), payload_type);
             return Ok(rendered);
@@ -583,7 +596,7 @@ impl<'a> Generator<'a> {
             }
             Shape::Object { properties, .. } => {
                 let name = self.allocate_type_name(hint);
-                self.emit_struct(&name, None, properties.clone())?;
+                self.emit_struct(&name, None, properties.clone(), shape)?;
                 name
             }
             Shape::Ref { name } => {
@@ -601,13 +614,28 @@ impl<'a> Generator<'a> {
             Shape::Intersection { .. } => {
                 if let Some(properties) = self.structural_properties(shape, &mut BTreeSet::new()) {
                     let name = self.allocate_type_name(hint);
-                    self.emit_struct(&name, None, properties)?;
+                    self.emit_struct(&name, None, properties, shape)?;
                     name
                 } else {
                     "json.RawMessage".into()
                 }
             }
         })
+    }
+
+    fn render_nullable_payload(&mut self, shape: &Shape, hint: &str) -> Result<String> {
+        let rendered = self.render_type(shape, hint)?;
+        // Primitive JSON codecs do not enforce numeric restrictions or array item
+        // descriptors. Give these payloads their own model; Nullable stays generic.
+        if matches!(shape, Shape::Integer | Shape::Number | Shape::Array { .. })
+            || rendered == "json.RawMessage"
+        {
+            let name = self.allocate_type_name(hint);
+            self.emit_checked_type(&name, &rendered, shape)?;
+            Ok(name)
+        } else {
+            Ok(rendered)
+        }
     }
 
     fn nullable_payload<'s>(&self, shape: &'s Shape) -> Option<&'s Shape> {
@@ -887,6 +915,19 @@ func (value *Nullable[T]) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (value *Nullable[T]) unmarshalValidatedJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		*value = Null[T]()
+		return nil
+	}
+	var payload T
+	if err := decodeValidatedJSON(data, &payload); err != nil {
+		return err
+	}
+	*value = NonNull(payload)
+	return nil
+}
+
 func (value Nullable[T]) MarshalJSON() ([]byte, error) {
 	if !value.Valid {
 		return []byte("null"), nil
@@ -973,14 +1014,67 @@ func loadSchemaDescriptors(source string) map[string]*schemaNode {
 	return descriptors
 }
 
-func loadSchemaNode(source string) *schemaNode {
-	decoder := json.NewDecoder(strings.NewReader(source))
-	decoder.UseNumber()
-	var node schemaNode
-	if err := decoder.Decode(&node); err != nil {
-		panic(fmt.Sprintf("invalid generated schema node: %v", err))
+// validateModelJSON and Parse use the same structural descriptor engine. Warnings
+// (open enum values and unknown tagged variants) never become decoding errors.
+func validateModelJSON(schema *schemaNode, input []byte) error {
+	value, err := decodeJSON(input)
+	if err != nil {
+		return err
 	}
-	return &node
+	diagnostics := make([]ParseDiagnostic, 0)
+	checkNode(schema, value, "", &diagnostics)
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == SeverityError {
+			return fmt.Errorf("%s: %s: %s", diagnostic.Path, diagnostic.Code, diagnostic.Message)
+		}
+	}
+	return nil
+}
+
+// decodeValidatedJSON only hydrates an already-checked subtree. Generated models
+// use a private method so each nested struct does not revalidate its descendants.
+// Pointer and slice traversal preserves that seam through references and arrays.
+// Union selection may still inspect alternatives to select a public arm.
+func decodeValidatedJSON(input []byte, target any) error {
+	if decoder, ok := target.(interface{ unmarshalValidatedJSON([]byte) error }); ok {
+		return decoder.unmarshalValidatedJSON(input)
+	}
+	if _, ok := target.(json.Unmarshaler); ok {
+		return json.Unmarshal(input, target)
+	}
+	value := reflect.ValueOf(target).Elem()
+	switch value.Kind() {
+	case reflect.Pointer:
+		if bytes.Equal(bytes.TrimSpace(input), []byte("null")) {
+			value.SetZero()
+			return nil
+		}
+		decoded := reflect.New(value.Type().Elem())
+		if err := decodeValidatedJSON(input, decoded.Interface()); err != nil {
+			return err
+		}
+		value.Set(decoded)
+		return nil
+	case reflect.Slice:
+		var items []json.RawMessage
+		if err := json.Unmarshal(input, &items); err != nil {
+			return err
+		}
+		if items == nil {
+			value.SetZero()
+			return nil
+		}
+		decoded := reflect.MakeSlice(value.Type(), len(items), len(items))
+		for index, item := range items {
+			if err := decodeValidatedJSON(item, decoded.Index(index).Addr().Interface()); err != nil {
+				return err
+			}
+		}
+		value.Set(decoded)
+		return nil
+	default:
+		return json.Unmarshal(input, target)
+	}
 }
 
 func parseRoot[T any](name string, input []byte) ParseResult[T] {
@@ -1000,7 +1094,7 @@ func parseRoot[T any](name string, input []byte) ParseResult[T] {
 	if hasErrors(diagnostics) {
 		return result
 	}
-	if err := json.Unmarshal(input, &result.Value); err != nil {
+	if err := decodeValidatedJSON(input, &result.Value); err != nil {
 		result.Diagnostics = append(result.Diagnostics, ParseDiagnostic{
 			Code: DiagnosticInvalidType, Severity: SeverityError, Message: err.Error(),
 		})
@@ -1142,28 +1236,42 @@ func checkUnion(schema *schemaNode, value any, path string, diagnostics *[]Parse
 			addError(diagnostics, joinPath(path, *schema.Discriminator), DiagnosticInvalidType, "Expected string discriminator")
 			return
 		}
-		var branch *schemaNode
+		branches := make([]*schemaNode, 0)
 		for _, candidate := range schema.Variants {
 			if discriminatorValue(candidate, *schema.Discriminator) == actual {
-				branch = candidate
-				break
+				branches = append(branches, candidate)
 			}
 		}
-		if branch == nil {
+		if len(branches) == 0 {
 			*diagnostics = append(*diagnostics, ParseDiagnostic{
 				Path: path, Code: DiagnosticUnknownVariant, Severity: SeverityWarning,
 				Message: fmt.Sprintf("Unknown %s variant %s was preserved", *schema.Discriminator, jsonText(actual)),
 			})
 			return
 		}
-		branchDiagnostics := make([]ParseDiagnostic, 0)
-		checkNode(branch, value, path, &branchDiagnostics)
-		*diagnostics = append(*diagnostics, branchDiagnostics...)
-		if hasErrors(branchDiagnostics) {
+		// A tag can identify multiple distinct alternatives. Keep source
+		// multiplicity for oneOf and do not let the first branch hide later ones.
+		matches := make([][]ParseDiagnostic, 0, len(branches))
+		var rejected []ParseDiagnostic
+		for _, branch := range branches {
+			attempt := make([]ParseDiagnostic, 0)
+			checkNode(branch, value, path, &attempt)
+			if hasErrors(attempt) {
+				rejected = append(rejected, attempt...)
+			} else {
+				matches = append(matches, attempt)
+			}
+		}
+		if len(matches) == 0 {
+			*diagnostics = append(*diagnostics, rejected...)
 			*diagnostics = append(*diagnostics, ParseDiagnostic{
 				Path: path, Code: DiagnosticInvalidKnownVariant, Severity: SeverityError,
 				Message: fmt.Sprintf("Known %s variant is malformed", *schema.Discriminator),
 			})
+		} else if schema.Mode == "oneOf" && len(matches) > 1 {
+			addError(diagnostics, path, DiagnosticAmbiguousUnion, "Value matches more than one union branch")
+		} else {
+			*diagnostics = append(*diagnostics, matches[0]...)
 		}
 		return
 	}
@@ -1894,7 +2002,7 @@ func TestNullableMatrix(t *testing.T) {
         let output = emit(&ir).unwrap();
         assert!(output.contains("type Optional2 struct"));
         assert!(output.contains("Next                 Optional[*Optional2]"));
-        assert!(output.contains("type Optional3 = string"));
+        assert!(output.contains("type Optional3 string"));
         assert!(output.contains("func ParseOptional2"));
     }
 
@@ -1972,3 +2080,6 @@ func TestNullableMatrix(t *testing.T) {
         assert_eq!(go_identifier("123"), "Field123");
     }
 }
+
+#[cfg(test)]
+mod decode_tests;

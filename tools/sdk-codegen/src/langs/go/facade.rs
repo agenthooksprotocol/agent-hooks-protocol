@@ -874,7 +874,11 @@ fn constructor(
             match (name, f.wire_name.as_str()) {
                 ("Backend", "id") => {
                     args.push(format!("{arg} string"));
-                    format!("&{arg}")
+                    format!(
+                        "func() {} {{ v := {}({arg}); return &v }}()",
+                        qualify(&f.field_type),
+                        qualify(f.field_type.trim_start_matches('*'))
+                    )
                 }
                 ("Backend", "subscriptions") => {
                     args.push(format!("{arg} ahp.BackendSubscriptionsItem"));

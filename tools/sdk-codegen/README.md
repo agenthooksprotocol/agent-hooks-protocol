@@ -320,3 +320,39 @@ a declaration (Python also rejects booleans/fractions and missing continue count
 TypeScript already enforces this range; Rust uses unsigned counts and rejects
 values above the safe range. Raw manifests still undergo ordinary canonical
 validation; structural parsing alone does not prove numeric validity.
+
+## Go structural decoding contract
+
+Every generated concrete model decoder uses the same `checkNode` descriptor
+engine as `Parse*`. Named primitives, literal/enum values, objects (including
+flattened intersections), arrays, and unions reject applicable structural errors.
+Reference aliases inherit their target's decoder. Nullable aliases use generic
+`Nullable[T]`: it handles null and delegates non-null decoding to its payload model.
+Numeric, array, and constrained raw-backed nullable payloads receive checked model types when the built-in
+Go JSON decoder cannot enforce their structural rules.
+
+Descriptors are cached at package initialization. Public decoding validates once,
+then private hydration methods decode the checked subtree; pointer and slice
+traversal retain this private path. `Parse*` validates for structured diagnostics
+and hydrates through the same path, rather than validating every nested object
+again. Union hydration still checks alternatives to select the public arm. No
+process-global validation bypass or caller-controlled unchecked API is exposed.
+Same-tag alternatives retain source ordering and multiplicity: `oneOf` rejects
+multiple matches, while `anyOf` accepts a match. Unknown tags and open enum values
+remain warnings for `Parse*`, not direct-decoding errors. Raw JSON and exact
+`json.Number` representations are retained by their existing model types.
+
+The contract is generated structural validation, **not full canonical JSON Schema
+validation**. The IR does not carry string length/pattern/format, numeric bounds,
+or all array/object constraints. The SDK forward-compatible profile preserves
+unknown object members, including canonical closed objects; it does not enforce
+`additionalProperties: false`. Canonical server validators and caller/request-
+dependent checks remain separate. Neither direct decoding nor `Parse*` replaces
+those validators.
+
+Direct decoding of previously tolerated invalid models is a behavioral break.
+Named primitive aliases become defined types to attach decoders (for example,
+`ReverseDnsName(existingString)`); reference aliases use target values instead
+of pointers so null cannot bypass decoding. Nullable aliases retain their generic
+target types. Explicit caller-owned pointers still follow Go null-pointer semantics. The Go facade converts its string backend-ID argument
+without changing the convenience constructor signature.
