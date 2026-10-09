@@ -17,7 +17,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ vars.AHP_BOT_APP_ID }}
+          app-id: ${{ secrets.AHP_BOT_APP_ID }}
           private-key: ${{ secrets.AHP_BOT_APP_PRIVATE_KEY }}
           owner: agenthooksprotocol
           repositories: website

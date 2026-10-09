@@ -130,8 +130,8 @@ SHA-256 fields therefore additionally enforce minLength/maxLength 64.
 The post-merge `sync-sdks.yml` workflow uses `install_generated_sdk.py` to install
 generated artifacts and update each SDK CI checkout to the lock's immutable
 protocol source commit. Reuse the AHP bot installed on all four SDK repositories
-and the website. Configure organization Actions variable `AHP_BOT_APP_ID` and
-organization Actions secret `AHP_BOT_APP_PRIVATE_KEY`, with selected-repository
+and the website. Configure organization Actions secrets `AHP_BOT_APP_ID` and
+`AHP_BOT_APP_PRIVATE_KEY`, with selected-repository
 access restricted to `agent-hooks-protocol` and `website`. These are the two
 repositories that mint tokens; target SDK repositories do not need the private
 key. SDK sync, website dispatch, and website sync all use these shared names.

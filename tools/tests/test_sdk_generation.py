@@ -102,7 +102,7 @@ class SdkGenerationTests(unittest.TestCase):
         for name in ('sync-sdks.yml', 'sync-website-docs.yml'):
             with self.subTest(workflow=name):
                 workflow = (ROOT / '.github/workflows' / name).read_text()
-                self.assertIn('app-id: ${{ vars.AHP_BOT_APP_ID }}', workflow)
+                self.assertIn('app-id: ${{ secrets.AHP_BOT_APP_ID }}', workflow)
                 self.assertIn('private-key: ${{ secrets.AHP_BOT_APP_PRIVATE_KEY }}', workflow)
                 self.assertNotIn('SDK_SYNC_APP_', workflow)
                 self.assertNotIn('WEBSITE_SYNC_APP_', workflow)
