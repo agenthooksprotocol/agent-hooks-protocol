@@ -129,8 +129,17 @@ SHA-256 fields therefore additionally enforce minLength/maxLength 64.
 
 The post-merge `sync-sdks.yml` workflow uses `install_generated_sdk.py` to install
 generated artifacts and update each SDK CI checkout to the lock's immutable
-protocol source commit. Configure `SDK_SYNC_APP_ID` and `SDK_SYNC_APP_PRIVATE_KEY`
-for a GitHub App installed on all four SDK repositories.
+protocol source commit. Reuse the AHP bot installed on all four SDK repositories
+and the website. Configure organization Actions variable `AHP_BOT_APP_ID` and
+organization Actions secret `AHP_BOT_APP_PRIVATE_KEY`, with selected-repository
+access restricted to `agent-hooks-protocol` and `website`. These are the two
+repositories that mint tokens; target SDK repositories do not need the private
+key. SDK sync, website dispatch, and website sync all use these shared names.
+Do not create same-named repository entries, which override organization values.
+
+Create the organization entries before merging the workflow migration. After
+successful SDK and website sync runs, remove the obsolete repository variables
+and secrets with the `SDK_SYNC_` and `WEBSITE_SYNC_` prefixes.
 
 Before enabling sync, the app must request **Contents: read and write**,
 **Pull requests: read and write**, and **Workflows: read and write** repository
