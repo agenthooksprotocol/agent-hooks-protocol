@@ -63,7 +63,7 @@ Renaming generated symbols and introducing `Nullable[T]` are source-level API ch
 
 A push to `main` that changes schema snapshots, the generator, or draft conformance metadata runs `.github/workflows/sync-sdks.yml`. The workflow regenerates the TypeScript, Python, Go, and Rust SDKs and opens or updates one `automation/schema-sync` pull request in each SDK repository. Each SDK records the exact source commit, schema snapshot, manifest digest, and language in `ahp-codegen.lock.json`.
 
-Cross-repository writes use a dedicated GitHub App. Configure `SDK_SYNC_APP_ID` as an Actions variable and `SDK_SYNC_APP_PRIVATE_KEY` as an Actions secret in this repository. The App requires **Contents: read and write** and **Pull requests: read and write** permissions. Each synchronization job mints a short-lived token scoped to its allowlisted target repository. Do not expose these credentials to pull-request workflows.
+Cross-repository writes reuse the AHP bot. Configure organization Actions secrets `AHP_BOT_APP_ID` and `AHP_BOT_APP_PRIVATE_KEY`, restricted to the `agent-hooks-protocol` and `website` repositories. SDK sync requires **Contents**, **Pull requests**, and **Workflows** read and write permissions approved on the app installation. Each synchronization job mints a short-lived token scoped to its allowlisted target repository. Website dispatch and sync use the same credentials but request only Contents write permission for `website`. Do not expose these credentials to pull-request workflows. See [SDK sync app permissions](../README.md#sdk-sync-app-permissions) for setup and migration order.
 
 ## Draft composite-schema support
 

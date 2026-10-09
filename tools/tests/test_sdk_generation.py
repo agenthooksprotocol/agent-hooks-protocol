@@ -98,6 +98,19 @@ class SdkGenerationTests(unittest.TestCase):
         for permission in ('contents', 'pull-requests', 'workflows'):
             self.assertIn(f'permission-{permission}: write', workflow)
 
+    def test_sync_workflows_reuse_ahp_bot_credentials(self):
+        for name in ('sync-sdks.yml', 'sync-website-docs.yml'):
+            with self.subTest(workflow=name):
+                workflow = (ROOT / '.github/workflows' / name).read_text()
+                self.assertIn('app-id: ${{ secrets.AHP_BOT_APP_ID }}', workflow)
+                self.assertIn('private-key: ${{ secrets.AHP_BOT_APP_PRIVATE_KEY }}', workflow)
+                self.assertNotIn('SDK_SYNC_APP_', workflow)
+                self.assertNotIn('WEBSITE_SYNC_APP_', workflow)
+        dispatch = (ROOT / '.github/workflows/sync-website-docs.yml').read_text()
+        self.assertIn('repositories: website', dispatch)
+        self.assertIn('permission-contents: write', dispatch)
+        self.assertNotIn('permission-workflows:', dispatch)
+
     def test_pinned_sources_disable_line_ending_conversion(self):
         result = subprocess.check_output(['git', 'check-attr', 'text', '--', 'upstream/mcp/2025-11-25/schema.json', 'upstream/mcp/2025-11-25/schema.ts'], cwd=ROOT, text=True)
         self.assertEqual(2, result.count(': text: unset'))
