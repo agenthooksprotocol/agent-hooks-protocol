@@ -9,19 +9,25 @@ closed; MCP elicitation uses the pinned published subset described below.
 | `config.change.before` | `change`: `source`, `scope`, `settings`, `summary` |
 | `config.change.after` | `change`: `source`, `scope`, `settings`, `summary` |
 | `user.attention` | `attention`: `kind`, `message`, `title` |
-| `user.elicitation.request` | `elicitation`: `server`, `mode`; optional `request` (content descriptor) |
-| `user.elicitation.result` | `elicitation`: `server`, `mode`, `action`; optional `result` (content descriptor) |
-| `user.message.inbound` | `message`: `channel`, `sender`, `text` |
-| `user.message.outbound` | `message`: `channel`, `payload` |
+| `user.elicitation.request` | `elicitation`: `server`, `mode`; optional `request` (text part) |
+| `user.elicitation.result` | `elicitation`: `server`, `mode`, `action`; optional `result` (text part) |
+| `user.message.inbound` | `message`: `channel`, `sender`, `messages` |
+| `user.message.outbound` | `message`: `channel`, `messages` |
 | `hook.failure` | `failure`: `backendId`, `reason`, `policy` (plus `parentEventId`) |
 
 Configuration `change` describes proposed or actual effective configuration, never
 a general mutation API. Denied proposals MUST NOT generate fictitious after events.
 Managed secrets remain excluded even when a diff summary is present.
 
-User messages carry normalized content descriptors, never inline
-bytes. Attention is a notification, not permission approval. Hook failures identify
-the backend, subscription, affected parent event, reason, and applied failure
+User `message.messages` is an ordered canonical message list. Inbound messages
+have role `user`; outbound messages have role `assistant`. Ordinary text lives
+inline in ordered `parts`; only non-text, non-JSON media attachments use immutable
+references. The transport wrapper retains channel and inbound sender identity;
+the canonical role does not assert that an external sender is human.
+Attention `message` and `title` are singular text parts subject to the same
+inline selection rules. Attention is a notification, not permission approval.
+Hook failures identify the backend, subscription, affected parent event, reason,
+and applied failure
 policy; they are not tool/model execution errors.
 
 Validate the complete event through the wire root, not an overlay in isolation.
@@ -44,26 +50,44 @@ server identity, scoped by the adapter/source, and MUST NOT be replaced with the
 responding user identity. The result repeats that identity and normalized mode;
 `parentEventId` correlates the result with the AHP request event.
 
-`request.body`, when selected, references the COMPLETE MCP `elicitation/create` **params object**,
-including `_meta` and any supported task metadata, not the JSON-RPC envelope and
-not an extracted prompt. `result.body`, when selected, references the COMPLETE MCP `ElicitResult`
-object, including its structured `content` and `_meta`, not an AHP item array.
-`request` and `result` are optional singular content-item descriptors with
-`mediaType: "application/json"`, not item arrays. Body selection uses `.body`
-with the existing immutable content-reference schema; metadata selection uses a
-`selection: "metadata"` descriptor without a body. Omitted content has no
-descriptor (or the existing explicit `selection: "omit"` descriptor). A missing
-requested body uses the existing `selection: "body"` plus `gap` variant. No
-upload is required for metadata/omit views. These views preserve event/control
-metadata but do not imply body availability or authorize execution.
-Apply §4 ahead-of-time upload, permission/selection, exact byte size/hash,
-readiness confirmation and subscription scoping before event delivery. Retain the
-original JSON bytes unchanged; never reserialize, truncate to the message, or put
-raw prompts in the AHP envelope to avoid upload. Validate uploaded JSON with the
-pinned definition as well as the AHP envelope. A reference alone is not evidence
-of payload validity or authorization. Do not treat a metadata/omit/gap view as an executable request with validated
-input. Apply the subscription failure policy for missing requested bodies, not
-for intentional metadata/omit selection.
+`request` and `result` are optional singular ordinary text parts, not messages,
+item arrays, JSON parts, or attachment references. For body selection,
+`request.text` contains application-serialized JSON for the COMPLETE MCP
+`elicitation/create` **params object**, including `_meta` and any supported task
+metadata, not the JSON-RPC envelope or an extracted prompt. `result.text` contains
+serialized JSON for the COMPLETE MCP `ElicitResult`, including its structured
+`content` and `_meta`, not an AHP item array. Applications serialize these objects
+into ordinary text; the boundary parses that text and validates the value against
+the pinned request/result definition as well as validating the AHP envelope.
+Do not upload MCP JSON or ordinary prompts. Serialization MUST preserve the
+complete value; original JSON byte formatting is not a wire requirement.
+
+### Elicitation modification target
+
+At `user.elicitation.result`, `modify(content)` edits only the parsed result's
+`content` answer object, not a canonical message list, serialized text, the
+result wrapper, or its `action`. Both replace and merge require objects. Merge
+is shallow; answer fields replace whole values and omitted fields survive.
+Only an accepted form result with authorized body selection and read/write
+permission can expose this target. Validate the effective content against the
+pinned MCP answer shape and the original requested form schema before acceptance;
+serialize the complete effective result back into the ordinary text binding.
+Keep action, mode, and envelope metadata consistent. A list here MUST be rejected
+atomically, just as an object at ordinary outbound `modify(content)` MUST be
+rejected. The standalone effect schema cannot resolve this distinction.
+No JSON message part or attachment upload is introduced. Attachment bytes remain
+immutable. `user.elicitation.request` has no `modify(request)` capability: its
+structured MCP params are not the model request message-list target.
+
+Metadata selection has `selection: "metadata"` without `text`. Omission has no
+part or an explicit `selection: "omit"` part; missing requested content uses
+`selection: "body"` with `gap` instead of `text`. Apply authorization and content
+selection before including inline text. These views preserve event/control
+metadata but do not imply content availability or authorize execution. No upload
+is required or permitted for this structured-text binding. A metadata/omit/gap
+view is not an executable request with validated input. Apply the subscription
+failure policy for missing requested content, not intentional metadata/omit
+selection.
 
 A form request has optional `mode: "form"` (omission means form), `message`, and
 `requestedSchema`. Only the published top-level primitive/enum subset is valid:
@@ -75,16 +99,16 @@ objects open, but its plain-string alternative otherwise accepts unsupported
 form keywords and malformed enum definitions. The extraction closes the
 requested-schema vocabulary and primitive/enum objects; unknown extension
 keywords there are not compatible with this binding. MCP params/result extension
-fields and `_meta` remain open and preserved in the original uploaded bytes. A URL
+fields and `_meta` remain open and preserved in the serialized value. A URL
 request requires `mode: "url"`, `message`, `url`, and opaque `elicitationId`.
-AHP metadata `mode` is always explicit and MUST equal the referenced mode after
-the form default is interpreted; no default is written into the original bytes.
+AHP metadata `mode` is always explicit and MUST equal the parsed mode after
+the form default is interpreted; no default is injected into the serialized value.
 
 Results have `action: "accept" | "decline" | "cancel"`. `content` is optional
 structured data with string, number, boolean or string-array values, never content
 items. It is present only for accepted form data and must satisfy the requesting
 form schema; decline/cancel and URL results omit it. Envelope `action` MUST equal
-the referenced result action. These cross-body/mode rules require runtime checks.
+the parsed result action. These cross-body/mode rules require runtime checks.
 URL acceptance means consent to open the URL, **not completion** of that flow.
 `notifications/elicitation/complete` does not automatically create an AHP result
 or other event. Sensitive information MUST use URL mode, never a form; authorize
@@ -95,8 +119,8 @@ Absent modes are unsupported; an empty AHP elicitation object grants neither.
 For an MCP-origin capability only, legacy `elicitation: {}` maps to form support.
 AHP adapters are not required to implement either mode or both. Advertise only
 modes and effects that the adapter can faithfully enforce. Return/modify effects
-remain subject to authorization, structured payload validation and renewed
-immutable uploads when bytes change.
+remain subject to authorization, structured payload validation and updated inline
+text when values change.
 
 ## Pinned upstream maintenance
 

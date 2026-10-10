@@ -22,13 +22,14 @@
       "items": [
         {
           "id": "item1",
-          "kind": "tool_result",
-          "mediaType": "text/plain",
+          "kind": "attachment",
+          "mediaType": "application/octet-stream",
           "selection": "body",
           "body": {
             "ref": "upload1"
           },
-          "text": "secret"
+          "text": "secret",
+          "category": "tool_result"
         }
       ]
     }

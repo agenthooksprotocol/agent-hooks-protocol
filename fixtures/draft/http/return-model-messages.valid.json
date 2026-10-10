@@ -1,0 +1,27 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "protocolVersion": "draft",
+    "effects": [
+      {
+        "type": "return",
+        "value": [
+          {
+            "id": "message1",
+            "role": "assistant",
+            "parts": [
+              {
+                "id": "text1",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "Plants use light to turn water and carbon dioxide into sugars."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

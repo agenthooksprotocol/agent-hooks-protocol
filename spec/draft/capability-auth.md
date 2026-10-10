@@ -39,7 +39,10 @@ empty injection delivery choices, and unsupported operation values are invalid.
 Unknown object fields are ignored; they do not advertise or authorize new effects
 or operations. Unsupported effect types and operation values in responses MUST
 reject the entire response atomically, without applying any member.
-The receiver MUST enforce shallow object merge only on object values. The
+The receiver MUST apply ordered append without deduplication for message-list
+and text-part-list merge, and shallow object merge only when the actual target
+and supplied value are objects. Text and attachment bytes are not object merge
+targets. Replace uses the target’s canonical shape. The
 manifest is not proof that an effect was actually applied.
 
 ## Registration
@@ -71,7 +74,8 @@ Implementations MUST advertise whether they honor scope and fail unsupported
 mandatory policy rather than silently degrade.
 
 `hooks[].subscriptions[].upload` has `endpoint`, `timeoutMs`, `maxBytes`, and an
-optional independent `auth` object. It configures body uploads, not retrieval.
+optional independent `auth` object. It configures non-text, non-JSON media attachment uploads, not retrieval or
+ordinary text delivery.
 There is no backend `contentReceiver` compatibility alias. Absent upload
 credentials MUST NOT inherit event credentials. A credential MAY be configured
 for both endpoints only when its resource and permissions cover both. See
@@ -241,9 +245,20 @@ Compaction before permits only `modify(instructions)`; after permits only
 applicable after-boundary controls and downstream application. The after event
 is a result boundary before downstream installation/consumption, not proof of a
 confirmed context update. Only advertise controls the native harness can enforce.
-Elicitation modes and selection-aware descriptors are defined by the pinned MCP
-interaction binding. No absent mapping permits invented operations or policy
-bypass.
+Elicitation modes and selection-aware inline text parts are defined by the pinned MCP
+interaction binding. `user.elicitation.request` permits deny, return, and
+message only; it does not advertise request modification. Its parsed MCP params
+are not a model `request` message-list target. `user.elicitation.result` permits
+`modify(content)` only over the parsed MCP answer object for an accepted form
+result, not its action or whole result. `user.message.outbound` uses the same
+`content` target name for canonical `message.messages` lists. Hosts MUST enforce
+these boundary-specific types; the standalone effect schema's list-or-object
+union does not grant cross-boundary authority. Object merge remains shallow;
+ordinary model and user-message targets retain list append semantics.
+`tool.after` `modify(output)` targets canonical `items` messages, with whole-list
+replacement and ordered append merge, not an undeclared native JSON output
+binding. Objects and bare parts are not output values.
+No absent mapping permits invented operations or policy bypass.
 
 `return` is bounded to `tool.before`, `model.request.before`,
 `context.compact.before`, and `user.elicitation.request`. `continue` is bounded to

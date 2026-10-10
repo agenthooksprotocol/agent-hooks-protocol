@@ -415,6 +415,26 @@ mod tests {
     }
 
     #[test]
+    fn host_adapters_are_emitted_only_for_canonical_message_schemas() {
+        let synthetic = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "1".into(),
+            roots: vec![],
+            types: vec![],
+        };
+        let source = emit(&synthetic).unwrap();
+        assert!(!source.contains("export interface OwnedAttachment"));
+        assert!(!source.contains("parseContentItem(value)"));
+
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let canonical = crate::compiler::compile(&repository, "draft").unwrap();
+        let source = emit(&canonical).unwrap();
+        assert!(source.contains("export interface OwnedAttachment"));
+        assert!(source.contains("export interface HostEventInputs"));
+        assert!(source.contains("parseContentItem(value)"));
+    }
+
+    #[test]
     fn runtime_preserves_original_composed_descriptors() {
         // Protocol-only cargo checks run before Node dependencies are installed.
         // CI opts in after provisioning TypeScript; opt-in failures are fatal.

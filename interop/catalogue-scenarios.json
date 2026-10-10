@@ -380,10 +380,15 @@
                 },
                 "delta": {
                   "id": "catalogue:turn.progress:item:item1",
-                  "kind": "message",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "assistant"
+                  "role": "assistant",
+                  "parts": [
+                    {
+                      "id": "catalogue:turn.progress:item:item1-part",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "metadata"
+                    }
+                  ]
                 },
                 "final": false
               }
@@ -411,10 +416,15 @@
                 },
                 "delta": {
                   "id": "catalogue:turn.progress:item:item1",
-                  "kind": "message",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "assistant"
+                  "role": "assistant",
+                  "parts": [
+                    {
+                      "id": "catalogue:turn.progress:item:item1-part",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "metadata"
+                    }
+                  ]
                 },
                 "final": false
               }
@@ -951,10 +961,15 @@
                 "path": "example",
                 "partialOutput": {
                   "id": "catalogue:tool.progress:item:item1",
-                  "kind": "tool_result",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "tool"
+                  "role": "tool",
+                  "parts": [
+                    {
+                      "id": "catalogue:tool.progress:item:item1-part",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "metadata"
+                    }
+                  ]
                 },
                 "backgrounded": false
               }
@@ -985,10 +1000,15 @@
                 "path": "example",
                 "partialOutput": {
                   "id": "catalogue:tool.progress:item:item1",
-                  "kind": "tool_result",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "tool"
+                  "role": "tool",
+                  "parts": [
+                    {
+                      "id": "catalogue:tool.progress:item:item1-part",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "metadata"
+                    }
+                  ]
                 },
                 "backgrounded": false
               }
@@ -1162,13 +1182,14 @@
                 "source": "urn:ahp:catalogue",
                 "time": "2026-09-15T12:00:00Z",
                 "type": "context.compact.after",
-                "summary": {
-                  "id": "catalogue:context.compact.after:item:item1",
-                  "kind": "message",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "system"
-                },
+                "summary": [
+                  {
+                    "id": "catalogue:context.compact.after:item:item1",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ],
                 "removed": [],
                 "execution": {
                   "status": "executed"
@@ -1190,13 +1211,14 @@
                 "source": "urn:ahp:catalogue",
                 "time": "2026-09-15T12:00:00Z",
                 "type": "context.compact.after",
-                "summary": {
-                  "id": "catalogue:context.compact.after:item:item1",
-                  "kind": "message",
-                  "mediaType": "text/plain",
-                  "selection": "metadata",
-                  "role": "system"
-                },
+                "summary": [
+                  {
+                    "id": "catalogue:context.compact.after:item:item1",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "metadata"
+                  }
+                ],
                 "removed": [],
                 "execution": {
                   "status": "executed"
@@ -1505,6 +1527,170 @@
                     "path": "/workspace/example.txt",
                     "operation": "update",
                     "agentCaused": true
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "registrations": [],
+        "deliveries": [
+          {
+            "accepted": true,
+            "errorKind": null
+          }
+        ]
+      },
+      "requests": {},
+      "responses": {}
+    },
+    {
+      "id": "canonical-inline-messages",
+      "category": "execution",
+      "steps": [
+        {
+          "op": "notify",
+          "message": {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "canonical-inline-messages",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.request.before",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "params": {},
+                "items": [
+                  {
+                    "id": "canonical-inline-messages:item:input-message",
+                    "role": "user",
+                    "parts": [
+                      {
+                        "id": "canonical-inline-messages:item:input-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "First line.\nUnicode: caf\u00e9 \ud83c\udf0d"
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:input-image",
+                        "kind": "attachment",
+                        "mediaType": "image/png",
+                        "selection": "metadata"
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:input-tail",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "Last part."
+                      }
+                    ]
+                  },
+                  {
+                    "id": "canonical-inline-messages:item:reply-message",
+                    "role": "assistant",
+                    "parts": [
+                      {
+                        "id": "canonical-inline-messages:item:reasoning-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "category": "reasoning",
+                        "text": "Consider the input."
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:reply-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": ""
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "sent": [
+          {
+            "jsonrpc": "2.0",
+            "method": "hooks/observe",
+            "params": {
+              "protocolVersion": "draft",
+              "event": {
+                "id": "canonical-inline-messages",
+                "source": "urn:ahp:catalogue",
+                "time": "2026-09-15T12:00:00Z",
+                "type": "model.request.before",
+                "model": {
+                  "id": "example",
+                  "provider": "example"
+                },
+                "attempt": {
+                  "id": "example",
+                  "number": 1
+                },
+                "params": {},
+                "items": [
+                  {
+                    "id": "canonical-inline-messages:item:input-message",
+                    "role": "user",
+                    "parts": [
+                      {
+                        "id": "canonical-inline-messages:item:input-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "First line.\nUnicode: caf\u00e9 \ud83c\udf0d"
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:input-image",
+                        "kind": "attachment",
+                        "mediaType": "image/png",
+                        "selection": "metadata"
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:input-tail",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "Last part."
+                      }
+                    ]
+                  },
+                  {
+                    "id": "canonical-inline-messages:item:reply-message",
+                    "role": "assistant",
+                    "parts": [
+                      {
+                        "id": "canonical-inline-messages:item:reasoning-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "category": "reasoning",
+                        "text": "Consider the input."
+                      },
+                      {
+                        "id": "canonical-inline-messages:item:reply-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": ""
+                      }
+                    ]
                   }
                 ]
               }

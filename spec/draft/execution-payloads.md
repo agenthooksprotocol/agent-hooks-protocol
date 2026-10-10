@@ -70,10 +70,26 @@ are unknown. Pricing is not billed cost.
 
 ## Content and accounting
 
-Model-bound bytes use normalized content items and the binary upload binding;
-progress deltas, partial outputs, and compaction summaries are descriptors, not
-inline strings. Common item arrays may be empty for legitimately absent or omitted
-content; adapters MUST NOT use emptiness to conceal known authorized content.
+At `tool.after`, `modify(output)` maps to `items`, not a native JSON result
+property. Replace requires a canonical message list; merge appends canonical
+messages in order and preserves duplicates. Objects, bare part lists, strings,
+and other primitive values MUST be rejected atomically. Structured application
+results are serialized into ordinary text parts; no dedicated JSON part or
+optional native output field is defined. Native tool input remains an object
+and its advertised merge remains shallow.
+
+Model-visible `items` are ordered canonical messages with canonical roles and
+ordered `parts`, as defined in [content selection](content-upload.md). Generic
+`items` remain part lists. `turn.progress.delta` and
+`tool.progress.partialOutput` are singular canonical messages using the shared
+`modelVisibleItem` definition, not bare parts; their message role establishes
+ownership of their ordered parts. Compaction summaries use text-part lists.
+Ordinary text is inline in `text`;
+only non-text, non-JSON media attachments use immutable upload references.
+Provider-native prompt/message JSON MUST NOT replace this canonical representation.
+Common lists may be empty for legitimately absent or omitted content; adapters
+MUST NOT use emptiness to conceal known authorized content. Selection applies
+equally to inline text and attachments.
 
 Usage carries `kind: amount|total`, `scope: attempt|turn`, completeness
 `complete|partial|unknown`, and provenance `provider|estimate|mixed`. Attempt usage
@@ -111,7 +127,9 @@ is distinct from logical occurrence identity. Separate explicit observe and
 intercept subscriptions on one backend are not duplicate deliveries. New provider
 attempts have distinct identities. No retry rule promises replay or durability.
 
-Modified items retain logical identity while changed bytes require a new reference;
+Modified text parts retain logical identity and carry changed text inline;
+changed attachment bytes require a new immutable reference at their producing
+boundary, not an edit through a modification effect;
 new injections and newly created summaries receive new item identities. Startup
 instructions belong to `session.start`; expanded prompts and attachments belong
 to `turn.start`. Explicit skills and file reads use ordinary tools; implicit loads

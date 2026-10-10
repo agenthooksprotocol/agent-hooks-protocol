@@ -1,0 +1,21 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "protocolVersion": "draft",
+    "effects": [
+      {
+        "type": "return",
+        "value": [
+          {
+            "id": "text1",
+            "kind": "text",
+            "mediaType": "text/plain",
+            "selection": "body",
+            "text": "The discussion concerns photosynthesis."
+          }
+        ]
+      }
+    ]
+  }
+}

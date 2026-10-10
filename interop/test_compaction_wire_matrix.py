@@ -1,4 +1,5 @@
 """Canonical AHP wire, not the separate host-orchestration transport tests."""
+from compaction_matrix import text_parts
 import copy
 import json
 import subprocess
@@ -12,12 +13,12 @@ from compaction_wire_matrix import LANGUAGES, cases, check, probe, run_pair, wir
 class WireValidationTests(unittest.TestCase):
     def fixture(self):
         ref={'ref':'receiver-assigned-opaque-ref'}
-        event={'type':'compaction.before','id':'case:before','instructions':{'id':'case:instructions','selection':'body','mediaType':'text/plain','body':ref},'trigger':'manual'}
+        event={'type':'context.compact.before','id':'case:before','instructions':text_parts('x','case:instructions'),'trigger':'manual'}
         request={'method':'hooks/intercept','id':'case:before','params':{'event':event,'capabilities':{'modify':{'instructions':{'replace':True,'merge':False}}}}}
         reply={'jsonrpc':'2.0','id':'case:before','result':{'protocolVersion':'draft'}}
         trace={'subscription':'case-before-0','request':request,'response':reply}
-        output={'name':'case','result':{'instructions':'x','generated':False,'applied':False,'failures':[],'messages':[],'summary':None,'bodies':{}},'downstream':[],'trace':[trace]}
-        receipt=copy.deepcopy(trace);receipt['bodies']={'case:instructions':'x'}
+        output={'name':'case','result':{'instructions':text_parts('x'),'generated':False,'applied':False,'failures':[],'messages':[],'summary':None,'bodies':{}},'downstream':[],'trace':[trace]}
+        receipt=copy.deepcopy(trace)
         expected={'case':{'instructions':'x','generated':False,'applied':False,'failures':0,'final':None,'seen':['x']}}
         return [output],[receipt],expected
 
@@ -45,10 +46,10 @@ class WireValidationTests(unittest.TestCase):
                 outputs[0]['result'][key]=0
                 with self.assertRaises(AssertionError):check(outputs,receipts,expected)
 
-    def test_body_rejects_size_metadata(self):
+    def test_inline_text_rejects_legacy_body_reference(self):
         outputs,receipts,expected=self.fixture()
         for entry in (outputs[0]['trace'][0],receipts[0]):
-            entry['request']['params']['event']['instructions']['body']['size']=True
+            entry['request']['params']['event']['instructions'][0]['body']={'ref':'legacy'}
         with self.assertRaises(AssertionError):check(outputs,receipts,expected)
 
     def test_capability_flags_are_booleans(self):
@@ -122,8 +123,6 @@ class CanonicalCompactionMatrixTests(unittest.TestCase):
                 self.assertEqual(result['scenarios'],8)
                 self.assertEqual(result['receiverRejections'],4)
                 self.assertEqual(result['canonicalExchanges'],27)
-                self.assertGreaterEqual(result['preuploadedBodies'],result['referencedBodies'])
-                self.assertEqual(result['referencedBodies'],27)
 
     def test_expectations_are_not_subscription_configuration(self):
         rows,config,expected=cases()

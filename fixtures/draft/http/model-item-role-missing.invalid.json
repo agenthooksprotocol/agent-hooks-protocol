@@ -23,9 +23,14 @@
       "items": [
         {
           "id": "assistant1",
-          "kind": "message",
-          "mediaType": "text/plain",
-          "selection": "metadata"
+          "parts": [
+            {
+              "id": "assistant1-part",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata"
+            }
+          ]
         }
       ],
       "finishReason": "example"

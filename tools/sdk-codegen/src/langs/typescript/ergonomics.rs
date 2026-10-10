@@ -131,12 +131,25 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
     for (event, _, inputs) in &inventory {
         writeln!(out, "{event:?}: {{")?;
         for slot in crate::ergonomics::content_slots(ir, inputs) {
+            if !crate::ergonomics::legacy_source_binding(&slot) {
+                continue;
+            }
+            let indices = if slot.many {
+                vec!["index".to_owned()]
+            } else {
+                Vec::new()
+            };
+            let mut cursor = 0;
             let path = slot
                 .path
                 .iter()
                 .map(|p| {
                     if p == "*" {
-                        "index".into()
+                        {
+                            let name = indices[cursor].clone();
+                            cursor += 1;
+                            name
+                        }
                     } else {
                         format!("{p:?}")
                     }
@@ -147,17 +160,20 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
                 out,
                 "{}<S>({}source: S): ContentSourceBinding<S> {{ {}return {{path: [{path}], source}}; }},",
                 slot.name,
-                if slot.many { "index: number, " } else { "" },
-                if slot.many {
-                    "if (!Number.isSafeInteger(index) || index < 0) throw new RangeError('content index must be a nonnegative integer'); "
-                } else {
-                    ""
-                }
+                indices.iter().map(|i| format!("{i}: number, ")).collect::<String>(),
+                indices.iter().map(|i| format!("if (!Number.isSafeInteger({i}) || {i} < 0) throw new RangeError('content index must be a nonnegative integer'); ")).collect::<String>()
             )?;
         }
         out.push_str("},\n");
     }
     out.push_str("} as const;\n");
+    if ir
+        .types
+        .iter()
+        .any(|named| named.name == "CanonicalMessage")
+    {
+        emit_host_inputs(ir, out, &inventory)?;
+    }
     if let Some(request) = ir.types.iter().find(|t| t.name == "InterceptRequest") {
         let request_fields = fields(ir, &request.shape).unwrap_or_default();
         let params = fields(
@@ -292,5 +308,199 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
             out.push_str("} as const;\n");
         }
     }
+    Ok(())
+}
+
+/// Host-only overrides are derived exclusively from schema-owned content slots.
+fn emit_host_inputs(
+    ir: &Ir,
+    out: &mut String,
+    inventory: &[(String, String, Vec<crate::ergonomics::InputField>)],
+) -> Result<()> {
+    out.push_str(
+        r#"
+/** Opaque host-only ownership handle. Wrapping never evaluates or inspects S. */
+declare const ownedAttachmentBrand: unique symbol;
+export interface OwnedAttachment<S> { readonly [ownedAttachmentBrand]: S }
+const ownedAttachmentSources = new WeakMap<object, unknown>();
+export function ownedAttachment<S>(source: S): OwnedAttachment<S> {
+ const handle = Object.freeze({});
+ ownedAttachmentSources.set(handle, source);
+ return handle as OwnedAttachment<S>;
+}
+export type HostTextPart = {
+ kind: 'text'; text: string; id?: string; category?: string;
+ mediaType?: 'text/plain'; selection?: 'body'; synthesized?: boolean;
+};
+export type HostAttachmentPart<S> = {
+ kind: 'attachment'; mediaType: string; body: OwnedAttachment<S>;
+ id?: string; category?: string; selection?: 'body'; synthesized?: boolean;
+};
+type HostPartFields = 'id' | 'kind' | 'mediaType' | 'selection' | 'category' | 'synthesized';
+// Pick explicit keys to keep the host envelope closed even when wire models are open.
+type HostWirePart =
+ Pick<TextGapPart, HostPartFields | 'gap' | 'size' | 'sha256'> |
+ Pick<TextMetadataPart, HostPartFields | 'size' | 'sha256'> |
+ Pick<TextOmittedPart, HostPartFields | 'size' | 'sha256'> |
+ Pick<AttachmentBodyPart, HostPartFields | 'body'> |
+ Pick<AttachmentGapPart, HostPartFields | 'gap' | 'size' | 'sha256'> |
+ Pick<AttachmentMetadataPart, HostPartFields | 'size' | 'sha256'> |
+ Pick<AttachmentOmittedPart, HostPartFields | 'size' | 'sha256'>;
+export type HostContentPart<S> = HostTextPart | HostAttachmentPart<S> | HostWirePart;
+export interface HostMessage<S> {
+ id?: string; role: 'system' | 'developer' | 'user' | 'assistant' | 'tool';
+ parts: HostContentPart<S>[]; synthesized?: boolean;
+}
+/** Only generated slot paths are replaced; application-owned payload types stay untouched. */
+type HostSlot<T, P extends readonly string[], S> =
+ P extends readonly [] ? HostContentPart<S> :
+ P extends readonly ['parts', '*'] ? HostMessage<S> :
+ P extends readonly [infer H extends string, ...infer R extends string[]] ?
+ H extends '*' ? T extends (infer U)[] ? HostSlot<U, R, S>[] : T :
+ T extends object ? { [K in keyof T]: K extends H ? HostSlot<T[K], R, S> : T[K] } : T : T;
+export interface HostEventInputs<S = unknown> {
+"#,
+    );
+    for (event, name, inputs) in inventory {
+        writeln!(out, "{event:?}: {{")?;
+        let slots = crate::ergonomics::content_slots(ir, inputs);
+        for f in inputs {
+            let mut ty = format!("{name}[{:?}]", f.property.wire_name);
+            for slot in &slots {
+                if slot.path.starts_with(&f.path) {
+                    let path = &slot.path[f.path.len()..];
+                    let tuple = path
+                        .iter()
+                        .map(|p| format!("{p:?}"))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    ty = format!("HostSlot<{ty}, [{tuple}], S>");
+                }
+            }
+            writeln!(
+                out,
+                "{}{}: {ty};",
+                f.property.wire_name,
+                if f.property.required { "" } else { "?" }
+            )?;
+        }
+        out.push_str("};\n");
+    }
+    out.push_str(
+        "}\nconst HOST_CONTENT_PATHS: Record<EventType, readonly (readonly string[])[]> = {\n",
+    );
+    for (event, _, inputs) in inventory {
+        let paths = crate::ergonomics::content_slots(ir, inputs)
+            .into_iter()
+            .map(|s| s.path)
+            .collect::<Vec<_>>();
+        writeln!(out, "{event:?}: {},", serde_json::to_string(&paths)?)?;
+    }
+    out.push_str(r#"};
+export interface PendingAttachment {
+ readonly path: readonly (string | number)[];
+ readonly selection: 'body';
+}
+/** @internal Runtime planning envelope. */
+export interface HostInputProjection<S> {
+ /** Metadata-only wire facts until the runtime resolves pending attachments. */
+ readonly event: Record<string, JsonValue>;
+ readonly bindings: ContentSourceBinding<S>[];
+ readonly pending: PendingAttachment[];
+}
+const hostObjectIds = new WeakMap<object, string>();
+let hostObjectSequence = 0;
+function hostIdentity(value: Record<string, unknown>): {id: string; synthesized?: boolean} {
+ if (value.synthesized !== undefined && typeof value.synthesized !== 'boolean') throw new TypeError('invalid synthesized flag');
+ if (value.id !== undefined) {
+  if (typeof value.id !== 'string' || value.id.length === 0) throw new TypeError('invalid content id');
+  return {id: value.id, ...(value.synthesized === undefined ? {} : {synthesized: value.synthesized as boolean})};
+ }
+ if (value.synthesized === false) throw new TypeError('missing id cannot be explicitly nonsynthesized');
+ let id = hostObjectIds.get(value);
+ if (id === undefined) { id = `host-content-${++hostObjectSequence}`; hostObjectIds.set(value, id); }
+ return {id, synthesized: true};
+}
+function hostRecord(value: unknown): Record<string, unknown> {
+ if (value === null || typeof value !== 'object' || Array.isArray(value) || ownedAttachmentSources.has(value)) throw new TypeError('invalid content placement');
+ return value as Record<string, unknown>;
+}
+/** No I/O. The runtime must resolve bindings and replace metadata at pending paths
+ * with body references before delivering a body-selected event. Paths are event-relative,
+ * exactly like contentSlots. Opaque native/tool payloads are not traversed or serialized. */
+/** @internal Runtime conversion hook; applications pass HostEventInputs to runtime methods. */
+export function _projectHostInput<K extends EventType, S = unknown>(type: K, input: HostEventInputs<S>[K]): HostInputProjection<S> {
+ const bindings: ContentSourceBinding<S>[] = [];
+ const pending: PendingAttachment[] = [];
+ const event = toEventInput(type, input as unknown as EventInputs[K]);
+ function checkedPart(value: Record<string, unknown>): JsonValue {
+  if (value.size !== undefined && (typeof value.size !== 'number' || !Number.isSafeInteger(value.size) || value.size < 0)) throw new TypeError('invalid content size');
+  if (value.sha256 !== undefined && (typeof value.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(value.sha256))) throw new TypeError('invalid content hash');
+  if (value.gap !== undefined) {
+   const gap = hostRecord(value.gap);
+   if (typeof gap.reason !== 'string' || gap.reason.length === 0 || (gap.path !== undefined && (typeof gap.path !== 'string' || gap.path.length === 0))) throw new TypeError('invalid content gap');
+   if (value.body !== undefined) throw new TypeError('content cannot have both body and gap');
+  }
+  const parsed = parseContentItem(value);
+  if (!parsed.ok) throw new TypeError('invalid canonical content part');
+  return value as JsonValue;
+ }
+ function part(value: unknown, path: (string | number)[]): JsonValue {
+  const p = hostRecord(value);
+  for (const [field, entry] of Object.entries(p)) {
+   if (entry !== null && typeof entry === 'object' && ownedAttachmentSources.has(entry) && !(p.kind === 'attachment' && field === 'body')) throw new TypeError('owned attachment in non-body field');
+  }
+  const identity = hostIdentity(p);
+  if (p.category !== undefined && (typeof p.category !== 'string' || p.category.length === 0)) throw new TypeError('invalid content category');
+  const base = {...identity, ...(p.category === undefined ? {} : {category: p.category as string})};
+  if (p.kind === 'text' && p.mediaType !== undefined && p.mediaType !== 'text/plain') throw new TypeError('invalid text media type');
+  if (p.kind === 'text' && 'text' in p) {
+   if (typeof p.text !== 'string' || (p.mediaType !== undefined && p.mediaType !== 'text/plain') || (p.selection !== undefined && p.selection !== 'body') || ['body', 'gap', 'size', 'sha256'].some(key => key in p)) throw new TypeError('invalid inline text');
+   return checkedPart({...p, ...base, kind: 'text', mediaType: 'text/plain', selection: 'body', text: p.text});
+  }
+  if (p.kind === 'attachment') {
+   // MIME parameters are host metadata, not part of media classification.
+   if (typeof p.mediaType !== 'string' || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+(?:[ \t]*;[ \t]*[!#$%&'*+.^_`|~0-9A-Za-z-]+=(?:[!#$%&'*+.^_`|~0-9A-Za-z-]+|"(?:[^"\\\r\n]|\\[^\r\n])*"))*[ \t]*$/.test(p.mediaType)) throw new TypeError('invalid attachment media type');
+   const media = p.mediaType.split(';')[0]!.trim().toLowerCase();
+   if (media.startsWith('text/') || /(?:\/json|\+json)$/.test(media)) throw new TypeError('text and JSON attachments are forbidden');
+   if (p.body !== null && typeof p.body === 'object' && ownedAttachmentSources.has(p.body)) {
+    if (p.selection !== undefined && p.selection !== 'body') throw new TypeError('owned attachment requires body selection');
+    if (['text', 'ref', 'gap', 'size', 'sha256'].some(key => key in p)) throw new TypeError('invalid owned attachment placement');
+    bindings.push({path: [...path], source: ownedAttachmentSources.get(p.body) as S});
+    pending.push({path: [...path], selection: 'body'});
+    const {body: _body, ...metadata} = p;
+    return checkedPart({...metadata, ...base, kind: 'attachment', mediaType: p.mediaType, selection: 'metadata'});
+   }
+   if (p.body !== undefined) {
+    const body = hostRecord(p.body);
+    if (typeof body.ref !== 'string' || body.ref.length === 0 || p.selection !== 'body') throw new TypeError('invalid attachment body');
+   }
+  } else if (p.kind !== 'text') throw new TypeError('invalid content kind');
+  if (!['body', 'metadata', 'omit'].includes(p.selection as string)) throw new TypeError('invalid content selection');
+  if (p.selection === 'body' && p.body === undefined && p.gap === undefined) throw new TypeError('body selection requires text, reference, or gap');
+  if (p.selection !== 'body' && ('body' in p || 'text' in p || 'gap' in p)) throw new TypeError('metadata or omitted content cannot have a body');
+  return checkedPart({...p, ...base});
+ }
+ function walk(value: unknown, remaining: readonly string[], path: (string | number)[]): unknown {
+  if (remaining.length === 0) return part(value, path);
+  const [head, ...tail] = remaining;
+  if (head === '*') {
+   if (!Array.isArray(value)) throw new TypeError('content slot must be an array');
+   return Array.from(value, (entry, index) => walk(entry, tail, [...path, index]));
+  }
+  const record = hostRecord(value);
+  if (head === 'parts') {
+   if (!['system', 'developer', 'user', 'assistant', 'tool'].includes(record.role as string) || !Array.isArray(record.parts)) throw new TypeError('invalid canonical message');
+   return {...record, ...hostIdentity(record), parts: walk(record.parts, tail, [...path, 'parts'])};
+  }
+  if (head === undefined) throw new TypeError('empty slot path');
+  if (record[head] === undefined) return record;
+  return {...record, [head]: walk(record[head], tail, [...path, head])};
+ }
+ let projected: unknown = event;
+ for (const path of HOST_CONTENT_PATHS[type]) projected = walk(projected, path, []);
+ return {event: projected as Record<string, JsonValue>, bindings, pending};
+}
+"#);
     Ok(())
 }

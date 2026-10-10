@@ -101,7 +101,7 @@ class ContractConsistencyTests(unittest.TestCase):
             {'type': 'flow', 'operation': 'stop', 'reason': 'Done'},
             {'type': 'flow', 'operation': 'continue'},
             {'type': 'inject', 'target': 'context', 'operation': 'append',
-             'deliverAt': 'now', 'value': {}},
+             'deliverAt': 'now', 'value': []},
         ]
         for effect in effects:
             with self.subTest(effect=effect):

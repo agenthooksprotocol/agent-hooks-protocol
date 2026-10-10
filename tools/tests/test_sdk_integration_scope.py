@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,6 +35,24 @@ class ScopeTests(unittest.TestCase):
                 if git.called:
                     self.assertIn('--no-renames', git.call_args.args[0])
                     self.assertEqual(git.call_args.args[0][-1], 'base...head')
+
+    def test_shard_deadlines_preserve_coverage_and_budget_cleanup(self):
+        workflow = WORKFLOW.read_text()
+        shards = workflow.split('  sdk-integration-shards:\n', 1)[1].split('\n  sdk-integration:\n', 1)[0]
+        job_minutes = int(re.search(r'^    timeout-minutes: (\d+)$', shards, re.M).group(1))
+        step_minutes = [int(value) for value in re.findall(r'^        timeout-minutes: (\d+)$', shards, re.M)]
+        self.assertGreaterEqual(job_minutes, sum(step_minutes) + 5)
+        self.assertLessEqual(job_minutes, 150)
+        python_step = shards.split('      - name: Install and test Python SDK\n', 1)[1].split('      - name:', 1)[0]
+        integration_step = shards.split('      - name: Run SDK integration shard\n', 1)[1].split('      - name:', 1)[0]
+        for step, deadline, budget in ((python_step, 45, 47), (integration_step, 40, 42)):
+            self.assertIn(f'timeout-minutes: {budget}', step)
+            self.assertIn(f'timeout --kill-after=30s {deadline}m', step)
+            self.assertIn('2>&1 | tee', step)
+        self.assertIn('.venv/bin/python -m unittest discover -s tests', python_step)
+        self.assertIn('--sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json"', integration_step)
+        self.assertIn('--suite-group "${{ matrix.suite-group }}"', integration_step)
+        self.assertNotIn('continue-on-error', shards)
 
     def test_required_aggregate_accepts_only_success_or_intentional_skip(self):
         script = textwrap.dedent(WORKFLOW.read_text().rsplit('        run: |\n', 1)[1])

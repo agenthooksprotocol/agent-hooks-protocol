@@ -13,3 +13,9 @@ toEventInput('tool.before', input);
 // @ts-expect-error Default host input leaves application payload unknown.
 const unvalidated: Args = erased.input;
 void [path, proposed, unvalidated];
+
+import {contentSlots} from './generated';
+const source = {owned: true};
+contentSlots['tool.before'].items(2, source);
+// @ts-expect-error unpublished nested index helpers must not exist
+contentSlots['context.compact.before'].itemsParts(2, 5, source);

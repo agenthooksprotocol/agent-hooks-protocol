@@ -3,13 +3,13 @@
 
 Each native sender runs its public compaction runtime. Callback replies arrive
 from a different SDK's canonically validating receiver and drive subsequent wire
-events and final downstream application. HTTP uploads precede BOTH transports.
+events and final downstream application. Inline text requires no attachment upload on either transport.
 """
 import argparse, copy, json, os, secrets, selectors, signal, subprocess, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from adapter_builds import go_command
-from compaction_matrix import LANGUAGES, commands as transport_commands
+from compaction_matrix import LANGUAGES, commands as transport_commands, text_parts, inline_text, canonical_effect
 
 HERE=Path(__file__).resolve().parent
 ROOT=HERE.parent.parent
@@ -23,8 +23,8 @@ def commands(languages=LANGUAGES):
             'rust':[str(ROOT/'rust-sdk/target/debug/compaction_wire')]}
 
 
-def modify(target,value):return {'type':'modify','target':target,'operation':'replace','value':value}
-def effects(*values):return {'kind':'effects','effects':list(values)}
+def modify(target,value):return {'type':'modify','target':target,'operation':'replace','value':text_parts(value)}
+def effects(*values):return {'kind':'effects','effects':[canonical_effect(v) for v in values]}
 def append(target,suffix):return {'kind':'append','target':target,'suffix':suffix}
 
 
@@ -82,17 +82,19 @@ def wire_equal(actual, expected):
 
 def check(outputs,receipts,expected):
     require(wire_equal(len(outputs), len(expected)), 'case count')
-    wire_count=0;immutable={}
+    wire_count=0
     for out in outputs:
         name=out['name'];want=expected[name];result=out['result'];trace=out['trace']
-        for key in ('instructions','generated','applied'):
+        require(not result.get('bodies', {}), 'inline text fabricated attachment bodies')
+        require(wire_equal(inline_text(result['instructions']), want['instructions']), (name, 'instructions'))
+        for key in ('generated','applied'):
             require(wire_equal(result[key], want[key]), (name, key, result[key], want[key]))
         require(wire_equal(len(result['failures']), want['failures']), (name, 'failure policy'))
         require(wire_equal(result['messages'], []), (name, 'staged message leak'))
-        actual=result['bodies'][result['summary']['ref']] if result['summary'] is not None else None
+        actual=inline_text(result['summary']) if result['summary'] is not None else None
         require(wire_equal(actual, want['final']), (name, 'summary', actual, want['final']))
         require(wire_equal(out['downstream'], [want['final']] if want['applied'] else []), (name, 'downstream application'))
-        require('leaked' not in result['bodies'].values(), (name, 'staged content leak'))
+        require('leaked' not in [inline_text(result['instructions']), actual], (name, 'staged content leak'))
         require(wire_equal(len(trace), len(want['seen'])), (name, 'missing wire hooks', len(trace), len(want['seen'])))
         serial=[]
         for entry in trace:
@@ -103,18 +105,11 @@ def check(outputs,receipts,expected):
             require(wire_equal(len(matches), 1), (name, 'receiver receipt count', entry['subscription']))
             receipt=matches[0]
             require(wire_equal(receipt['request'], request) and wire_equal(receipt['response'], reply), (name, 'receiver wire evidence'))
-            target='instructions' if boundary=='before' else 'summary';item=event[target];body=receipt['bodies'][item['id']]
-            serial.append(body)
-            require(wire_equal(item['selection'], 'body') and wire_equal(item['mediaType'], 'text/plain'))
-            raw=body.encode();ref=item['body'];require(set(ref)=={'ref'}, 'event body must be reference-only')
-            require('size' not in item and 'sha256' not in item, 'body selection must not disclose metadata')
-            require(isinstance(ref['ref'], str) and bool(ref['ref']), 'invalid opaque ref')
-            key=(entry['subscription'],ref['ref'])
-            require(key not in immutable or immutable[key]==raw, 'receiver ref mutated')
-            immutable[key]=raw
+            target='instructions' if boundary=='before' else 'summary'
+            serial.append(inline_text(event[target]))
+            require(wire_equal(event['type'], 'context.compact.' + boundary), 'canonical compaction event')
             require('subscriptionId' not in request['params'], 'wire subscription identity')
-            require(wire_equal(item['id'], name + ':' + target), (name, 'logical item ID'))
-            require(wire_equal(request['params']['capabilities']['modify'], {target: {'replace': True, 'merge': False}}))
+            require(isinstance(request['params']['capabilities']['modify'].get(target, {}).get('merge'), bool) and wire_equal(request['params']['capabilities']['modify'], {target: {'replace': True, 'merge': request['params']['capabilities']['modify'][target]['merge']}}))
             if boundary=='after':
                 require(wire_equal(event['parentEventId'], name + ':before'))
                 require(wire_equal(event['removed'], [{'id': name + ':context'}]))
@@ -132,8 +127,8 @@ def probe(sender,receiver,transport,endpoint,token,receiver_command,outputs,env)
     first=outputs[0]['trace'][0];valid=first['request'];sub=first['subscription'];requests=[]
     bad=copy.deepcopy(valid);bad['params']['event'].pop('trigger');requests.append(bad)
     bad=copy.deepcopy(valid);bad['params']['capabilities']['modify']={'summary':{'replace':True,'merge':False}};requests.append(bad)
-    bad=copy.deepcopy(valid);bad['params']['event']['instructions']['body']['ref']='urn:not-uploaded';requests.append(bad)
-    bad=copy.deepcopy(valid);bad['params']['event']['instructions']['body']['sha256']='0'*64;requests.append(bad)
+    bad=copy.deepcopy(valid);bad['params']['event']['instructions']= 'legacy scalar';requests.append(bad)
+    bad=copy.deepcopy(valid);bad['params']['event']['instructions'][0]['body']={'ref':'urn:legacy-text'};requests.append(bad)
     plan={'transport':transport,'requests':requests,'endpoint':endpoint+'/hooks/intercept','token':token,
           'command':receiver_command+['stdio',sub]}
     # Original native transport clients append a trailing stdio argument; the
@@ -179,7 +174,7 @@ def run_pair(pair):
             count=check(outputs,receipts,expected)
             negatives=probe(sender,receiver,transport,endpoint,credentials[outputs[0]['trace'][0]['subscription']]['token'],receiver_command,outputs,env)
             require(wire_equal(len(receipt_path.read_text().splitlines()), count), 'rejected request recorded as accepted')
-            return {'sender':sender,'receiver':receiver,'transport':transport,'status':'passed','scenarios':len(rows),'canonicalExchanges':count,'receiverRejections':negatives,'preuploadedBodies':len(list(store.iterdir()))-1,'referencedBodies':len({(entry['subscription'],entry['request']['params']['event']['instructions' if entry['request']['params']['event']['type'].endswith('.before') else 'summary']['body']['ref']) for out in outputs for entry in out['trace']})}
+            return {'sender':sender,'receiver':receiver,'transport':transport,'status':'passed','scenarios':len(rows),'canonicalExchanges':count,'receiverRejections':negatives}
         except Exception as error:return {'sender':sender,'receiver':receiver,'transport':transport,'status':'failed','error':str(error)}
         finally:
             if proc:
@@ -192,7 +187,7 @@ def main():
     parser=argparse.ArgumentParser();parser.add_argument('--sender',choices=LANGUAGES);parser.add_argument('--receiver',choices=LANGUAGES);parser.add_argument('--transport',choices=('http','stdio'));parser.add_argument('--output',type=Path,default=HERE/'compaction-wire-matrix-results.json');args=parser.parse_args()
     pairs=[(s,r,t) for t in ('http','stdio') for s in LANGUAGES for r in LANGUAGES if (not args.sender or args.sender==s) and (not args.receiver or args.receiver==r) and (not args.transport or args.transport==t)]
     with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(run_pair,pairs))
-    report={'canonicalMethod':'hooks/intercept','contentUpload':'HTTP raw octets, confirmed before intercept','offline':True,'results':results,'passed':sum(r['status']=='passed' for r in results),'total':len(results)}
+    report={'canonicalMethod':'hooks/intercept','content':'canonical inline text-part arrays; no attachment upload','offline':True,'results':results,'passed':sum(r['status']=='passed' for r in results),'total':len(results)}
     args.output.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'passed':report['passed'],'total':report['total'],'failures':[r for r in results if r['status']!='passed']}));return 0 if report['passed']==report['total'] else 1
 
 if __name__=='__main__':raise SystemExit(main())

@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "id": "edit-1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "content",
+        "operation": "merge",
+        "value": {
+          "nested": {
+            "x": 1
+          }
+        }
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

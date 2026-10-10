@@ -13,12 +13,10 @@
         "mode": "form",
         "result": {
           "id": "mcp-result-item",
-          "kind": "elicitation.result",
-          "mediaType": "application/json",
+          "kind": "text",
+          "mediaType": "text/plain",
           "selection": "body",
-          "body": {
-            "ref": "mcp-result"
-          }
+          "text": "{\"action\":\"accept\",\"content\":{\"answer\":\"yes\"}}"
         },
         "action": "accept"
       },

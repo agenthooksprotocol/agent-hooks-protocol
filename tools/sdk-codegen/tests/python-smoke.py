@@ -255,8 +255,14 @@ def main() -> None:
 
     # Type projections must never replace the original constraint graph.
     visible_schema = sdk._SCHEMAS["ModelVisibleItem"]
-    assert visible_schema["kind"] == "intersection"
-    assert visible_schema["variants"][0] == {"kind": "ref", "name": "ContentItem"}
+    assert visible_schema == {"kind": "ref", "name": "CanonicalMessage"}
+    message_schema = sdk._SCHEMAS["CanonicalMessage"]
+    assert message_schema["kind"] == "object"
+    message_fields = {p["wire_name"]: p for p in message_schema["properties"]}
+    assert all(message_fields[name]["required"] for name in ("id", "role", "parts"))
+    assert message_fields["parts"]["shape"] == {
+        "kind": "array", "items": {"kind": "ref", "name": "ContentItem"}
+    }
     connection_schema = next(p["shape"] for p in sdk._SCHEMAS["ExecutionEventMcp"]["properties"] if p["wire_name"] == "connection")
     assert connection_schema["kind"] == "union"
     assert connection_schema["mode"] == "oneOf"

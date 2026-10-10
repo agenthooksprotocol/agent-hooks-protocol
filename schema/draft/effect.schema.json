@@ -60,29 +60,85 @@
             "replace",
             "merge"
           ],
-          "description": "replace substitutes the whole object. merge shallowly overwrites top-level keys; nested values replace whole values and null is literal, not deletion."
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values."
         },
         "value": {}
       },
       "allOf": [
         {
           "if": {
-            "anyOf": [
-              {
-                "properties": {
-                  "target": {
-                    "const": "input"
-                  }
-                }
-              },
-              {
-                "properties": {
-                  "operation": {
-                    "const": "merge"
-                  }
-                }
+            "properties": {
+              "target": {
+                "enum": [
+                  "prompt",
+                  "request",
+                  "response",
+                  "output"
+                ]
               }
-            ]
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "$ref": "content-item.schema.json#/$defs/messages"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "const": "content"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "oneOf": [
+                  {
+                    "$ref": "content-item.schema.json#/$defs/messages"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ],
+                "description": "Canonical messages at user.message.outbound; MCP answer object at user.elicitation.result. The host MUST validate the boundary-specific target contract."
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "enum": [
+                  "instructions",
+                  "summary"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "$ref": "content-item.schema.json#/$defs/textParts"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "target": {
+                "enum": [
+                  "input",
+                  "workspace"
+                ]
+              }
+            }
           },
           "then": {
             "properties": {
@@ -191,7 +247,9 @@
             "next_turn"
           ]
         },
-        "value": {}
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/messages"
+        }
       },
       "additionalProperties": false
     }

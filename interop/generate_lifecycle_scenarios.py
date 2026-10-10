@@ -31,11 +31,11 @@ def distinguish(s, key, label):
     s['responses'][key]['result']['effects'][0]['value']={'value':label}
     s['responses'][key]['result']['effects'][1]['text']='published-'+label
 EFFECTS=[{'type':'modify','target':'input','operation':'replace','value':{'value':'settled'}},{'type':'message','text':'published'},{'type':'allow'}]
-ALL=EFFECTS+[{'type':'return','value':{'supplied':True}},{'type':'flow','operation':'continue','instruction':'continue staged'},{'type':'inject','target':'context','operation':'append','deliverAt':'now','items':[{'id':'injected','kind':'text','mediaType':'text/plain','selection':'metadata'}]}]
+ALL=EFFECTS+[{'type':'return','value':{'supplied':True}},{'type':'flow','operation':'continue','instruction':'continue staged'}]
 # Injection effect's canonical shape is taken from the established shared suite.
 core=json.loads((HERE/'scenarios.json').read_text())['scenarios']
 inject=next(e for s in core for e in ((s.get('response') or {}).get('result') or {}).get('effects',[]) if isinstance(e,dict) and e.get('type')=='inject')
-ALL[-1]=deepcopy(inject)
+ALL.append(deepcopy(inject))
 scenarios=[]
 for name,after in [('cancel-before-reply',False),('cancel-after-reply-before-acceptance',True)]:
     s=scenario(name,ALL); s['steps']=start()
@@ -62,14 +62,14 @@ def upload(ref,text,subscription='body',**kw):
     return op('upload',subscription=subscription,ref=ref,bodyBase64=base64.b64encode(body).decode('ascii'),size=len(body),sha256=hashlib.sha256(body).hexdigest()) | kw
 # This local fixture override supplies invalid credentials, never subscription identity on wire.
 UNAUTHORIZED_UPLOAD = {'auth': {'type': 'bearer', 'tokenEnv': 'AHP_INTEROP_UNAUTHORIZED_UPLOAD_TOKEN'}, 'timeoutMs': 5000, 'maxBytes': 1048576}
-def item(ref,text): return {'id':'logical-item','kind':'text','mediaType':'text/plain','selection':'body','body':{'ref':ref}}
-s=scenario('immutable-upload-and-subscription-views',EFFECTS); ref='immutable-v1'; body=item(ref,'original bytes'); gap={'id':'logical-item','kind':'text','mediaType':'text/plain','selection':'body','gap':{'reason':'content permission denied','path':'items.logical-item'}}
+def item(ref,text): return {'id':'logical-item','kind':'attachment','mediaType':'application/octet-stream','selection':'body','body':{'ref':ref}}
+s=scenario('immutable-upload-and-subscription-views',EFFECTS); ref='immutable-v1'; body=item(ref,'original bytes'); gap={'id':'logical-item','kind':'attachment','mediaType':'application/octet-stream','selection':'body','gap':{'reason':'content permission denied','path':'items.logical-item'}}
 s['steps']=[upload(ref,'original bytes'),upload('immutable-retry','original bytes'),upload('immutable-changed','changed bytes'),upload('immutable-v2','changed bytes'),upload(ref,'original bytes','metadata',upload=UNAUTHORIZED_UPLOAD)]+start()+finish()+[op('observe',key='a',subscription='body',items=[body]),op('observe',key='a',subscription='metadata',items=[gap])]; s['expected']=actual(published=[rid(s)],states={rid(s):state()},uploadStatuses=[201,201,201,201,401],observations=[{'eventId':rid(s),'subscription':x,'input':{'value':'settled'}} for x in ['body','metadata']]); scenarios.append(s)
 s=scenario('upload-integrity-rejection'); s['steps']=[upload('bad-size','body',size=99),upload('bad-hash','body',sha256='0'*64),upload('unauthorized','secret','metadata',upload=UNAUTHORIZED_UPLOAD)]; s['expected']=actual(uploadStatuses=[400,400,401]); scenarios.append(s)
 s=scenario('changed-body-new-reference',EFFECTS); s['steps']=[upload('changed-new-ref','new bytes')]+start()+finish()+[op('observe',key='a',subscription='body',items=[item('changed-new-ref','new bytes')])]; s['expected']=actual(published=[rid(s)],states={rid(s):state()},uploadStatuses=[201],observations=[{'eventId':rid(s),'subscription':'body','input':{'value':'settled'}}]); scenarios.append(s)
 s=scenario('normal-content-kinds',EFFECTS); items=[]
 for kind in ['reasoning','skill','native']:
-    ref='normal-'+kind; s['steps'].append(upload(ref,kind+' content')); i=item(ref,kind+' content'); i.update(id=kind+'-item',kind=kind); items.append(i)
+    ref='normal-'+kind; s['steps'].append(upload(ref,kind+' content')); i=item(ref,kind+' content'); i.update(id=kind+'-item'); items.append(i)
 s['steps']+=start()+finish()+[op('observe',key='a',subscription='body',items=items)]; s['expected']=actual(published=[rid(s)],states={rid(s):state()},uploadStatuses=[201]*3,observations=[{'eventId':rid(s),'subscription':'body','input':{'value':'settled'}}]); scenarios.append(s)
 s=scenario('arbitrary-binary-and-empty-content',EFFECTS)
 raw=bytes(range(256))+b'\x00\xff\xfe'

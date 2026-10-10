@@ -1,0 +1,17 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "prompt",
+        "operation": "merge",
+        "value": {
+          "text": "hello"
+        }
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

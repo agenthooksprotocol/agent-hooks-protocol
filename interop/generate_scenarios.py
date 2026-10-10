@@ -16,6 +16,13 @@ CAPS = {"effects": ["deny", "allow", "ask", "modify", "message", "return"],
 CANDIDATE = {"value": {"cached": 1}, "provenance": {"requestId": "earlier"}}
 
 
+def context_messages(text, identity):
+    """Ordinary injected context; no asserted system/developer authority."""
+    return [{"id": identity, "role": "user", "parts": [{
+        "id": identity + "-text", "kind": "text", "mediaType": "text/plain",
+        "selection": "body", "text": text}]}]
+
+
 def effect(kind, **fields):
     return {"type": kind, **fields}
 
@@ -156,7 +163,7 @@ def build():
         candidate=CANDIDATE, permission="allow", tags=["state", "modify"])
     row["hostExpected"] = {"decision": "allow", "executed": False,
                            "input": {**INPUT, "task": -1}, "messages": [msg["text"]]}
-    add("modify-unadvertised-target", [msg, effect("modify", target="output", operation="replace", value={})],
+    add("modify-unadvertised-target", [msg, effect("modify", target="output", operation="replace", value=[])],
         error="capability-invalid")
     for kind, returned in [("deny", deny), ("allow", allow), ("ask", ask), ("message", msg), ("return", ret),
                             ("modify", modify({"task": 2}))]:
@@ -240,8 +247,8 @@ def build():
     finish("flow-unadvertised-stop-rejected", [cont, stop], operations=["continue"], error="capability-invalid")
     finish("flow-continue-missing-instruction", [msg, effect("flow", operation="continue")])
 
-    now = effect("inject", target="context", operation="append", deliverAt="now", value={"text": "Context now"})
-    later = effect("inject", target="context", operation="append", deliverAt="next_turn", value={"text": "Context later"})
+    now = effect("inject", target="context", operation="append", deliverAt="now", value=context_messages("Context now", "context-now"))
+    later = effect("inject", target="context", operation="append", deliverAt="next_turn", value=context_messages("Context later", "context-later"))
     inject_caps = {**deepcopy(CAPS), "effects": CAPS["effects"] + ["inject"],
                    "inject": {"context": {"append": True, "deliverAt": ["now", "next_turn"]}}}
     add("inject-now", [now], {"injections": [now]}, caps=inject_caps, tags=["inject"])

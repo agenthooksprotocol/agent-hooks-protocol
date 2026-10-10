@@ -18,9 +18,10 @@
       "items": [
         {
           "id": "file-snapshot",
-          "kind": "file",
+          "kind": "text",
           "mediaType": "text/plain",
-          "selection": "metadata"
+          "selection": "metadata",
+          "category": "file"
         }
       ]
     }

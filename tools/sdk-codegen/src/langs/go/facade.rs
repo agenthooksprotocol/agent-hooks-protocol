@@ -101,6 +101,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             .shape,
     );
     let mut events = String::from("type Type = string\n");
+    if g.unions.contains_key("ContentItem") {
+        events.push_str(OWNED_CONTENT_INPUTS);
+    }
     let mut methods = String::new();
     for (name, fields) in &g.objects {
         if !name.ends_with("Event") || !fields.iter().any(|f| f.wire_name == "source") {
@@ -190,6 +193,15 @@ func Milliseconds(value time.Duration) (json.Number, error) {
         }
         if body.contains("fmt.") && !body.contains("time.") {
             imports.push_str("import \"fmt\"\n");
+        }
+        if body.contains("strings.") && !body.contains("time.") {
+            imports.push_str("import \"strings\"\n");
+        }
+        if body.contains("mime.") {
+            imports.push_str("import \"mime\"\n");
+        }
+        if body.contains("atomic.") {
+            imports.push_str("import \"sync/atomic\"\n");
         }
         if body.contains("content.Source") {
             writeln!(imports, "import \"{MODULE}/content\"")?;
@@ -688,9 +700,16 @@ fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
             for value in enum_strings(g, &deliver.shape) {
                 writeln!(out, "const {} DeliverAt = {value:?}", go_identifier(&value))?;
             }
+            let value_type = qualify(
+                &fields
+                    .iter()
+                    .find(|f| f.wire_name == "value")
+                    .unwrap()
+                    .field_type,
+            );
             writeln!(
                 out,
-                "func InjectContextAppend[T any](deliverAt DeliverAt, value T, opts ...InjectAppendOption) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; return NewInjectAppend(deliverAt, raw, opts...), nil }}"
+                "func InjectContextAppend[T any](deliverAt DeliverAt, value T, opts ...InjectAppendOption) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; var canonical {value_type}; if err := json.Unmarshal(raw, &canonical); err != nil {{ return nil, err }}; return NewInjectAppend(deliverAt, canonical, opts...), nil }}"
             )?;
         }
         if tag != "modify" {
@@ -724,6 +743,342 @@ fn input_identifier(name: &str) -> String {
     }
 }
 
+// Host projections are generated only along schema-owned ContentItem slots.
+// Unrelated raw payloads retain their wire types and are never scanned.
+fn host_projection(
+    g: &Generator<'_>,
+    out: &mut String,
+    ty: &str,
+    paths: &[Vec<String>],
+) -> Result<String> {
+    if let Some(item) = ty.strip_prefix("[]") {
+        let paths = paths
+            .iter()
+            .filter(|p| p.first().map(String::as_str) == Some("*"))
+            .map(|p| p[1..].to_vec())
+            .collect::<Vec<_>>();
+        return Ok(format!("[]{}", host_projection(g, out, item, &paths)?));
+    }
+    let wire = ty.trim_start_matches('*');
+    if wire == "ContentItem" {
+        return Ok("*ContentPartInput".into());
+    }
+    let host = format!("{wire}Input");
+    if !out.contains(&format!("type {host} struct {{")) {
+        let fields = g
+            .objects
+            .get(wire)
+            .ok_or_else(|| anyhow::anyhow!("unresolved Go host content projection {wire}"))?;
+        let mut children = Vec::new();
+        for field in fields {
+            let tails = paths
+                .iter()
+                .filter(|p| p.first() == Some(&field.wire_name))
+                .map(|p| p[1..].to_vec())
+                .collect::<Vec<_>>();
+            if tails.is_empty() {
+                continue;
+            }
+            let child = host_projection(g, out, &field.field_type, &tails)?;
+            children.push((field, child));
+        }
+        writeln!(
+            out,
+            "// {host} preserves wire metadata and projects only schema-owned content children.\ntype {host} struct {{ ahp.{wire}"
+        )?;
+        for (field, child) in &children {
+            let child = if field.required {
+                child.clone()
+            } else {
+                format!("ahp.Optional[{child}]")
+            };
+            writeln!(out, "{} {child}", field.field_name)?;
+        }
+        writeln!(out, "}}\nfunc (v *{host}) MarshalJSON() ([]byte, error) {{")?;
+        if fields.iter().any(|f| f.wire_name == "role")
+            && fields.iter().any(|f| f.wire_name == "parts")
+        {
+            writeln!(
+                out,
+                "switch string(v.Role) {{ case \"system\", \"developer\", \"user\", \"assistant\", \"tool\": default: return nil, fmt.Errorf(\"host canonical message requires a canonical role\") }}"
+            )?;
+        }
+        if fields.iter().any(|f| f.wire_name == "id") {
+            writeln!(
+                out,
+                "if err := ensureContentIdentity(&v.ID, &v.Synthesized); err != nil {{ return nil, err }}"
+            )?;
+        }
+        writeln!(
+            out,
+            "base := v.{wire}; raw, err := json.Marshal(base); if err != nil {{ return nil, err }}; fields := map[string]json.RawMessage{{}}; if err := json.Unmarshal(raw, &fields); err != nil {{ return nil, err }}"
+        )?;
+        for (field, child) in &children {
+            if !field.required {
+                writeln!(out, "if v.{}.Present {{", field.field_name)?;
+            }
+            let access = if field.required { "" } else { ".Value" };
+            emit_host_placement(
+                g,
+                out,
+                child,
+                &format!("v.{}{access}", field.field_name),
+                &field.shape,
+                0,
+            )?;
+            let reference = if child.starts_with('*') || child.starts_with("[]") {
+                ""
+            } else {
+                "&"
+            };
+            writeln!(
+                out,
+                "{{ raw, err := json.Marshal({reference}v.{}{access}); if err != nil {{ return nil, err }}; fields[{:?}] = raw }}",
+                field.field_name, field.wire_name
+            )?;
+            if !field.required {
+                writeln!(out, "}}")?;
+            }
+        }
+        writeln!(
+            out,
+            "projected, err := json.Marshal(fields); if err != nil {{ return nil, err }}; var canonical ahp.{wire}; if err := json.Unmarshal(projected, &canonical); err != nil {{ return nil, fmt.Errorf(\"invalid host {host}: %w\", err) }}; return projected, nil\n}}\nfunc (v *{host}) ahpContentSources(path string, sources map[string]*content.Source) {{"
+        )?;
+        if fields.iter().any(|f| f.wire_name == "id") {
+            writeln!(out, "_ = ensureContentIdentity(&v.ID, &v.Synthesized)")?;
+        }
+        for (field, child) in &children {
+            if !field.required {
+                writeln!(out, "if v.{}.Present {{", field.field_name)?;
+            }
+            let access = if field.required { "" } else { ".Value" };
+            let segment = field.wire_name.replace('~', "~0").replace('/', "~1");
+            emit_host_sources(
+                out,
+                child,
+                &format!("v.{}{access}", field.field_name),
+                &format!("path + {:?}", format!("/{segment}")),
+                0,
+            )?;
+            if !field.required {
+                writeln!(out, "}}")?;
+            }
+        }
+        writeln!(out, "}}")?;
+    }
+    Ok(format!(
+        "{}{host}",
+        if ty.starts_with('*') { "*" } else { "" }
+    ))
+}
+
+// Nullability is a schema fact, not an Optional presence flag.
+fn host_allows_null(g: &Generator<'_>, shape: &Shape, seen: &mut BTreeSet<String>) -> bool {
+    match shape {
+        Shape::Null | Shape::Any => true,
+        Shape::Literal { value } => value.is_null(),
+        Shape::Union { variants, .. } => variants.iter().any(|s| host_allows_null(g, s, seen)),
+        Shape::Intersection { variants } => variants.iter().all(|s| host_allows_null(g, s, seen)),
+        Shape::Ref { name } => {
+            if !seen.insert(name.clone()) {
+                return false;
+            }
+            let nullable =
+                g.ir.types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .map(|n| host_allows_null(g, &n.shape, seen))
+                    .unwrap_or(false);
+            seen.remove(name);
+            nullable
+        }
+        _ => false,
+    }
+}
+
+fn host_array_item<'a>(
+    g: &'a Generator<'_>,
+    shape: &'a Shape,
+    seen: &mut BTreeSet<String>,
+) -> Option<&'a Shape> {
+    match shape {
+        Shape::Array { items } => Some(items),
+        Shape::Union { variants, .. } | Shape::Intersection { variants } => {
+            variants.iter().find_map(|s| host_array_item(g, s, seen))
+        }
+        Shape::Ref { name } => {
+            if !seen.insert(name.clone()) {
+                return None;
+            }
+            let item =
+                g.ir.types
+                    .iter()
+                    .find(|n| n.name == *name)
+                    .and_then(|n| host_array_item(g, &n.shape, seen));
+            seen.remove(name);
+            item
+        }
+        _ => None,
+    }
+}
+
+// Host arrays are canonical data, not sparse parallel source-binding arrays.
+fn emit_host_placement(
+    g: &Generator<'_>,
+    out: &mut String,
+    ty: &str,
+    value: &str,
+    shape: &Shape,
+    depth: usize,
+) -> Result<()> {
+    if (ty.starts_with("[]") || ty.starts_with('*'))
+        && !host_allows_null(g, shape, &mut BTreeSet::new())
+    {
+        writeln!(
+            out,
+            "if {value} == nil {{ return nil, fmt.Errorf(\"host content placement must not be null\") }}"
+        )?;
+    }
+    if let Some(item_ty) = ty.strip_prefix("[]") {
+        if !item_ty.starts_with('*') && !item_ty.starts_with("[]") {
+            return Ok(());
+        }
+        let item_shape = host_array_item(g, shape, &mut BTreeSet::new())
+            .ok_or_else(|| anyhow::anyhow!("unresolved host array item {ty}"))?;
+        writeln!(out, "for placementIndex{depth} := range {value} {{")?;
+        emit_host_placement(
+            g,
+            out,
+            item_ty,
+            &format!("{value}[placementIndex{depth}]"),
+            item_shape,
+            depth + 1,
+        )?;
+        writeln!(out, "}}")?;
+    }
+    Ok(())
+}
+
+fn emit_host_sources(
+    out: &mut String,
+    ty: &str,
+    value: &str,
+    path: &str,
+    depth: usize,
+) -> Result<()> {
+    if let Some(item) = ty.strip_prefix("[]") {
+        writeln!(out, "for hostIndex{depth} := range {value} {{")?;
+        emit_host_sources(
+            out,
+            item,
+            &format!("{value}[hostIndex{depth}]"),
+            &format!("{path} + \"/\" + strconv.Itoa(hostIndex{depth})"),
+            depth + 1,
+        )?;
+        writeln!(out, "}}")?;
+    } else {
+        if ty.starts_with('*') {
+            writeln!(out, "if {value} != nil {{")?;
+        }
+        writeln!(out, "{value}.ahpContentSources({path}, sources)")?;
+        if ty.starts_with('*') {
+            writeln!(out, "}}")?;
+        }
+    }
+    Ok(())
+}
+
+const OWNED_CONTENT_INPUTS: &str = r#"
+// ContentPartInput accepts exactly one wire, inline text, or owned attachment part.
+// Wire preserves all advanced gap/metadata/omitted and future alternatives.
+type ContentPartInput struct {
+    Wire *ahp.ContentItem
+    Text *ahp.TextBodyPart
+    Attachment *AttachmentBodyInput
+}
+// AttachmentBodyInput embeds wire metadata, but Body is an owned host handle.
+// Descriptor is optional; without one, encoding emits a pending descriptor.
+// The runtime must replace pending descriptors via AHPContentSources before validation/send.
+// Encoding and extraction never read, close, or upload Body.
+type AttachmentBodyInput struct {
+    ahp.AttachmentBodyPart
+    Body *content.Source
+    Descriptor *ahp.ContentReference
+}
+var synthesizedContentSequence atomic.Uint64
+// Missing IDs are assigned once to the host object during encoding or planning.
+// Inputs must not be mutated or encoded concurrently; supplied identities are unchanged.
+func synthesizeContentID() string { return "host-content-" + strconv.FormatUint(synthesizedContentSequence.Add(1), 10) }
+func ensureContentIdentity(id *string, synthesized *ahp.Optional[bool]) error {
+    if *id != "" { return nil }
+    if synthesized.Present && !synthesized.Value { return fmt.Errorf("missing host content id conflicts with synthesized=false") }
+    *id = synthesizeContentID()
+    *synthesized = ahp.Some(true)
+    return nil
+}
+func validateContentCategory(category ahp.Optional[string]) error {
+    if category.Present && category.Value == "" { return fmt.Errorf("host content category must be nonempty when supplied") }
+    return nil
+}
+// Validate only pure projected JSON, never the local source handle. The arm
+// check prevents malformed known alternatives from falling back to Unknown.
+func marshalHostContentPart(part any, text bool) ([]byte, error) {
+    raw, err := json.Marshal(part)
+    if err != nil { return nil, err }
+    var canonical ahp.ContentItem
+    if err := json.Unmarshal(raw, &canonical); err != nil { return nil, fmt.Errorf("invalid host content part: %w", err) }
+    if (text && !canonical.TextBodyPart.Present) || (!text && !canonical.AttachmentBodyPart.Present) { return nil, fmt.Errorf("host content projection must remain its canonical body alternative") }
+    return raw, nil
+}
+func validateAttachmentBody(part ahp.AttachmentBodyPart) error {
+    if part.Kind != "" && part.Kind != "attachment" { return fmt.Errorf("attachment host input requires attachment kind") }
+    if err := validateContentCategory(part.Category); err != nil { return err }
+    if part.Selection != "" && part.Selection != "body" { return fmt.Errorf("attachment host input requires body selection") }
+    mediaType, _, err := mime.ParseMediaType(part.MediaType)
+    if err != nil || mediaType == "" { return fmt.Errorf("attachment host input requires a valid nonempty mediaType") }
+    subtype := strings.SplitN(mediaType, "/", 2)
+    if len(subtype) != 2 || strings.HasPrefix(mediaType, "text/") || subtype[1] == "json" || strings.HasSuffix(subtype[1], "+json") { return fmt.Errorf("text and JSON content require inline text parts") }
+    return nil
+}
+func (v ContentPartInput) MarshalJSON() ([]byte, error) {
+    count := 0
+    if v.Wire != nil { count++ }; if v.Text != nil { count++ }; if v.Attachment != nil { count++ }
+    if count != 1 { return nil, fmt.Errorf("ContentPartInput requires exactly one alternative") }
+    if v.Wire != nil { return json.Marshal(v.Wire) }
+    if v.Text != nil {
+        if v.Text.Kind != "" && v.Text.Kind != "text" { return nil, fmt.Errorf("text host input requires text kind") }
+        if v.Text.MediaType != "" && v.Text.MediaType != "text/plain" { return nil, fmt.Errorf("text host input requires text/plain mediaType") }
+        if err := validateContentCategory(v.Text.Category); err != nil { return nil, err }
+        if v.Text.Selection != "" && v.Text.Selection != "body" { return nil, fmt.Errorf("text host input requires body selection") }
+        if err := ensureContentIdentity(&v.Text.ID, &v.Text.Synthesized); err != nil { return nil, err }
+        part := *v.Text
+        if part.Kind == "" { part.Kind = "text" }
+        if part.MediaType == "" { part.MediaType = "text/plain" }
+        if part.Selection == "" { part.Selection = "body" }
+        return marshalHostContentPart(part, true)
+    }
+    if err := validateAttachmentBody(v.Attachment.AttachmentBodyPart); err != nil { return nil, err }
+    if err := ensureContentIdentity(&v.Attachment.ID, &v.Attachment.Synthesized); err != nil { return nil, err }
+    part := v.Attachment.AttachmentBodyPart
+    if part.Kind == "" { part.Kind = "attachment" }
+    if part.Selection == "" { part.Selection = "body" }
+    if v.Attachment.Body != nil {
+        part.Body = v.Attachment.Descriptor
+        if part.Body == nil { part.Body = v.Attachment.AttachmentBodyPart.Body }
+        if part.Body == nil { part.Body = &ahp.ContentReference{Ref: "ahp:owned:pending"} }
+    } else if v.Attachment.Descriptor != nil { part.Body = v.Attachment.Descriptor }
+    return marshalHostContentPart(part, false)
+}
+func (v ContentPartInput) ahpContentSources(path string, sources map[string]*content.Source) {
+    if v.Wire != nil { return }
+    if v.Text != nil && v.Attachment == nil { _ = ensureContentIdentity(&v.Text.ID, &v.Text.Synthesized); return }
+    if v.Text == nil && v.Attachment != nil {
+        _ = ensureContentIdentity(&v.Attachment.ID, &v.Attachment.Synthesized)
+        if v.Attachment.Body != nil { sources[path] = v.Attachment.Body }
+    }
+}
+"#;
+
 fn input_projection(
     g: &Generator<'_>,
     out: &mut String,
@@ -748,6 +1103,30 @@ fn input_projection(
         .unwrap_or_default();
     let projected = crate::ergonomics::input_fields(g.ir, &properties, &tag)?;
     let slots = crate::ergonomics::content_slots(g.ir, &projected);
+    let mut host_fields = BTreeMap::new();
+    for field in &projected {
+        let paths = slots
+            .iter()
+            .filter(|s| s.path.starts_with(&field.path))
+            .map(|s| s.path[field.path.len()..].to_vec())
+            .collect::<Vec<_>>();
+        if paths.is_empty() {
+            continue;
+        }
+        let mut current = fields;
+        let mut resolved = None;
+        for segment in &field.path {
+            let f = current.iter().find(|f| f.wire_name == *segment).unwrap();
+            resolved = Some(f);
+            current = g
+                .objects
+                .get(f.field_type.trim_start_matches('*'))
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+        }
+        let ty = host_projection(g, out, &resolved.unwrap().field_type, &paths)?;
+        host_fields.insert(field.property.wire_name.clone(), ty);
+    }
     let params = if generic { "[T any]" } else { "" };
     let use_params = if generic { "[T]" } else { "" };
     writeln!(out, "type {name}{params} struct {{")?;
@@ -778,13 +1157,23 @@ fn input_projection(
         };
         writeln!(out, "{} {ty}", input_identifier(&field.property.wire_name))?;
     }
-    for slot in &slots {
+    for (field, ty) in &host_fields {
+        writeln!(
+            out,
+            "// {}Host overrides the wire field when non-nil; embeds owned sources without reading them.",
+            input_identifier(field)
+        )?;
+        writeln!(out, "{}Host *{ty} `json:\"-\"`", input_identifier(field))?;
+    }
+    for slot in slots
+        .iter()
+        .filter(|slot| crate::ergonomics::legacy_source_binding(slot))
+    {
         let suffix = if slot.many { "Sources" } else { "Source" };
-        let ty = if slot.many {
-            "[]*content.Source"
-        } else {
-            "*content.Source"
-        };
+        let ty = format!(
+            "{}*content.Source",
+            "[]".repeat(slot.path.iter().filter(|p| p.as_str() == "*").count())
+        );
         writeln!(
             out,
             "{}{} {ty} `json:\"-\"`",
@@ -796,24 +1185,59 @@ fn input_projection(
         out,
         "}}\n// AHPContentSources returns owned sources out of band; descriptors stay in canonical JSON.\nfunc (v {name}{use_params}) AHPContentSources() map[string]*content.Source {{ sources := map[string]*content.Source{{}}"
     )?;
-    for slot in &slots {
+    for slot in slots
+        .iter()
+        .filter(|slot| crate::ergonomics::legacy_source_binding(slot))
+    {
         let field = input_identifier(&slot.name);
-        anyhow::ensure!(
-            slot.path.iter().filter(|p| p.as_str() == "*").count() <= 1,
-            "nested content arrays require an explicit binding policy"
-        );
-        let path = format!("/{}", slot.path.join("/"));
-        if slot.many {
-            let (before, after) = path.split_once('*').unwrap();
-            writeln!(
-                out,
-                "for index, source := range v.{field}Sources {{ if source != nil {{ sources[{before:?} + strconv.Itoa(index) + {after:?}] = source }} }}"
-            )?;
+        let mut depth = 0;
+        let mut path = vec!["\"\"".to_owned()];
+        let mut collection = format!("v.{field}Sources");
+        for segment in &slot.path {
+            if segment == "*" {
+                let index = format!("index{depth}");
+                let value = format!("source{depth}");
+                writeln!(out, "for {index}, {value} := range {collection} {{")?;
+                path.push(format!("\"/\" + strconv.Itoa({index})"));
+                collection = value;
+                depth += 1;
+            } else {
+                let escaped = segment.replace('~', "~0").replace('/', "~1");
+                path.push(format!("{:?}", format!("/{escaped}")));
+            }
+        }
+        let source = if depth == 0 {
+            format!("v.{field}Source")
         } else {
+            collection
+        };
+        writeln!(
+            out,
+            "if {source} != nil {{ sources[{}] = {source} }}",
+            path.join(" + ")
+        )?;
+        for _ in 0..depth {
+            writeln!(out, "}}")?;
+        }
+    }
+    for field in &projected {
+        if let Some(ty) = host_fields.get(&field.property.wire_name) {
+            let field_name = input_identifier(&field.property.wire_name);
+            let path = format!("/{}", field.path.join("/"));
+            writeln!(out, "if v.{field_name}Host != nil {{")?;
             writeln!(
                 out,
-                "if v.{field}Source != nil {{ sources[{path:?}] = v.{field}Source }}"
+                "for path := range sources {{ if path == {path:?} || strings.HasPrefix(path, {prefix:?}) {{ delete(sources, path) }} }}",
+                prefix = format!("{path}/")
             )?;
+            emit_host_sources(
+                out,
+                ty,
+                &format!("(*v.{field_name}Host)"),
+                &format!("{path:?}"),
+                0,
+            )?;
+            writeln!(out, "}}")?;
         }
     }
     writeln!(
@@ -846,6 +1270,32 @@ fn input_projection(
             field.path.last().unwrap()
         )?;
         if !field.property.required {
+            writeln!(out, "}}")?;
+        }
+        if host_fields.contains_key(&field.property.wire_name) {
+            writeln!(out, "if v.{name}Host != nil {{")?;
+            emit_host_placement(
+                g,
+                out,
+                &host_fields[&field.property.wire_name],
+                &format!("(*v.{name}Host)"),
+                &field.property.shape,
+                0,
+            )?;
+            let mut parent = "fields".to_owned();
+            for (depth, segment) in field.path.iter().enumerate().take(field.path.len() - 1) {
+                let variable = format!("hostNested{depth}");
+                writeln!(
+                    out,
+                    "{variable}, ok := {parent}[{segment:?}].(map[string]any); if !ok {{ {variable} = map[string]any{{}}; {parent}[{segment:?}] = {variable} }}"
+                )?;
+                parent = variable;
+            }
+            writeln!(
+                out,
+                "{parent}[{:?}] = v.{name}Host",
+                field.path.last().unwrap()
+            )?;
             writeln!(out, "}}")?;
         }
         writeln!(out, "}}")?;
@@ -1413,6 +1863,45 @@ mod tests {
     }
 
     #[test]
+    fn host_placement_preserves_schema_nullability_not_optional_presence() {
+        let ir = draft();
+        let g = Generator::new(&ir);
+        let array = Shape::Array {
+            items: Box::new(Shape::Ref {
+                name: "ContentItem".into(),
+            }),
+        };
+        let nullable = Shape::Union {
+            mode: crate::model::UnionMode::AnyOf,
+            variants: vec![Shape::Null, array.clone()],
+            discriminator: None,
+        };
+        let mut output = String::new();
+        emit_host_placement(
+            &g,
+            &mut output,
+            "[]*ContentPartInput",
+            "values",
+            &nullable,
+            0,
+        )
+        .unwrap();
+        assert!(!output.contains("if values == nil"));
+        assert!(output.contains("if values[placementIndex0] == nil"));
+        let mut required = String::new();
+        emit_host_placement(
+            &g,
+            &mut required,
+            "[]*ContentPartInput",
+            "values",
+            &array,
+            0,
+        )
+        .unwrap();
+        assert!(required.contains("if values == nil"));
+    }
+
+    #[test]
     fn accepted_ergonomics_use_shared_fields_slots_and_codes() {
         let ir = draft();
         let files = emit(&ir).unwrap();
@@ -1421,7 +1910,12 @@ mod tests {
         assert!(events.contains("CallID string"));
         assert!(events.contains("Input T"));
         assert!(events.contains("ItemsSources []*content.Source `json:\"-\"`"));
-        assert!(events.contains("InstructionsSource *content.Source `json:\"-\"`"));
+        assert!(!events.contains("ItemsPartsSources"));
+        assert!(events.contains("ItemsHost *[]*ModelVisibleItemInput"));
+        assert!(events.contains("MessageHost *UserMessageInboundEventMessageInput"));
+        assert!(events.contains("Body *content.Source"));
+        assert!(events.contains("synthesizeContentID()"));
+        assert!(!events.contains("InstructionsSource"));
         assert!(!events.contains("tool.Input[T]"));
         for code in crate::ergonomics::DIAGNOSTIC_CODES {
             assert!(files["diagnostic/generated.go"].contains(&format!("= {code:?}")));

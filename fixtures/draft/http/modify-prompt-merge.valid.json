@@ -1,0 +1,42 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "prompt",
+        "operation": "merge",
+        "value": [
+          {
+            "id": "message1",
+            "role": "user",
+            "parts": [
+              {
+                "id": "message1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "Also include a short example."
+              }
+            ]
+          },
+          {
+            "id": "message1",
+            "role": "user",
+            "parts": [
+              {
+                "id": "message1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "Also include a short example."
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

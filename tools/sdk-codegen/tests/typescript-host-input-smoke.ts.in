@@ -1,0 +1,36 @@
+import {ownedAttachment, HostEventInputs, _projectHostInput, ContentSourceBinding} from './generated';
+const source = () => new Uint8Array([1]);
+const attachment = ownedAttachment(source);
+const input: HostEventInputs<typeof source>['context.compact.before'] = {
+ trigger: 'manual', items: [{role: 'user', parts: [
+  {kind: 'text', text: 'Summarize this'},
+  {kind: 'attachment', mediaType: 'image/png', body: attachment},
+ ]}, {id: 'm2', role: 'assistant', parts: [{kind: 'text', text: 'Second'}]}],
+};
+const projection = _projectHostInput<'context.compact.before', typeof source>('context.compact.before', input);
+const bindings: ContentSourceBinding<typeof source>[] = projection.bindings;
+_projectHostInput('context.compact.before', {trigger: 'manual', items: [{role:'user', parts:[
+ {kind:'text', text:'Summarize this'}, {kind:'attachment', mediaType:'image/png', body:attachment},
+]}]});
+// @ts-expect-error required event host fact
+_projectHostInput('context.compact.before', {items: []});
+// @ts-expect-error excess event input property
+_projectHostInput('context.compact.before', {trigger:'manual', items: [], unexpected:true});
+// @ts-expect-error ownership must be explicit, not an unwrapped lazy source
+const unowned: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[{role:'user', parts:[{kind:'attachment', mediaType:'image/png', body:source}]}]};
+// @ts-expect-error attachment selection is body only with an owned source
+const metadata: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[{role:'user', parts:[{kind:'attachment', mediaType:'image/png', selection:'metadata', body:attachment}]}]};
+// @ts-expect-error inline text cannot own a body
+const textBody: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[{role:'user', parts:[{kind:'text', text:'x', body:attachment}]}]};
+// @ts-expect-error canonical host uses body, not ref
+const ref: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[{role:'user', parts:[{kind:'attachment', mediaType:'image/png', ref:attachment}]}]};
+// @ts-expect-error excess canonical message property
+const extra: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[{role:'user', parts:[], extra:true}]};
+// @ts-expect-error wrapper itself is not a message
+const placement: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[attachment]};
+// @ts-expect-error schema text-only instructions do not gain attachment ownership
+const instructions: HostEventInputs<typeof source>['context.compact.before'] = {trigger:'manual', items:[], instructions:[{kind:'attachment', mediaType:'image/png', body:attachment}]};
+void [bindings, unowned, metadata, textBody, ref, extra, placement, instructions];
+
+// @ts-expect-error applications have no public projectHostInput construction step
+import {projectHostInput} from './generated';

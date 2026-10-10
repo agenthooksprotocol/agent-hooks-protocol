@@ -46,6 +46,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nimport json\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\n_UNSET: Any = object()\n\n"
     );
     body.push_str(MODEL_RUNTIME);
+    body.push_str(OWNED_INPUT_RUNTIME);
     let mut validation_shapes = shapes.clone();
     for named in &ir.types {
         collect_union_validation(ir, &named.name, &named.shape, &mut validation_shapes)?;
@@ -115,6 +116,15 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                         .map(|field| field.property.clone())
                         .collect::<Vec<_>>();
                     constructor(&mut body, &input_name, &input_fields, ir, false)?;
+                    let roots = projection
+                        .iter()
+                        .map(|field| (field.property.wire_name.clone(), field.path.clone()))
+                        .collect::<BTreeMap<_, _>>();
+                    writeln!(
+                        body,
+                        "        _normalize_owned_input(self, {tag:?}, json.loads({}))\n",
+                        python_string(&serde_json::to_string(&roots)?)?
+                    )?;
                     accessors(&mut body, &input_name, &input_fields, ir)?;
                     body.push_str("    def to_wire(self) -> dict[str, Any]:\n        result = deepcopy(dict(self))\n");
                     for field in &projection {
@@ -161,19 +171,18 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                                 .collect::<Vec<_>>()
                                 .join(" ")
                         )?;
+                        if !crate::ergonomics::legacy_source_binding(&slot) {
+                            continue;
+                        }
                         write!(
                             body,
                             "    def bind_{method}_source(self, source: OwnedContentSource"
                         )?;
-                        let indices = (0..slot.path.iter().filter(|p| *p == "*").count())
-                            .map(|i| {
-                                if i == 0 {
-                                    "index".to_owned()
-                                } else {
-                                    format!("index_{}", i + 1)
-                                }
-                            })
-                            .collect::<Vec<_>>();
+                        let indices = if slot.many {
+                            vec!["index".to_owned()]
+                        } else {
+                            Vec::new()
+                        };
                         if slot.many {
                             body.push_str(", *");
                         }
@@ -327,6 +336,11 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
+    public.push("OwnedAttachment".into());
+    modules
+        .entry("content".into())
+        .or_default()
+        .insert("OwnedAttachment".into(), "OwnedAttachment".into());
     if ir.types.iter().any(|named| named.name == "Event") {
         public.push("Event".into());
     }
@@ -678,10 +692,34 @@ fn constructor(
             .clone()
             .or_else(|| literal(ir, &p.shape));
         let optional = !p.required || default.is_some() || p.wire_name == "protocolVersion";
+        let mut parameter_type = annotation(ir, &p.shape, &field_hint(name, &p.wire_name)?, "")?;
+        if !validate {
+            let input = crate::ergonomics::InputField {
+                property: p.clone(),
+                path: vec![p.wire_name.clone()],
+            };
+            if !crate::ergonomics::content_slots(ir, &[input]).is_empty() {
+                let mut shape = &p.shape;
+                let mut seen = std::collections::BTreeSet::new();
+                while let Shape::Ref { name } = shape {
+                    if !seen.insert(name) {
+                        break;
+                    }
+                    let Some(named) = ir.types.iter().find(|n| n.name == *name) else {
+                        break;
+                    };
+                    shape = &named.shape;
+                }
+                parameter_type.push_str(if matches!(shape, Shape::Array { .. }) {
+                    " | list[dict[str, Any]]"
+                } else {
+                    " | dict[str, Any]"
+                });
+            }
+        }
         write!(
             out,
-            "{param}: {}{}, ",
-            annotation(ir, &p.shape, &field_hint(name, &p.wire_name)?, "")?,
+            "{param}: {parameter_type}{}, ",
             if optional { " = _UNSET" } else { "" }
         )?;
     }
@@ -1130,6 +1168,136 @@ fn ergonomic_modules(
     effect.push_str("deny = Deny\n");
     Ok(())
 }
+
+// Host adapters are separate from wire validation and hydration.
+const OWNED_INPUT_RUNTIME: &str = r#"from uuid import uuid4
+import re
+
+class OwnedAttachment:
+    """Explicit host-only attachment handle. Construction never reads the source.
+
+    Event input constructors retain source out-of-band. The runtime must replace
+    ahp:owned:pending descriptors with uploaded references before dispatch.
+    """
+    __slots__ = ("source",)
+
+    def __init__(self, source: OwnedContentSource) -> None:
+        self.source = source
+
+
+_ATTACHMENT_TYPES: tuple[type[Any], ...] = ()
+
+
+def _register_attachment_type(attachment_type: type[Any]) -> None:
+    """Internal runtime integration: register the SDK's nominal Attachment class.
+
+    Import this hook lazily after Attachment is defined, before constructing host
+    inputs. Registration neither constructs nor inspects any source. No optional
+    runtime module import is required by generated wire models.
+    """
+    global _ATTACHMENT_TYPES
+    if not isinstance(attachment_type, type) or attachment_type is object or issubclass(
+        attachment_type, (dict, list, tuple, str, bytes, int, float, bool)
+    ):
+        raise TypeError("Attachment registration requires a nominal owner class")
+    if attachment_type not in _ATTACHMENT_TYPES:
+        _ATTACHMENT_TYPES = (*_ATTACHMENT_TYPES, attachment_type)
+
+
+def _is_attachment_owner(value: Any) -> bool:
+    return isinstance(value, OwnedAttachment) or isinstance(value, _ATTACHMENT_TYPES)
+
+
+def _normalize_owned_input(value: Any, tag: str, roots: dict[str, list[str]]) -> None:
+    # Only schema-owned ContentItem paths are visited. Native facts, tool input,
+    # extensions and arbitrary application dictionaries are not searched.
+    from .._boundaries import CONTENT_SOURCE_SLOTS
+    sources: dict[str, OwnedContentSource] = {}
+
+    def reject(message: str) -> Any:
+        raise _ModelValidationError({"raw": value, "diagnostics": [
+            {"severity": "error", "message": message},
+        ]})
+
+    def identity(result: dict[str, Any]) -> None:
+        if "synthesized" in result and not isinstance(result["synthesized"], bool):
+            reject("Host content synthesized must be a boolean")
+        if "id" not in result:
+            if result.get("synthesized") is False:
+                reject("Missing host content id conflicts with synthesized=false")
+            result["id"] = str(uuid4())
+            result["synthesized"] = True
+        elif not isinstance(result["id"], str) or not result["id"]:
+            reject("Host content id must be a nonempty string")
+
+    def validate(name: str, result: dict[str, Any]) -> None:
+        parsed = _wire._parse_descriptor(_DESCRIPTORS[name], result, {})
+        if not parsed["ok"]:
+            reject("Invalid canonical content: " + "; ".join(
+                diagnostic["message"] for diagnostic in parsed["diagnostics"]
+                if diagnostic["severity"] == "error"))
+
+    def part(item: Any, key: str) -> dict[str, Any]:
+        if not isinstance(item, dict):
+            return reject("Content parts must be dictionaries")
+        result = dict(item)  # Shallow copy only; never copy a source handle.
+        owned = result.get("body")
+        for field, child in result.items():
+            if _is_attachment_owner(child) and field != "body":
+                return reject("Attachment owner is supported only as an attachment body")
+        if _is_attachment_owner(owned):
+            if result.get("kind") != "attachment" or result.get("selection", "body") != "body":
+                return reject("Attachment owner requires an attachment with body selection")
+            sources[key] = owned.source if isinstance(owned, OwnedAttachment) else owned
+            result["body"] = {"ref": "ahp:owned:pending"}
+        identity(result)
+        result.setdefault("selection", "body")
+        if result.get("kind") == "text":
+            result.setdefault("mediaType", "text/plain")
+        if result.get("kind") == "attachment":
+            media = result.get("mediaType")
+            # Mirror the schema's exclusion pattern without stripping parameters
+            # or narrowing its accepted strings to a different MIME grammar.
+            if not isinstance(media, str) or not media or re.match(
+                r"^(?:[Tt][Ee][Xx][Tt]/|[^/]+/(?:[^;]+\+)?[Jj][Ss][Oo][Nn](?:;|$))", media
+            ):
+                return reject("Attachment mediaType must be nonempty, non-text and non-JSON")
+        validate("ContentItem", result)
+        return result
+
+    def visit(node: Any, path: list[str], key: str) -> Any:
+        if not path:
+            return part(node, key)
+        head, *tail = path
+        if head == "*":
+            if not isinstance(node, list):
+                return reject("Schema-owned content arrays must be lists")
+            return [visit(child, tail, f"{key}[{index}]") for index, child in enumerate(node)]
+        if not isinstance(node, dict):
+            return reject("Schema-owned content containers must be dictionaries")
+        if head not in node:
+            if head == "parts":
+                return reject("Canonical messages require parts")
+            return node
+        result = dict(node)
+        result[head] = visit(node[head], tail, key)
+        if head == "parts":
+            identity(result)
+            if result.get("role") not in ("system", "developer", "user", "assistant", "tool"):
+                return reject("Canonical messages require a canonical role")
+            validate("CanonicalMessage", result)
+        return result
+
+    for key, (event, wire_path) in CONTENT_SOURCE_SLOTS.items():
+        if event != tag:
+            continue
+        for root, prefix in roots.items():
+            if list(wire_path[:len(prefix)]) == prefix and root in value:
+                value[root] = visit(value[root], list(wire_path[len(prefix):]), key)
+                break
+    value._content_sources = sources
+
+"#;
 
 // Decode once with the same engine used by parse_*; hydration deliberately does
 // not recurse through public constructors or silently apply constructor defaults.

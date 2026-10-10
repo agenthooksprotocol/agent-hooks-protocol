@@ -36,6 +36,22 @@ def evidence(scenarios):
     return report,{'entries':entries}
 
 class VerifierTests(unittest.TestCase):
+    def test_shared_lifecycle_responses_use_canonical_injections(self):
+        from observation_wire import ObservationValidator
+        from generate_lifecycle_scenarios import scenarios as generated
+        checked_in = load(HERE / 'lifecycle-scenarios.json')['scenarios']
+        self.assertEqual(generated, checked_in)
+        validator = ObservationValidator()
+        for row in checked_in:
+            for response in row['responses'].values():
+                self.assertEqual([], validator.schema_errors(response, 'intercept-response'), row['id'])
+                for effect in response['result']['effects']:
+                    if effect['type'] == 'inject':
+                        self.assertIsInstance(effect['value'], list)
+                        self.assertEqual('Context now', effect['value'][0]['parts'][0]['text'])
+                        self.assertEqual('user', effect['value'][0]['role'])
+                        self.assertEqual([], row['expected']['published'])
+
     def setUp(self):
         self.scenarios=[s for s in load(HERE/'lifecycle-scenarios.json')['scenarios'] if 'chain' not in s]; self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')

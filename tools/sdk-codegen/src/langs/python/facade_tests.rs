@@ -9,6 +9,32 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn owned_attachment_adapter_is_host_only_and_schema_scoped() {
+        let files = emit(&draft()).unwrap();
+        let models = &files["_models/__init__.py"];
+        assert!(models.contains("items: list[ModelVisibleItem] | list[dict[str, Any]]"));
+        assert!(models.contains("class OwnedAttachment:"));
+        assert!(models.contains("_normalize_owned_input(self, \"user.message.inbound\""));
+        assert!(models.contains("from .._boundaries import CONTENT_SOURCE_SLOTS"));
+        assert!(models.contains("ahp:owned:pending"));
+        assert!(models.contains("sources[key] = owned.source if isinstance(owned, OwnedAttachment) else owned"));
+        assert!(models.contains("def _register_attachment_type(attachment_type: type[Any])"));
+        assert!(models.contains("isinstance(value, _ATTACHMENT_TYPES)"));
+        assert!(!models.contains("from ..attachment import"));
+        assert!(models.contains("value._content_sources = sources"));
+        assert!(models.contains("Missing host content id conflicts with synthesized=false"));
+        assert!(models.contains("validate(\"CanonicalMessage\", result)"));
+        assert!(models.contains("Attachment mediaType must be nonempty, non-text and non-JSON"));
+        assert!(
+            files["_models/content.py"]
+                .contains("from . import OwnedAttachment as OwnedAttachment")
+        );
+        let wire = super::super::emit(&draft()).unwrap();
+        assert!(!wire.contains("OwnedAttachment"));
+        assert!(!wire.contains("ahp:owned:pending"));
+    }
+
+    #[test]
     fn annotation_imports_follow_emitted_signatures() {
         let mut source = format!(
             "{HEADER}from __future__ import annotations\ndef value(x: Literal[\"Never\"]) -> str: ...\n"
@@ -65,9 +91,9 @@ mod tests {
         }
         assert!(!models.contains("ConnectionObject"));
         assert!(!models.contains("PrimitiveSchemaDefinitionString"));
-        assert!(models.contains("items: list[ModelVisibleItemBody | ModelVisibleItemBodyGap | ModelVisibleItemMetadata | ModelVisibleItemOmit]"));
+        assert!(models.contains("items: list[ModelVisibleItem]"));
         let wire = super::super::emit(&ir).unwrap();
-        assert!(wire.contains("ModelVisibleItem: TypeAlias = Union["));
+        assert!(wire.contains("ModelVisibleItem: TypeAlias = \"CanonicalMessage\""));
         assert!(!wire.contains("ModelVisibleItem: TypeAlias = JsonValue"));
         // Only a genuinely unconstrained named schema remains fully dynamic.
         let raw = wire
@@ -121,8 +147,11 @@ mod tests {
     #[test]
     fn capability_event_alias_has_an_explicit_stable_owner() {
         let files = emit(&draft()).unwrap();
-        assert!(files["_models/capability.py"]
-            .contains("from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"));
+        assert!(
+            files["_models/capability.py"].contains(
+                "from . import CapabilitiesResponseResultManifestEventsItemEvent as Event"
+            )
+        );
         assert!(files["capability.py"].contains("from ._models.capability import Event as Event"));
     }
 
@@ -172,10 +201,12 @@ mod tests {
         let mut shapes = BTreeMap::new();
         collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
         collect(&draft(), "Choice", &Shape::String, &mut shapes).unwrap();
-        assert!(collect(&draft(), "Choice", &Shape::Number, &mut shapes)
-            .unwrap_err()
-            .to_string()
-            .contains("public Python model collision"));
+        assert!(
+            collect(&draft(), "Choice", &Shape::Number, &mut shapes)
+                .unwrap_err()
+                .to_string()
+                .contains("public Python model collision")
+        );
         assert!(
             literal_labels(&[Value::String("a-b".into()), Value::String("a_b".into())]).is_err()
         );
@@ -329,8 +360,10 @@ mod tests {
         assert!(files["tool.py"].contains("import Call as Call"));
         assert!(files["tool.py"].contains("import Tool as Tool"));
         assert!(files["capability.py"].contains("from ._grants import ModifyInput as ModifyInput"));
-        assert!(!files["capability.py"]
-            .contains("from ._models.capability import ModifyInput as ModifyInput"));
+        assert!(
+            !files["capability.py"]
+                .contains("from ._models.capability import ModifyInput as ModifyInput")
+        );
         assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
         assert_eq!(
             files["_boundaries.py"].matches("-> HookResult:").count(),
@@ -347,8 +380,11 @@ mod tests {
         assert_eq!(models.matches("    def to_wire(self)").count(), 32);
         assert!(models.contains("call_id: str"));
         assert!(models.contains("target = target.setdefault(\"call\", {})"));
-        assert!(files["state.py"]
-            .contains("def initial(permission: Permission, *, candidate: Candidate | None = None"));
+        assert!(
+            files["state.py"].contains(
+                "def initial(permission: Permission, *, candidate: Candidate | None = None"
+            )
+        );
         assert!(
             files["candidate.py"].contains("return Candidate(value=value, provenance=provenance)")
         );
@@ -362,9 +398,12 @@ mod tests {
         assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
         assert!(files["capability.py"].contains("from ._grants import intercept as intercept"));
         assert!(files["_boundaries.py"].contains("CONTENT_SOURCE_SLOTS:"));
-        assert!(models
-            .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)"));
-        assert!(models.contains("def bind_instructions_source(self, source: OwnedContentSource)"));
+        assert!(
+            models
+                .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)")
+        );
+        assert!(!models.contains("def bind_items_parts_source"));
+        assert!(!models.contains("def bind_instructions_source"));
     }
     #[test]
     fn original_composed_descriptors_and_union_ambiguity_are_cached() {
@@ -555,8 +594,10 @@ mod tests {
         assert!(output.contains("json.loads(\"false\")"));
         assert!(output.contains("json.loads(\"[]\")"));
         assert!(output.contains("if nullable is not _UNSET:"));
-        assert!(!serde_json::to_string(&fields)
-            .unwrap()
-            .contains("constructor_default"));
+        assert!(
+            !serde_json::to_string(&fields)
+                .unwrap()
+                .contains("constructor_default")
+        );
     }
 }

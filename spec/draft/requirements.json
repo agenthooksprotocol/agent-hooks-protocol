@@ -255,6 +255,39 @@
       "profile": "http",
       "text": "Portable endpoint authentication bindings MUST use `bearer` or `oauth`; workload identity, federation, and client-certificate configuration are deployment-specific, not portable AHP authentication variants.",
       "textSha256": "0ad14ee3e6886ea960de0e7b904de853ce16cc257262197de6b09bc837b81b65"
+    },
+    {
+      "id": "AHP-CONTENT-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/content-upload.md",
+      "anchor": "AHP-CONTENT-001",
+      "section": "Canonical messages and content selection",
+      "profile": "base",
+      "text": "Model-visible content uses canonical message roles and ordered parts; ordinary text stays inline, structured content is serialized into text, and no JSON part is permitted.",
+      "textSha256": "041ccf7a6f156cf0aea654a2ee3fe38c64862f9c8ff71d24de2941c7bf728f38"
+    },
+    {
+      "id": "AHP-CONTENT-002",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/content-upload.md",
+      "anchor": "AHP-CONTENT-002",
+      "section": "Canonical messages and content selection",
+      "profile": "base",
+      "text": "Authorization and body/metadata/omit selection apply to inline text and attachments without duplicate-content bypass; only immutable non-text, non-JSON media attachments use uploads.",
+      "textSha256": "7d379477eb24c40f4b84e3509e3d33e98f1bd0c5479e55aeca785c824ea78e27"
+    },
+    {
+      "id": "AHP-EDIT-001",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/composition.md",
+      "anchor": "AHP-EDIT-001",
+      "section": "Atomic effect acceptance",
+      "profile": "base",
+      "text": "Within the exact advertised target and operation authority, list replacement substitutes the whole list, list merge appends in order without deduplication, and object merge is shallow only when the target and supplied value are objects; accepted modifications chain serially with whole-response atomic acceptance.",
+      "textSha256": "68335e7380d400b594219927b935dabbeae35d0a15fbdc29bc586feb35bc495f"
     }
   ]
 }

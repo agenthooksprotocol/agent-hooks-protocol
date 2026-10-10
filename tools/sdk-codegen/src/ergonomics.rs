@@ -141,6 +141,13 @@ pub struct ContentSlot {
     pub many: bool,
 }
 
+/// Retain only published source helpers. Canonical message parts use host adapters,
+/// not newly introduced caller-indexed bindings.
+pub fn legacy_source_binding(slot: &ContentSlot) -> bool {
+    !slot.path.iter().any(|p| p == "parts")
+        && slot.path.iter().filter(|p| p.as_str() == "*").count() <= 1
+}
+
 pub fn content_slots(ir: &Ir, fields: &[InputField]) -> Vec<ContentSlot> {
     fn walk(
         ir: &Ir,
@@ -261,6 +268,24 @@ mod tests {
     }
 
     #[test]
+    fn legacy_bindings_do_not_publish_message_parts() {
+        for (path, published) in [
+            (vec!["instructions"], true),
+            (vec!["items", "*"], true),
+            (vec!["fileChanges", "*", "before"], true),
+            (vec!["message", "parts", "*"], false),
+            (vec!["items", "*", "parts", "*"], false),
+        ] {
+            let slot = ContentSlot {
+                name: "slot".into(),
+                many: path.contains(&"*"),
+                path: path.into_iter().map(str::to_owned).collect(),
+            };
+            assert_eq!(legacy_source_binding(&slot), published);
+        }
+    }
+
+    #[test]
     fn named_content_slots_follow_schema_references_without_application_data() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&root, "draft").unwrap();
@@ -268,10 +293,7 @@ mod tests {
             (
                 "ContextCompactBeforeEvent",
                 "context.compact.before",
-                vec![
-                    ("items", vec!["items", "*"]),
-                    ("instructions", vec!["instructions"]),
-                ],
+                vec![("itemsParts", vec!["items", "*", "parts", "*"])],
             ),
             (
                 "ToolAfterEvent",
@@ -279,7 +301,7 @@ mod tests {
                 vec![
                     ("fileChangesAfter", vec!["fileChanges", "*", "after"]),
                     ("fileChangesBefore", vec!["fileChanges", "*", "before"]),
-                    ("items", vec!["items", "*"]),
+                    ("itemsParts", vec!["items", "*", "parts", "*"]),
                 ],
             ),
         ] {

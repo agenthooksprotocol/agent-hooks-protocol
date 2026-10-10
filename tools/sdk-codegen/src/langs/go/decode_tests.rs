@@ -287,21 +287,17 @@ fn schema_compositions_keep_original_descriptors_and_typed_fields() {
             "{name} is not an object model"
         );
     }
-    let visible = generator.unions.get("ModelVisibleItem").unwrap();
-    for (_, arm_type) in visible {
-        let fields = &generator.objects[arm_type];
-        assert!(fields.iter().any(|field| field.wire_name == "role"
-            && field.required
-            && field.field_type == "string"));
-    }
-    assert!(matches!(
-        generator.decoder_shapes["ModelVisibleItem"],
-        Shape::Intersection { .. }
-    ));
-    assert!(matches!(
-        generator.union_descriptors["ModelVisibleItem"],
-        Shape::Union { .. }
-    ));
+    let visible = &generator.objects["ModelVisibleItem"];
+    assert!(
+        visible
+            .iter()
+            .any(|field| field.wire_name == "role" && field.required)
+    );
+    assert!(
+        visible
+            .iter()
+            .any(|field| field.wire_name == "parts" && field.required)
+    );
     // Raw storage is reserved for true unconstrained JSON, null/never shapes,
     // explicit unknown fields/variants, and arrays of such values. No composed
     // schema property in the current draft may silently fall back to raw JSON.

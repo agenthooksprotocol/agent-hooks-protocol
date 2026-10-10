@@ -2893,7 +2893,7 @@
           ]
         },
         "instructions": {
-          "$ref": "content-item.schema.json",
+          "$ref": "content-item.schema.json#/$defs/textParts",
           "description": "Compaction input, modifiable only at the before boundary when advertised; return(summary) skips generation, not after-boundary controls."
         },
         "tokenCounts": {
@@ -3028,7 +3028,7 @@
           "const": "context.compact.after"
         },
         "summary": {
-          "$ref": "content-item.schema.json#/$defs/modelVisibleItem",
+          "$ref": "content-item.schema.json#/$defs/textParts",
           "description": "Candidate summary; after-boundary modify(summary) affects subsequent interceptors and downstream context use, not an already installed or consumed result."
         },
         "removed": {

@@ -34,3 +34,6 @@ const incoming = sdk.parseInterceptRequest({jsonrpc:'2.0',id:0,method:'hooks/int
 assert.equal(incoming.ok, true, JSON.stringify(incoming.diagnostics));
 assert.equal(sdk.supports(incoming.value.params.capabilities, sdk.effectNames.deny), true);
 assert.equal(sdk.supports(incoming.value.params.capabilities, 'vendor.custom'), true);
+
+assert.equal(sdk.contentSlots['context.compact.before'].itemsParts, undefined);
+assert.equal(sdk.contentSlots['context.compact.before'].instructions, undefined);

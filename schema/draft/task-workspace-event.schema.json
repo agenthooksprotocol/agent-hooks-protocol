@@ -666,10 +666,12 @@
                 "type": "boolean"
               },
               "before": {
-                "$ref": "content-reference.schema.json"
+                "$ref": "content-item.schema.json",
+                "description": "Selection-aware file snapshot: inline ordinary text or an immutable non-text, non-JSON media attachment."
               },
               "after": {
-                "$ref": "content-reference.schema.json"
+                "$ref": "content-item.schema.json",
+                "description": "Selection-aware file snapshot: inline ordinary text or an immutable non-text, non-JSON media attachment."
               }
             },
             "additionalProperties": false

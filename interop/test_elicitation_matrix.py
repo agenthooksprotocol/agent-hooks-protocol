@@ -18,7 +18,7 @@ def guard_cases():
         if granted:
             target['params']['capabilities']['effects']=[effect['type']]
             if effect['type']=='modify':target['params']['capabilities']['modify']={'content':{'replace':domain,'merge':not domain}}
-        rows.append({'request':request,'result':result,'uploads':[{'ref':rr['ref'],'bytes':encode(rb)},{'ref':sr['ref'],'bytes':encode(sb)}],'effect':effect})
+        rows.append({'request':request,'result':result,'uploads':[],'effect':effect})
         wanted.append(accept)
     for effect in ({'type':'return','value':fixture['result']},{'type':'deny','reason':'Policy'},{'type':'modify','target':'content','operation':'replace','value':fixture['result']['content']}):
         add(effect,True,True);add(effect,False,False)
@@ -58,6 +58,23 @@ class ElicitationTests(unittest.TestCase):
         self.assertEqual(rows[-1]['request']['params']['capabilities']['effects'], [])
         self.assertEqual(rows[-1]['result']['params']['capabilities']['effects'], ['return'])
 
+    def test_selected_mcp_payloads_are_inline_text_without_uploads(self):
+        row=cases()[0]
+        request,result=envelopes('inline',row['request'],row['result'])
+        for (message,_,raw),stage,payload in ((request,'request',row['request']),
+                                             (result,'result',row['result'])):
+            item=message['params']['event']['elicitation'][stage]
+            self.assertEqual((item['kind'],item['mediaType']),('text','text/plain'))
+            self.assertEqual(item['text'].encode('utf-8'),raw)
+            self.assertJSONEqual(json.loads(item['text']),payload)
+            self.assertNotIn('body',item)
+        steps,_,_=plan_cases([row])
+        # The final three uploads test independent byte-attachment transport
+        # authorization; neither MCP event depends on them.
+        self.assertEqual([step['path'] for step in steps[:-3]],
+                         ['/hooks/intercept','/hooks/intercept'])
+        for fixture in atomic_cases()[0]:self.assertEqual(fixture['uploads'],[])
+
     def test_atomic_positive_cases_explicitly_grant_the_selected_mode(self):
         rows, expected = atomic_cases()
         for row, answer in zip(rows, expected):
@@ -80,7 +97,8 @@ class ElicitationTests(unittest.TestCase):
             self.assertNotIn('form', caps.get('elicitation', {}))
             self.assertEqual(caps['effects'], [row['effects'][0]['type']])
             self.assertEqual(boundary['params']['event']['elicitation']['mode'], 'form')
-            self.assertTrue(row['uploads'])
+            self.assertEqual(row['uploads'], [])
+            self.assertIn('text', boundary['params']['event']['elicitation']['request' if row['result'] is None else 'result'])
             if row['result'] is not None:
                 self.assertIn('form', row['request']['params']['capabilities']['elicitation'])
                 self.assertTrue(caps['modify']['content']['replace'])
@@ -350,7 +368,7 @@ class ElicitationTests(unittest.TestCase):
                 if mutation=='wrong-source':event['source']='urn:unrelated:source'
                 if mutation=='wrong-session':event['session']['id']='unrelated'
                 if mutation=='missing-session':event.pop('session')
-                rows.append({'request':request,'result':result,'uploads':[] if selected!='body' else [{'ref':rr['ref'],'bytes':encode(rb)},{'ref':sr['ref'],'bytes':encode(sb)}]})
+                rows.append({'request':request,'result':result,'uploads':[]})
                 applied=copy.deepcopy(rows[-1]);applied['op']='apply'
                 applied['result']['params']['capabilities']={'effects':['modify'],'modify':{'content':{'replace':True,'merge':False}}}
                 applied['effects']=[{'type':'modify','target':'content','operation':'replace','value':{'answer':'must not apply'}}]
@@ -374,6 +392,7 @@ class ElicitationTests(unittest.TestCase):
                 meta=json.loads(raw)['params']['event']['elicitation']
                 for stage in ('request','result'):
                     self.assertNotIn('body',meta.get(stage,{}))
+                    self.assertNotIn('text',meta.get(stage,{}))
             self.assertTrue(all(receipt['bytes']=='' for receipt in receipts))
             self.assertNotIn('SECRET-SELECTED',json.dumps(receipts))
 
@@ -385,6 +404,6 @@ class ElicitationTests(unittest.TestCase):
 
     def test_cases_cover_required_bindings(self):
         names={c['id'] for c in cases()}
-        self.assertLessEqual({'form-accept-selected-complete-bytes','url-accept-not-completion','form-decline','form-cancel','url-decline','url-cancel','request-not-preuploaded','request-digest-mismatch','bad-action','url-content-forbidden','upstream-default-annotations-preserved'},names)
+        self.assertLessEqual({'form-accept-selected-complete-bytes','url-accept-not-completion','form-decline','form-cancel','url-decline','url-cancel','request-missing-inline-text','request-invalid-json-text','bad-action','url-content-forbidden','upstream-default-annotations-preserved'},names)
 
 if __name__=='__main__':unittest.main()

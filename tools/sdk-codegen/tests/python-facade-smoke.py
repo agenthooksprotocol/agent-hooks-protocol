@@ -147,8 +147,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             # path; adding types must not silently tighten that boundary.
             assert any(d["code"] == "unknown_variant" for d in result["diagnostics"])
 
-    visible = models.ModelVisibleItemMetadata(
-        id="item", kind="text", media_type="text/plain", role="user", future="preserved",
+    visible = models.ModelVisibleItem(
+        id="item", role="user", parts=[models.TextBodyPart(id="part", text="inline")], future="preserved",
     )
     compact = models.ExecutionEventContextCompactBefore(
         id="event", source="test", time="2026-01-01T00:00:00Z", trigger="auto", items=[visible],
@@ -159,12 +159,10 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
     del visible["role"]
     assert not wire.parse_execution_event(compact)["ok"]
     visible["role"] = "user"
-    visible["selection"] = "body"  # body selection requires body OR gap evidence.
+    visible["parts"][0]["text"] = 42
     assert not wire.parse_execution_event(compact)["ok"]
-    visible["gap"] = {"reason": "unavailable"}
+    visible["parts"][0]["text"] = "inline"
     assert wire.parse_execution_event(compact)["ok"]
-    visible["body"] = {"ref": "urn:test:content"}
-    assert not wire.parse_execution_event(compact)["ok"]  # mutually exclusive evidence
     assert typing.get_type_hints(models.ExecutionEventTool.__init__)["input"] == dict[str, typing.Any]
 
     assert callable(models.SessionStartEvent.items)
@@ -209,12 +207,12 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             'assert_type(custom.address, str | None)',
             'assert_type(custom.address_form, str | None)',
             'assert_type(custom.transport, str)',
-            'visible = m.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain", role="user")',
+            'visible = m.ModelVisibleItem(id="item", role="user", parts=[])',
             'assert_type(visible.role, str)',
             'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", time="now", trigger="auto", items=[visible])',
             'assert_type(compact.items_[0].role, str)',
-            'm.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain", role=42)  # type: ignore[arg-type]',
-            'm.ModelVisibleItemMetadata(id="item", kind="text", media_type="text/plain")  # type: ignore[call-arg]',
+            'm.ModelVisibleItem(id="item", role=42, parts=[])  # type: ignore[arg-type]',
+            'm.ModelVisibleItem(id="item", parts=[])  # type: ignore[call-arg]',
             'm.ExecutionEventTool(name="read", origin="native", input={"genuinely": ["arbitrary", 42, None]})',
 
         ])
@@ -271,6 +269,221 @@ def check_structural_acceptance(models, wire) -> None:
             raise AssertionError("Non-JSON numeric extension accepted")
 
 
+def check_owned_host_inputs(models, event, wire) -> None:
+    class UnreadSource:
+        def read(self, *args):
+            raise AssertionError("Facade read attachment")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("Facade copied attachment")
+
+    source = UnreadSource()
+    owned = models.OwnedAttachment(source)
+    content = importlib.import_module("facade_contract._models.content")
+    assert content.OwnedAttachment is models.OwnedAttachment
+    parts = [
+        {"kind": "text", "text": "Summarize this"},
+        {"kind": "attachment", "mediaType": "image/png", "body": owned},
+    ]
+    message = {"channel": "chat", "sender": "user", "messages": [
+        {"id": "message", "role": "user", "parts": parts},
+    ]}
+    host = event.UserMessageInboundInput(message=message)
+    key = "user.message.inbound.message_messages_parts[0][1]"
+    assert host.content_sources == {key: source}
+    host.content_sources.clear()
+    assert host.content_sources[key] is source
+    output = host.to_wire()
+    normalized = output["message"]["messages"][0]["parts"]
+    assert normalized[0]["text"] == "Summarize this"
+    assert normalized[0]["mediaType"] == "text/plain"
+    assert all(part["selection"] == "body" and part["synthesized"] is True for part in normalized)
+    assert all(isinstance(part["id"], str) and part["id"] for part in normalized)
+    assert normalized[0]["id"] != normalized[1]["id"]
+    assert normalized[1]["body"] == {"ref": "ahp:owned:pending"}
+    assert normalized[1]["mediaType"] == "image/png"
+    assert parts[1]["body"] is owned and "id" not in parts[1]
+    assert "_content_sources" not in output
+    assert json.loads(json.dumps(output)) == output
+    assert host.to_wire() == output  # IDs and placeholders do not change.
+    output["message"]["messages"][0]["parts"][0]["text"] = "mutated"
+    assert host.to_wire()["message"]["messages"][0]["parts"][0]["text"] == "Summarize this"
+    occurrence = {**host.to_wire(), "type": "user.message.inbound", "id": "event",
+                  "source": "test", "time": "2026-01-01T00:00:00Z"}
+    assert wire.parse_execution_event(occurrence)["ok"]
+    # Wire parsing never accepts host attachment handles or supplies host defaults.
+    assert not wire.parse_content_item(parts[0])["ok"]
+    assert not wire.parse_content_item({"id": "a", "kind": "attachment", "selection": "body",
+                                       "mediaType": "image/png", "body": owned})["ok"]
+
+    # Message IDs receive the same stable identity/provenance defaults as parts.
+    missing_id = {"role": "assistant", "parts": parts, "future": {"retained": True}}
+    synthesized = event.UserMessageInboundInput(message={"messages": [missing_id]})
+    generated_message = synthesized.to_wire()["message"]["messages"][0]
+    assert generated_message["id"] and generated_message["synthesized"] is True
+    assert generated_message["role"] == "assistant" and generated_message["future"] == {"retained": True}
+    assert "id" not in missing_id and missing_id["parts"][1]["body"] is owned
+    assert synthesized.to_wire()["message"]["messages"][0] == generated_message
+    supplied_message = {"id": "provided", "role": "tool", "synthesized": False,
+                        "parts": [], "future": {"preserved": 1}}
+    preserved = event.UserMessageInboundInput(message={"messages": [supplied_message]})
+    assert preserved.to_wire()["message"]["messages"][0] == supplied_message
+    assert supplied_message == {"id": "provided", "role": "tool", "synthesized": False,
+                                "parts": [], "future": {"preserved": 1}}
+
+    def rejected_message(candidate):
+        try:
+            event.UserMessageInboundInput(message={"messages": [candidate]})
+        except ValueError:
+            return
+        raise AssertionError(f"Accepted invalid canonical message: {candidate!r}")
+
+    for candidate in [
+        {"role": "user", "parts": [], "synthesized": False},
+        {"id": "", "role": "user", "parts": []},
+        {"id": 42, "role": "user", "parts": []},
+        {"parts": []}, {"role": "unknown", "parts": []},
+        {"role": "user"}, {"role": "user", "parts": [], "synthesized": "true"},
+        {"role": "user", "parts": [{"kind": "text", "text": "x", "synthesized": False}]},
+        {"role": "user", "parts": [{"kind": "attachment", "mediaType": "image/png",
+                                    "body": owned, "synthesized": False}]},
+    ]:
+        rejected_message(candidate)
+
+    for media in ["", "text/plain", "TEXT/html; charset=utf-8", "application/json",
+                  "application/JSON; charset=utf-8", "application/problem+json",
+                  "application/ld+JSON; charset=utf-8", None, 42]:
+        rejected_message({"role": "user", "parts": [
+            {"kind": "attachment", "mediaType": media, "body": owned}]})
+    for media in ["image/png", "image/png; charset=binary", "application/pdf; name=report.pdf",
+                  "application/json-seq", "application/vnd.example+zip; version=1"]:
+        accepted = event.UserMessageInboundInput(message={"messages": [{"role": "user", "parts": [
+            {"kind": "attachment", "mediaType": media, "body": owned}]}]})
+        assert accepted.to_wire()["message"]["messages"][0]["parts"][0]["mediaType"] == media
+        assert accepted.to_wire() == accepted.to_wire()
+        assert accepted.content_sources == {key.replace("[1]", "[0]"): source}
+
+    retained = {"id": "part", "kind": "attachment", "selection": "body", "category": "image",
+                "mediaType": "image/png", "synthesized": False, "body": owned, "future": 42}
+    explicit = event.ToolBeforeInput(call_id="call", path="native", input={}, name="test", origin="native", items=[retained])
+    assert explicit.to_wire()["items"][0] == {**retained, "body": {"ref": "ahp:owned:pending"}}
+    assert explicit.content_sources == {"tool.before.items[0]": source}
+    # Arbitrary application input/native dictionaries are not searched or rewritten.
+    opaque = {"parts": parts, "body": owned}
+    untouched = event.ToolBeforeInput(call_id="call", path="native", input=opaque, name="test", origin="native", native=opaque)
+    assert untouched["input"] is opaque and untouched["native"] is opaque
+    assert untouched.content_sources == {}
+    nested = event.SessionStartInput(session={}, trigger="startup", harness={}, permission_mode="example",
+        items=[{"id": "m1", "role": "user", "parts": parts},
+               {"id": "m2", "role": "user", "parts": [retained]}])
+    assert nested.content_sources == {"session.start.items_parts[0][1]": source,
+                                      "session.start.items_parts[1][0]": source}
+
+    # SDK Attachment is registered nominally after runtime class definition.
+    # No optional attachment module exists in this standalone generated package.
+    evaluations = []
+    class Attachment:
+        def __init__(self, supplier):
+            self.supplier = supplier
+
+        def open(self):
+            evaluations.append("open")
+            raise AssertionError("Host conversion opened an attachment")
+
+        def close(self):
+            evaluations.append("close")
+            raise AssertionError("Host conversion closed an attachment")
+
+        def __deepcopy__(self, memo):
+            raise AssertionError("Host conversion copied an attachment owner")
+
+    def lazy_bytes():
+        evaluations.append("supplier")
+        raise AssertionError("Host conversion evaluated a lazy supplier")
+
+    eager_attachment = Attachment(b"image bytes")
+    lazy_attachment = Attachment(lazy_bytes)
+    literal = {"kind": "attachment", "id": "direct", "category": "image",
+               "mediaType": "image/png", "body": eager_attachment}
+    try:
+        event.ContextCompactBeforeInput(trigger="manual", items=[{"role": "user", "parts": [literal]}])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Unregistered nominal owner was accepted")
+    models._register_attachment_type(Attachment)
+    models._register_attachment_type(Attachment)
+    assert models._ATTACHMENT_TYPES.count(Attachment) == 1
+    direct = event.ContextCompactBeforeInput(trigger="manual", items=[
+        {"role": "user", "parts": [{"kind": "text", "text": "Summarize this"}, literal]},
+        {"role": "assistant", "parts": [{"kind": "attachment", "mediaType": "image/png", "body": lazy_attachment}]},
+    ])
+    assert direct.content_sources == {
+        "context.compact.before.items_parts[0][1]": eager_attachment,
+        "context.compact.before.items_parts[1][0]": lazy_attachment,
+    }
+    direct_wire = direct.to_wire()
+    assert direct.to_wire() == direct_wire
+    projected = direct_wire["items"][0]["parts"][1]
+    assert projected["id"] == "direct" and projected["category"] == "image"
+    assert projected["mediaType"] == "image/png"
+    assert projected["body"] == {"ref": "ahp:owned:pending"}
+    assert json.loads(json.dumps(direct_wire)) == direct_wire
+    assert direct_wire["items"][0]["parts"][0]["text"] == "Summarize this"
+    assert not wire.parse_content_item(literal)["ok"]
+    assert evaluations == []
+
+    class DuckAttachment:
+        @property
+        def source(self):
+            raise AssertionError("Structural attachment detection inspected an opaque source")
+
+        def open(self):
+            raise AssertionError("Structural attachment detection opened an opaque source")
+
+    for invalid in [
+        {"kind": "attachment", "mediaType": "image/png", "body": DuckAttachment()},
+        {"kind": "text", "text": "inline", "body": eager_attachment},
+        {"kind": "attachment", "mediaType": "image/png", "gap": lazy_attachment},
+        {"kind": "attachment", "mediaType": "image/png", "body": lazy_attachment, "category": eager_attachment},
+    ]:
+        try:
+            event.ContextCompactBeforeInput(trigger="manual", items=[{"role": "user", "parts": [invalid]}])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("Invalid direct owner placement accepted")
+    opaque_attachment = {"parts": [literal], "body": eager_attachment}
+    raw_input = event.ToolBeforeInput(call_id="c", path="native", name="run", origin="native",
+                                     input=opaque_attachment, native=opaque_attachment)
+    assert raw_input["input"] is opaque_attachment and raw_input["native"] is opaque_attachment
+    assert raw_input.content_sources == {}
+    for invalid_type in [object, dict, list, bytes, int, None, eager_attachment]:
+        try:
+            models._register_attachment_type(invalid_type)
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("Catch-all attachment registration accepted")
+    assert evaluations == []
+
+    malformed = [None, {}, "parts", [None], [42],
+        [{"kind": "text", "text": 42}],
+        [{"kind": "attachment", "mediaType": "image/png", "body": source}],
+        [{"kind": "text", "body": owned}],
+        [{"kind": "attachment", "selection": "gap", "mediaType": "image/png", "body": owned}],
+        [{"kind": "attachment", "mediaType": "image/png", "gap": owned}],
+        [{"kind": "attachment", "body": owned}],
+    ]
+    for invalid in malformed:
+        try:
+            event.UserMessageInboundInput(message={"messages": [{"role": "user", "parts": invalid}]})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"Accepted malformed owned content: {invalid!r}")
+
+
 def main() -> None:
     directory = Path(sys.argv[1]).resolve()
     audit_public_names(directory)
@@ -287,6 +500,7 @@ def main() -> None:
     check_structural_acceptance(models, wire)
     check_structured_consumers(directory, models, wire)
     event = importlib.import_module("facade_contract.event")
+    check_owned_host_inputs(models, event, wire)
     effect = importlib.import_module("facade_contract.effect")
     capability = importlib.import_module("facade_contract.capability")
     assert not hasattr(models.InterceptDenyResponseResult, "supports")
@@ -390,19 +604,17 @@ def main() -> None:
             raise AssertionError("Source entered wire copy")
 
     source = UnreadSource()
-    bound = session_input.bind_items_source(source, index=0)
-    assert session_input.content_sources == {}
-    assert bound.content_sources == {"session.start.items[0]": source}
-    assert bound.to_wire() == session_input.to_wire()
-    assert json.dumps(bound.to_wire()) == json.dumps(session_input.to_wire())
-    bound.content_sources.clear()
-    assert bound.content_sources["session.start.items[0]"] is source
-    assert boundaries.CONTENT_SOURCE_SLOTS["session.start.items"] == ("session.start", ("items", "*"))
+    assert not hasattr(session_input, "bind_items_parts_source")
+    assert boundaries.CONTENT_SOURCE_SLOTS["session.start.items_parts"] == ("session.start", ("items", "*", "parts", "*"))
     assert boundaries.CONTENT_SOURCE_SLOTS["tool.after.file_changes_after"] == ("tool.after", ("fileChanges", "*", "after"))
-    assert boundaries.CONTENT_SOURCE_SLOTS["context.compact.before.instructions"] == ("context.compact.before", ("instructions",))
+    assert "context.compact.before.instructions" not in boundaries.CONTENT_SOURCE_SLOTS
+    before_input = event.ToolBeforeInput(call_id="call", name="run", origin="native", path="/tool", input={})
+    bound = before_input.bind_items_source(source, index=2)
+    assert bound.content_sources == {"tool.before.items[2]": source}
+    assert bound.to_wire() == before_input.to_wire()
     for index in [-1, True, "0"]:
         try:
-            session_input.bind_items_source(source, index=index)
+            before_input.bind_items_source(source, index=index)
         except ValueError:
             pass
         else:

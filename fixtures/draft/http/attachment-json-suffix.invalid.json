@@ -1,0 +1,34 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "turn.start",
+      "turn": {
+        "id": "turn1"
+      },
+      "trigger": "user",
+      "items": [
+        {
+          "id": "message1",
+          "role": "user",
+          "parts": [
+            {
+              "id": "message1-text",
+              "kind": "attachment",
+              "mediaType": "application/problem+json",
+              "selection": "body",
+              "body": {
+                "ref": "upload1"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

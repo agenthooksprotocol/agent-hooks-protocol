@@ -1,0 +1,15 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "parts",
+        "operation": "replace",
+        "value": []
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

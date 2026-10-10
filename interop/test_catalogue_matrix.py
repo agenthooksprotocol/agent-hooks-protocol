@@ -1,6 +1,9 @@
 """Fail-closed shared verifier tests; synthetic evidence is never runtime coverage."""
 from copy import deepcopy
 from unittest import TestCase, main
+import json
+from pathlib import Path
+from observation_wire import ObservationValidator
 from catalogue_matrix import verify
 from generate_catalogue_scenarios import build, validate, EXECUTION, LINEAGE
 from generate_scenarios import CAPS
@@ -35,7 +38,8 @@ class CatalogueVerifierTests(TestCase):
         roles={}
         def walk(value,source):
             if isinstance(value,dict):
-                if all(k in value for k in ('id','kind','mediaType')):
+                if (all(k in value for k in ('id','kind','mediaType')) or
+                    all(k in value for k in ('id','role','parts'))):
                     key=(source,value['id'])
                     self.assertTrue(key not in roles or roles[key]==value.get('role'))
                     roles[key]=value.get('role')
@@ -46,6 +50,36 @@ class CatalogueVerifierTests(TestCase):
             for step in scenario['steps']:
                 if step['op']=='notify':
                     event=step['message']['params']['event'];walk(event,event['source'])
+
+    def test_generated_catalogue_is_reproducible(self):
+        artifact=Path(__file__).with_name('catalogue-scenarios.json')
+        self.assertEqual(artifact.read_text(),json.dumps(validate(build()),indent=2)+'\n')
+
+    def test_inline_message_parts_preserve_order_and_text(self):
+        row=next(r for r in self.scenarios if r['id']=='canonical-inline-messages')
+        items=row['steps'][0]['message']['params']['event']['items']
+        self.assertEqual([m['role'] for m in items],['user','assistant'])
+        self.assertEqual([p['kind'] for p in items[0]['parts']],['text','attachment','text'])
+        self.assertEqual(items[0]['parts'][0]['text'],'First line.\nUnicode: café 🌍')
+        self.assertEqual(items[1]['parts'][0]['category'],'reasoning')
+        self.assertEqual(items[1]['parts'][1]['text'],'')
+        for message in items:
+            self.assertTrue(message['id'].startswith(row['id']+':item:'))
+            for part in message['parts']:
+                self.assertTrue(part['id'].startswith(row['id']+':item:'))
+                if part['kind']=='text':self.assertNotIn('body',part)
+
+    def test_legacy_message_descriptor_and_referenced_text_fail_schema(self):
+        row=next(r for r in self.scenarios if r['id']=='canonical-inline-messages')
+        message=deepcopy(row['steps'][0]['message'])
+        message['params']['event']['items']=[{
+            'id':'legacy','kind':'message','mediaType':'text/plain',
+            'selection':'metadata','role':'user'}]
+        self.assertTrue(ObservationValidator().errors(message))
+        message=deepcopy(row['steps'][0]['message'])
+        part=message['params']['event']['items'][0]['parts'][0]
+        part.pop('text');part['body']={'uri':'https://example.invalid/text'}
+        self.assertTrue(ObservationValidator().errors(message))
 
     def test_valid_evidence(self):self.assertEqual(self.check(),[])
     def test_no_receiver_evidence_cannot_pass(self):self.receipts={'entries':[]};self.assertTrue(self.check())

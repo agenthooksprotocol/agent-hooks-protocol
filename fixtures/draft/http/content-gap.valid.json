@@ -22,12 +22,13 @@
       "items": [
         {
           "id": "item1",
-          "kind": "tool_result",
+          "kind": "text",
           "mediaType": "text/plain",
           "selection": "body",
           "gap": {
             "reason": "receiver unavailable"
-          }
+          },
+          "category": "tool_result"
         }
       ]
     }

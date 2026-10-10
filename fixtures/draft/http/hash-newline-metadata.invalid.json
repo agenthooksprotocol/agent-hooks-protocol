@@ -31,12 +31,19 @@
       "items": [
         {
           "id": "item-synthetic",
-          "synthesized": true,
           "role": "tool",
-          "kind": "tool_result",
-          "mediaType": "text/plain",
-          "selection": "metadata",
-          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+          "parts": [
+            {
+              "id": "item-synthetic-part",
+              "synthesized": true,
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata",
+              "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+              "category": "tool_result"
+            }
+          ],
+          "synthesized": true
         }
       ],
       "synthesized": true,
