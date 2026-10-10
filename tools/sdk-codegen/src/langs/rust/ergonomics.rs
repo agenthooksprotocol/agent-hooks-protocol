@@ -77,10 +77,10 @@ fn host_identity() -> String {
 }
 fn host_error(message: &str) -> serde_json::Error { <serde_json::Error as serde::ser::Error>::custom(message) }
 fn validate_host_identity(value: &serde_json::Value) -> Result<(), serde_json::Error> {
-    if !value.get("id").and_then(serde_json::Value::as_str).is_some_and(|id| !id.is_empty()) {
+    if value.get("id").and_then(serde_json::Value::as_str).is_none_or(|id| id.is_empty()) {
         return Err(host_error("host identity must be nonempty"));
     }
-    if value.get("category").is_some_and(|category| !category.as_str().is_some_and(|s| !s.is_empty())) {
+    if value.get("category").is_some_and(|category| category.as_str().is_none_or(|s| s.is_empty())) {
         return Err(host_error("host category must be nonempty"));
     }
     Ok(())

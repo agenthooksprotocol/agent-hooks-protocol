@@ -2332,6 +2332,21 @@ mod tests {
     }
 
     #[test]
+    fn host_identity_validation_uses_nonminimal_bool_free_option_checks() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let source = emit(&ir).unwrap();
+        assert!(source.contains(
+            "value.get(\"id\").and_then(serde_json::Value::as_str).is_none_or(|id| id.is_empty())"
+        ));
+        assert!(source.contains("category.as_str().is_none_or(|s| s.is_empty())"));
+        assert!(
+            !source.contains("!value.get(\"id\").and_then(serde_json::Value::as_str).is_some_and")
+        );
+        assert!(!source.contains("!category.as_str().is_some_and"));
+    }
+
+    #[test]
     fn boundary_inventory_matches_canonical_schema_and_capabilities() {
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&repository, "draft").unwrap();
