@@ -24,7 +24,7 @@ class ContentBindingTests(TestCase):
             'protocolVersion':'draft','event':event}}
 
     def attach(self, body):
-        item=selected_item({'id':'binary','kind':'text','mediaType':'application/octet-stream'},
+        item=selected_item({'id':'binary','kind':'attachment','mediaType':'application/octet-stream'},
                            {'default':'body'},body,'ref')
         self.message['params']['event']['items']=[item]
         return item['body']
@@ -41,6 +41,33 @@ class ContentBindingTests(TestCase):
     def headers(self, body=b''):
         return [('Content-Type','application/octet-stream'),('Content-Length',str(len(body))),
                 ('Authorization','Bearer upload'),('AHP-Content-SHA256',receipt('ref',body)['sha256'])]
+
+    def test_inline_text_delivers_without_upload(self):
+        text = 'café ☕'
+        item = selected_item({'id':'inline','kind':'text','mediaType':'text/plain'},
+                             {'default':'body'},text.encode('utf-8'),'unused')
+        self.assertEqual(item['text'], text)
+        self.assertNotIn('body', item)
+        self.message['params']['event']['items'] = [item]
+        deliver(self.message,'body',self.config,{},self.endpoint+'/observe','event')
+        self.assertEqual(self.receiver.contents, {})
+        self.assertEqual([entry[0] for entry in self.receiver.trace], ['event'])
+        self.assertEqual(self.receiver.events[0]['params']['event']['items'], [item])
+
+    def test_inline_text_projection_and_gaps_remove_text(self):
+        descriptor={'id':'inline','kind':'text','mediaType':'text/plain','text':'secret'}
+        for choice,raw,authorized in [('metadata',b'secret',True),('omit',b'secret',True),
+                                      ('body',None,True),('body',b'secret',False)]:
+            with self.subTest(choice=choice,raw=raw,authorized=authorized):
+                item=selected_item(descriptor,{'default':choice},raw,'unused',authorized)
+                self.assertNotIn('text',item)
+                self.assertNotIn('body',item)
+                if choice=='body':self.assertIn('gap',item)
+
+    def test_inline_text_rejects_invalid_utf8(self):
+        with self.assertRaises(UnicodeDecodeError):
+            selected_item({'id':'inline','kind':'text','mediaType':'text/plain'},
+                          {'default':'body'},b'\xff','unused')
 
     def test_binary_upload_confirmed_before_actual_event(self):
         body=bytes(range(256))+b'\x00\xff\xfe'; self.attach(body)
@@ -184,7 +211,7 @@ class ContentBindingTests(TestCase):
         self.assertEqual(self.receiver.contents,{})
 
     def test_selected_body_hides_metadata_but_metadata_and_gaps_preserve_it(self):
-        descriptor={'id':'item','kind':'text','mediaType':'text/plain',
+        descriptor={'id':'item','kind':'attachment','mediaType':'application/octet-stream',
                     'size':6,'sha256':receipt('ref',b'secret')['sha256']}
         body=selected_item(descriptor,{'default':'body'},b'secret','ref')
         self.assertEqual(body['body'],{'ref':'ref'})
@@ -209,7 +236,7 @@ class ContentBindingTests(TestCase):
         self.assertEqual(self.receiver.events,[])
 
     def test_projection_removes_bodies_before_delivery(self):
-        descriptor={'id':'reasoning','kind':'reasoning','mediaType':'text/plain','category':'text'}
+        descriptor={'id':'reasoning','kind':'text','mediaType':'text/plain','category':'reasoning'}
         for choice in ('metadata','omit'):
             item=selected_item(descriptor,{'default':'body','reasoning':choice},b'secret','ref')
             self.assertNotIn('body',item); self.assertEqual(item['selection'],choice)

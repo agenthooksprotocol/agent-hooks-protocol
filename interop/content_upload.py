@@ -103,7 +103,7 @@ def selected_item(descriptor, selection, body, ref, authorized=True):
     item = deepcopy(descriptor)
     choice = selection.get(category(item), selection['default'])
     item['selection'] = choice
-    for field in ('body', 'gap'):
+    for field in ('body', 'text', 'gap'):
         item.pop(field, None)
     if choice == 'body':
         if not authorized:
@@ -111,7 +111,10 @@ def selected_item(descriptor, selection, body, ref, authorized=True):
         elif body is None:
             item['gap'] = {'reason': 'source_unavailable'}
         else:
-            item['body'] = reference(ref)
+            if item['kind'] == 'text':
+                item['text'] = body.decode('utf-8')
+            else:
+                item['body'] = reference(ref)
             item.pop('size', None)
             item.pop('sha256', None)
     validate('content-item', item)

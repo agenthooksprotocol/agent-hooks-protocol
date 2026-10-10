@@ -2,7 +2,7 @@
 """Real four-SDK HTTP upload/intercept matrix. Offline, no LLM or semantic controls.
 
 Each SDK client transmits bytes over loopback HTTP to each SDK receiver. Receivers
-validate canonical envelopes and MCP uploaded bodies themselves. Only this oracle
+validate canonical envelopes and inline MCP text themselves. Only this oracle
 knows expected results. No proxy or central semantic evaluator is on the wire.
 """
 import argparse, base64, copy, hashlib, json, os, secrets, selectors, subprocess, tempfile
@@ -53,8 +53,8 @@ def envelopes(name,request,result,selection="body"):
     mode=request.get('mode','form'); mode=mode if mode in ('form','url') else 'form'
     def make(stage,payload):
         raw=bytes_json(payload);ref=reference(name+':'+stage,raw)
-        item={'id':name+':'+stage+':item','kind':'elicitation.'+stage,'mediaType':'application/json','selection':selection}
-        if selection=='body':item['body']={'ref':ref['ref']}
+        item={'id':name+':'+stage+':item','kind':'text','mediaType':'text/plain','selection':selection}
+        if selection=='body':item['text']=raw.decode('utf-8')
         meta={'server':'asserted-not-authenticated','mode':mode}
         if selection!='omit':meta[stage]=item
         if stage=='result':meta['action']=payload.get('action','accept') if payload.get('action') in ('accept','decline','cancel') else 'accept'
@@ -94,8 +94,8 @@ def cases():
     add('mode-metadata-mismatch',form,accepted,request_status=400,mutation='request-mode')
     add('action-metadata-mismatch',form,accepted,result_status=400,mutation='result-action')
     add('server-metadata-mismatch',form,accepted,result_status=400,mutation='result-server')
-    add('request-not-preuploaded',form,accepted,request_status=400,mutation='missing-upload')
-    add('request-digest-mismatch',form,accepted,request_status=400,mutation='bad-digest')
+    add('request-missing-inline-text',form,accepted,request_status=400,mutation='missing-text')
+    add('request-invalid-json-text',form,accepted,request_status=400,mutation='invalid-json')
     for mode,req in [('form',form),('url',url)]:
         for selected in ('metadata','omit'):
             private_req=copy.deepcopy(req);private_req['message']='SECRET-SELECTED-ELICITATION-PROMPT'
@@ -133,7 +133,7 @@ def atomic_cases():
         if mode_grants:boundary['params']['capabilities']['elicitation']={'form':{}}
         if 'modify' in grants:boundary['params']['capabilities']['modify']={'content':operations or {'replace':True,'merge':True}}
         rows.append({'op':'apply','request':request,'result':None if phase=='request' else result,
-                     'uploads':[] if selection!='body' else [{'ref':rr['ref'],'bytes':encode(rb)},{'ref':sr['ref'],'bytes':encode(sb)}],'effects':effects})
+                     'uploads':[],'effects':effects})
         expected.append(answer)
     supplied={'action':'accept','content':{'answer':'returned by hook','tags':['b']},'_meta':{'preserved':True}}
     add('before-return','request',[{'type':'return','value':supplied}],['return'],supplied)
@@ -169,7 +169,7 @@ def atomic_cases():
         (request,rr,rb),_=envelopes('atomic-'+name,url['request'],url['result'])
         request['params']['capabilities']['effects']=[effect['type']]
         request['params']['capabilities']['elicitation']={'url':{}}
-        rows.append({'op':'apply','request':request,'result':None,'uploads':[{'ref':rr['ref'],'bytes':encode(rb)}],'effects':[effect]})
+        rows.append({'op':'apply','request':request,'result':None,'uploads':[],'effects':[effect]})
         expected.append(answer)
     return rows,expected
 
@@ -189,12 +189,11 @@ def plan_cases(rows):
         if mutation=='wrong-session':result_event['session']['id']='unrelated-session'
         if mutation=='missing-session':result_event.pop('session')
         selected=row['selection']
-        if selected=='body' and mutation not in ('missing-upload','request-gap'):steps.append(upload(rref,rraw));statuses.append(201)
-        if selected=='body' and mutation!='result-gap':steps.append(upload(sref,sraw));statuses.append(201)
         for stage,envelope in [('request',request),('result',result)]:
             if mutation==stage+'-gap':
-                item=envelope['params']['event']['elicitation'][stage];item.pop('body');item['gap']={'reason':'Unavailable selected body'}
-        if mutation=='bad-digest':request['params']['event']['elicitation']['request']['body']['sha256']='0'*64
+                item=envelope['params']['event']['elicitation'][stage];item.pop('text');item['gap']={'reason':'Unavailable selected body'}
+        if mutation=='missing-text':request['params']['event']['elicitation']['request'].pop('text')
+        if mutation=='invalid-json':request['params']['event']['elicitation']['request']['text']='{invalid JSON'
         steps.append(intercept(request));statuses.append(row['requestStatus'])
         if row['requestStatus']==200:
             wanted.append({'message':request,'bytes':encode(rraw) if selected=='body' else '', 'summary':{'request':row['request']} if selected=='body' else {'selection':selected}})
@@ -308,8 +307,6 @@ def concurrent_plan():
     second_result={'action':'accept','content':{'count':7}}
     pairs=[envelopes('concurrent-a',first['request'],first['result']),envelopes('concurrent-b',second_request,second_result)]
     steps=[];statuses=[];wanted=[]
-    for pair in pairs:
-        for _,ref,raw in pair:steps.append(upload(ref,raw));statuses.append(201)
     for request, _ in pairs:
         message,_,raw=request;message['params']['event']['session']['id']='shared-concurrent-session'
         steps.append(intercept(message));statuses.append(200)
@@ -351,7 +348,7 @@ def run_pair(pair):
             summary=actual['summary']
             if not json_equal(summary['result'], expected) or summary['externalCompletion'] is not False:raise AssertionError('atomic effect application mismatch')
             if summary['provenance']!={'kind':'hook','authenticatedSource':'authenticated:'+sender,'effects':[e['type'] for e in fixture['effects']]}:raise AssertionError('atomic provenance mismatch')
-            # Upload and deliver the SDK's actual staged output, not an expected
+            # Serialize and deliver the SDK's actual staged output, not an expected
             # fixture substituted into a receiver. Expected values were checked
             # independently above. Both receiver and sender remain ordinary SDKs.
             wire_rows.append({'id':'published:'+fixture['request']['id'],'selection':'body','request':summary['request'],'result':summary['result'],'requestStatus':200,'resultStatus':200,'mutation':None})
@@ -364,12 +361,8 @@ def run_pair(pair):
         if bad.returncode or json.loads(bad.stdout)[0]['status']!=401:raise AssertionError('unauthenticated access accepted')
         results,refs,steps=transmit_steps(cmd[sender],endpoint,token,steps+[{'path':'/receipts','bytes':''}],statuses+[200],env,upload_token,batch_size=8)
         wanted=replace_refs(wanted,refs)
-        # Each accepted message uses its own confirmed stream upload references.
-        # The remaining receipt fields (bytes, semantics, provenance) stay exact.
-        delivered={json.loads(base64.b64decode(step['bytes']))['id']:json.loads(base64.b64decode(step['bytes']))
-                   for step,result in zip(steps,results) if step['path']=='/hooks/intercept' and result['status']==200}
-        for receipt in wanted:
-            receipt['message']=delivered[receipt['message']['id']]
+        # Inline MCP text has no receiver-assigned references: compare the
+        # complete captured message against the independently authored envelope.
         receipts=json.loads(results[-1]['body'])
         for receipt in wanted:
             if 'provenance' in receipt['summary']:receipt['summary']['provenance']['authenticatedSource']='authenticated:'+sender

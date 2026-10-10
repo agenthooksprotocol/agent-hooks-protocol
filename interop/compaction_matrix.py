@@ -45,12 +45,38 @@ def commands(languages=LANGUAGES):
             'rust': [str(ROOT/'rust-sdk/target/debug/compaction')]}
 
 
+def text_parts(value, identity='fixture:text'):
+    return [{'id': identity, 'kind': 'text', 'mediaType': 'text/plain',
+             'selection': 'body', 'text': value}]
+
+
+def inline_text(parts):
+    """Read ordered selected text, rejecting legacy references and scalar values."""
+    if not isinstance(parts, list): raise AssertionError('expected inline text-part array')
+    for part in parts:
+        if not isinstance(part, dict): raise AssertionError('invalid text part')
+        if not (isinstance(part.get('id'), str) and part['id']): raise AssertionError('invalid part identity')
+        if not (part.get('kind') == 'text' and part.get('mediaType') == 'text/plain'
+                and part.get('selection') == 'body' and isinstance(part.get('text'), str)):
+            raise AssertionError('expected selected inline text')
+        if any(key in part for key in ('body', 'ref', 'size', 'sha256')):
+            raise AssertionError('inline text must not use attachment metadata')
+    return ''.join(part['text'] for part in parts)
+
+
+def canonical_effect(effect):
+    effect = dict(effect)
+    if effect.get('type') in ('modify', 'return') and isinstance(effect.get('value'), str):
+        effect['value'] = text_parts(effect['value'], effect.get('target', 'logical-summary'))
+    return effect
+
+
 def modify(target, value, operation='replace'):
-    return {'type': 'modify', 'target': target, 'operation': operation, 'value': value}
+    return {'type': 'modify', 'target': target, 'operation': operation, 'value': text_parts(value, target) if isinstance(value, str) else value}
 
 
 def hook(supplier, *effects, policy='fail-closed', throws=False):
-    return {'supplier': supplier, 'effects': list(effects), 'failurePolicy': policy, 'throw': throws}
+    return {'supplier': supplier, 'effects': [canonical_effect(e) for e in effects], 'failurePolicy': policy, 'throw': throws}
 
 
 def cases():
@@ -58,7 +84,7 @@ def cases():
     def add(name, before=(), after=(), *, instructions='base', final='summary:base', generated=True,
             applied=True, failures=0, messages=(), observe=False, supplier=None, seen=None, absent=()):
         rows.append({'request': {'jsonrpc': '2.0', 'id': name, 'method': 'compaction/run', 'params': {
-            'instructions': 'base', 'itemId': 'logical-summary', 'before': list(before), 'after': list(after), 'observeOnly': observe}},
+            'instructions': text_parts('base', 'instructions'), 'itemId': 'logical-summary', 'before': list(before), 'after': list(after), 'observeOnly': observe}},
             'expected': {'instructions': instructions, 'final': final, 'generated': generated, 'applied': applied,
                          'failures': failures, 'messages': list(messages), 'supplier': supplier, 'seen': seen, 'absent': absent}})
     add('unchanged')
@@ -101,16 +127,15 @@ def check(row, response):
     if not (response.get('jsonrpc') == '2.0' and response.get('id') == request['id']): raise AssertionError('correlation')
     if not ('error' not in response): raise AssertionError(response.get('error'))
     r = response['result']
-    for key in ('instructions','generated','applied','messages'):
+    if r.get('bodies', {}): raise AssertionError('inline text fabricated attachment bodies')
+    if inline_text(r['instructions']) != expected['instructions']: raise AssertionError('instructions')
+    for key in ('generated','applied','messages'):
         if not (json_equal(r[key], expected[key])): raise AssertionError((key,r[key],expected[key]))
     if not (len(r['failures']) == expected['failures']): raise AssertionError('failure count')
     def body(snapshot):
         item = snapshot['summary']
         if item is None: return None
-        if not (item['id'] == 'logical-summary'): raise AssertionError('logical identity changed')
-        value = snapshot['bodies'][item['ref']]
-        if not isinstance(item['ref'], str) or not item['ref']: raise AssertionError('invalid opaque ref')
-        return value
+        return inline_text(item)
     if not (body(r) == expected['final']): raise AssertionError(('final',body(r),expected['final']))
     if expected['supplier'] is not None:
         if not (r['provenance'] == {'kind':'supplied','supplier':expected['supplier']}): raise AssertionError('supplier erased')
@@ -119,19 +144,18 @@ def check(row, response):
     else:
         if not (r['provenance'] is None): raise AssertionError('fabricated execution')
     for forbidden in expected['absent']:
-        if not (forbidden not in r['bodies'].values()): raise AssertionError('staged bytes leaked')
+        if not (forbidden not in [inline_text(r['instructions']), body(r)]): raise AssertionError('staged bytes leaked')
     observed=[]
     for snapshot in r['seen']:
-        observed.append((snapshot['instructions'],body(snapshot)))
+        if snapshot.get('bodies', {}): raise AssertionError('inline snapshot fabricated attachment bodies')
+        observed.append((inline_text(snapshot['instructions']),body(snapshot)))
         caps=snapshot['capabilities']
         if request['params']['observeOnly'] and snapshot['boundary']=='after':
             if not (caps == {'effects':[],'modify':{}}): raise AssertionError('observation advertises control')
         else:
+            # Merge is opt-in per host; both grants must remain JSON booleans.
             target='instructions' if snapshot['boundary']=='before' else 'summary'
-            if not (json_equal(caps['modify'], {target:{'replace':True,'merge':False}})): raise AssertionError('wrong boundary target advertisement')
-        # Earlier immutable references retain their exact bytes after settlement.
-        for ref,value in snapshot['bodies'].items():
-            if not (r['bodies'][ref]==value): raise AssertionError('prior content reference mutated')
+            if not (isinstance(caps['modify'].get(target, {}).get('merge'), bool) and json_equal(caps['modify'], {target:{'replace':True,'merge':caps['modify'][target]['merge']}})): raise AssertionError('wrong boundary target advertisement')
     if expected['seen'] is not None:
         if not (observed==expected['seen']): raise AssertionError(('serial hook snapshots',observed,expected['seen']))
 

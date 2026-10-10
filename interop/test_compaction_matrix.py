@@ -3,15 +3,14 @@ import copy, json, subprocess, sys, unittest
 from unittest.mock import patch
 import compaction_matrix
 from concurrent.futures import ThreadPoolExecutor
-from compaction_matrix import LANGUAGES, cases, run_pair, check, json_equal
+from compaction_matrix import LANGUAGES, cases, run_pair, check, json_equal, text_parts, inline_text
 
 
 class CompactionOracleTests(unittest.TestCase):
     def response(self):
         return {'jsonrpc':'2.0','id':'unchanged','result':{
-            'instructions':'base','generated':True,'applied':True,'messages':[],
-            'failures':[],'summary':{'id':'logical-summary','ref':'urn:ahp:compaction:utf8:'+b'summary:base'.hex()},
-            'bodies':{'urn:ahp:compaction:utf8:'+b'summary:base'.hex():'summary:base'},
+            'instructions':text_parts('base', 'instructions'),'generated':True,'applied':True,'messages':[],
+            'failures':[],'summary':text_parts('summary:base', 'logical-summary'),
             'provenance':{'kind':'generated'},'seen':[]}}
 
     def test_reject_numeric_booleans(self):
@@ -20,16 +19,22 @@ class CompactionOracleTests(unittest.TestCase):
             bad=copy.deepcopy(response);bad['result'][key]=1
             with self.assertRaises(AssertionError):check(cases()[0],bad)
         bad=copy.deepcopy(response)
-        bad['result']['seen']=[{'instructions':'base','summary':None,'bodies':{},
+        bad['result']['seen']=[{'instructions':text_parts('base', 'instructions'),'summary':None,'bodies':{},
             'boundary':'before','capabilities':{'modify':{'instructions':{'replace':1,'merge':0}}}}]
         with self.assertRaises(AssertionError):check(cases()[0],bad)
 
-    def test_opaque_receiver_ref(self):
-        response=self.response();result=response['result']
-        value=result['bodies'][result['summary']['ref']]
-        result['summary']['ref']='opaque-receiver-ref'
-        result['bodies']={'opaque-receiver-ref':value}
+    def test_ordered_inline_summary(self):
+        response=self.response()
+        response['result']['summary']=text_parts('summary:', 'first')+text_parts('base', 'second')
         check(cases()[0],response)
+        response['result']['summary'].reverse()
+        with self.assertRaises(AssertionError):check(cases()[0],response)
+
+    def test_reject_legacy_summary_and_reference_text(self):
+        for summary in ({'id':'logical-summary','ref':'opaque'}, 'summary:base',
+                        [dict(text_parts('summary:base')[0], body={'ref':'opaque'})]):
+            response=self.response();response['result']['summary']=summary
+            with self.assertRaises(AssertionError):check(cases()[0],response)
 
     def test_response_count_rejected(self):
         output=subprocess.CompletedProcess([],0,stdout='[]',stderr='')

@@ -19,7 +19,8 @@ def namespace_items(event,identity):
     identities={}
     def collect(value):
         if isinstance(value,dict):
-            if all(k in value for k in ('id','kind','mediaType')):
+            if (all(k in value for k in ('id','kind','mediaType')) or
+                all(k in value for k in ('id','role','parts'))):
                 identities[value['id']]=identity+':item:'+value['id']
             for child in value.values():collect(child)
         elif isinstance(value,list):
@@ -55,6 +56,24 @@ def build():
                      'expected':{'sent':messages,'registrations':[],
                                  'deliveries':[{'accepted':rejection is None,'errorKind':rejection} for _ in messages]}})
     for kind in EXECUTION+LINEAGE:wire('catalogue:'+kind,[notification(kind,'catalogue:'+kind)],'execution' if kind in EXECUTION else 'lineage')
+    # Exercise real inline bodies and ordered canonical messages, not only
+    # empty item arrays and metadata-only catalogue examples.
+    inline=notification('model.request.before','canonical-inline-messages')
+    inline['params']['event']['items']=[
+        {'id':'input-message','role':'user','parts':[
+            {'id':'input-text','kind':'text','mediaType':'text/plain',
+             'selection':'body','text':'First line.\nUnicode: café 🌍'},
+            {'id':'input-image','kind':'attachment','mediaType':'image/png',
+             'selection':'metadata'},
+            {'id':'input-tail','kind':'text','mediaType':'text/plain',
+             'selection':'body','text':'Last part.'}]},
+        {'id':'reply-message','role':'assistant','parts':[
+            {'id':'reasoning-text','kind':'text','mediaType':'text/plain',
+             'selection':'body','category':'reasoning','text':'Consider the input.'},
+            {'id':'reply-text','kind':'text','mediaType':'text/plain',
+             'selection':'body','text':''}]}]
+    namespace_items(inline['params']['event'],'canonical-inline-messages')
+    wire('canonical-inline-messages',[inline])
     before=notification('task.change.before','task:proposal')
     before['params']['event']['task'].update(operation='update',change={'status':'done'})
     after=notification('task.change.after','task:actual','task:proposal')
