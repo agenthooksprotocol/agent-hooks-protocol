@@ -167,7 +167,13 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
         out.push_str("},\n");
     }
     out.push_str("} as const;\n");
-    emit_host_inputs(ir, out, &inventory)?;
+    if ir
+        .types
+        .iter()
+        .any(|named| named.name == "CanonicalMessage")
+    {
+        emit_host_inputs(ir, out, &inventory)?;
+    }
     if let Some(request) = ir.types.iter().find(|t| t.name == "InterceptRequest") {
         let request_fields = fields(ir, &request.shape).unwrap_or_default();
         let params = fields(
