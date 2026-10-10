@@ -56,7 +56,13 @@ SDK steps and the runner use `!cancelled()` so one failing suite does not preven
 other suites from producing diagnostics. There is no `continue-on-error`; Bash
 pipefail preserves failures through `tee`. A failing setup, generator, SDK build,
 SDK test, missing adapter, or matrix keeps the job red. Cancellation stops further
-work. Jobs have a 60-minute limit, individual expensive steps have limits, and
+work. Shard jobs have a 150-minute limit, covering the 144-minute sum of expensive
+step limits plus setup and report upload. Python SDK tests have a 45-minute
+process deadline and 47-minute Actions step limit; integration shards have
+40-minute process deadlines and 42-minute Actions step limits. Both use a
+30-second forced-kill grace period. The integration runner kills its active suite
+session on termination so detached suite processes cannot outlive that deadline.
+Other expensive steps retain their finite limits, and
 new runs cancel older runs for the same ref. Forced termination can prevent an
 artifact upload from completing even though its step uses `always()`.
 

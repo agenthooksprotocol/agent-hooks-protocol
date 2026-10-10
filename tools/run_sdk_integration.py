@@ -96,6 +96,19 @@ def run_command(command, cwd: Path, log: Path, timeout: int, env=None) -> dict:
             process = subprocess.Popen(command, cwd=cwd, stdout=output,
                                        stderr=subprocess.STDOUT, start_new_session=True,
                                        **({'env': env} if env is not None else {}))
+            previous_handler = signal.getsignal(signal.SIGTERM)
+
+            def terminate_group(signum, frame):
+                # Suite commands start new sessions; an outer timeout cannot
+                # reach them by signalling only the runner's process group.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                raise SystemExit(128 + signum)
+
+            signal.signal(signal.SIGTERM, terminate_group)
             try:
                 code = process.wait(timeout=timeout)
                 status = 'passed' if code == 0 else 'failed'
@@ -108,6 +121,8 @@ def run_command(command, cwd: Path, log: Path, timeout: int, env=None) -> dict:
                 process.wait()
                 status = 'timeout'
                 output.write(f'\nCommand exceeded {timeout} seconds.\n')
+            finally:
+                signal.signal(signal.SIGTERM, previous_handler)
         except OSError as error:
             output.write(f'Unable to execute command: {type(error).__name__}\n')
     return {'status': status, 'exit_code': code,

@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
@@ -182,6 +183,50 @@ class SDKIntegrationTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(summary['suites'][0]['status'], 'timeout')
         self.assertEqual(popen.call_count, 11)
+
+    def test_outer_termination_kills_session_and_restores_handler(self):
+        process = Mock(pid=123)
+        previous = signal.getsignal(signal.SIGTERM)
+        with tempfile.TemporaryDirectory() as directory, \
+                patch.object(runner.subprocess, 'Popen', return_value=process), \
+                patch.object(runner.os, 'killpg') as kill:
+            def wait(**kwargs):
+                if kwargs:
+                    signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
+                return -9
+            process.wait.side_effect = wait
+            with self.assertRaises(SystemExit) as stopped:
+                runner.run_command(['command'], Path(directory), Path(directory) / 'run.log', 12)
+            self.assertEqual(stopped.exception.code, 143)
+            kill.assert_called_once_with(123, signal.SIGKILL)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+
+    def test_outer_termination_stops_detached_suite_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            ready = directory / 'ready'
+            survived = directory / 'survived'
+            child = "import pathlib,time; time.sleep(3); pathlib.Path(" + repr(str(survived)) + ").touch()"
+            suite = ("import pathlib,subprocess,sys,time; "
+                     "subprocess.Popen([sys.executable,'-c'," + repr(child) + "]); "
+                     "pathlib.Path(" + repr(str(ready)) + ").touch(); time.sleep(30)")
+            wrapper = ("import pathlib,sys; sys.path.insert(0," + repr(str(Path(runner.__file__).parent)) + "); "
+                       "import run_sdk_integration as r; r.run_command([sys.executable,'-c'," + repr(suite) + "], "
+                       "pathlib.Path(" + repr(str(directory)) + "), pathlib.Path(" + repr(str(directory / 'run.log')) + "), 30)")
+            process = subprocess.Popen([sys.executable, '-c', wrapper])
+            try:
+                deadline = time.monotonic() + 10
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(ready.exists(), 'suite did not start')
+                process.terminate()
+                self.assertEqual(process.wait(timeout=5), 143)
+                time.sleep(3.2)
+                self.assertFalse(survived.exists(), 'suite descendant escaped termination')
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
 
     def test_missing_manifest_fails_even_if_commands_succeed(self):
         (self.root.parent / 'rust-sdk/interop/adapter.json').unlink()
