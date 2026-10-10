@@ -108,9 +108,21 @@
                 "target": "context",
                 "operation": "append",
                 "deliverAt": "now",
-                "value": {
-                  "text": "Context now"
-                }
+                "value": [
+                  {
+                    "id": "context-now",
+                    "role": "user",
+                    "parts": [
+                      {
+                        "id": "context-now-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "Context now"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
@@ -272,9 +284,21 @@
                 "target": "context",
                 "operation": "append",
                 "deliverAt": "now",
-                "value": {
-                  "text": "Context now"
-                }
+                "value": [
+                  {
+                    "id": "context-now",
+                    "role": "user",
+                    "parts": [
+                      {
+                        "id": "context-now-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "Context now"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
@@ -2087,9 +2111,21 @@
                 "target": "context",
                 "operation": "append",
                 "deliverAt": "now",
-                "value": {
-                  "text": "Context now"
-                }
+                "value": [
+                  {
+                    "id": "context-now",
+                    "role": "user",
+                    "parts": [
+                      {
+                        "id": "context-now-text",
+                        "kind": "text",
+                        "mediaType": "text/plain",
+                        "selection": "body",
+                        "text": "Context now"
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
@@ -2609,8 +2645,8 @@
           "items": [
             {
               "id": "logical-item",
-              "kind": "text",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "immutable-v1"
@@ -2625,8 +2661,8 @@
           "items": [
             {
               "id": "logical-item",
-              "kind": "text",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "gap": {
                 "reason": "content permission denied",
@@ -2938,8 +2974,8 @@
           "items": [
             {
               "id": "logical-item",
-              "kind": "text",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "changed-new-ref"
@@ -3129,8 +3165,8 @@
           "items": [
             {
               "id": "reasoning-item",
-              "kind": "reasoning",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "normal-reasoning"
@@ -3138,8 +3174,8 @@
             },
             {
               "id": "skill-item",
-              "kind": "skill",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "normal-skill"
@@ -3147,8 +3183,8 @@
             },
             {
               "id": "native-item",
-              "kind": "native",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "normal-native"
@@ -3332,7 +3368,7 @@
           "items": [
             {
               "id": "binary",
-              "kind": "text",
+              "kind": "attachment",
               "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
@@ -3341,8 +3377,8 @@
             },
             {
               "id": "empty",
-              "kind": "text",
-              "mediaType": "text/plain",
+              "kind": "attachment",
+              "mediaType": "application/octet-stream",
               "selection": "body",
               "body": {
                 "ref": "empty-ref"
@@ -3416,8 +3452,8 @@
               "items": [
                 {
                   "id": "logical-item",
-                  "kind": "text",
-                  "mediaType": "text/plain",
+                  "kind": "attachment",
+                  "mediaType": "application/octet-stream",
                   "selection": "body",
                   "body": {
                     "ref": "intercept-body"

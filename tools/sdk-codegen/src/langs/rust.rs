@@ -2691,13 +2691,15 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&repository, "draft").unwrap();
         let source = emit(&ir).unwrap();
+        assert!(!source.contains("pub fn items_parts<S>"));
+        assert!(source.contains("pub fn items<S>(index: usize, source: S)"));
         assert!(
             !source
                 .lines()
                 .any(|line| line.starts_with("pub struct ") && line.ends_with("(pub JsonValue);")),
             "schema-expressible compositions must not become opaque JSON wrappers"
         );
-        assert!(source.contains("pub enum ModelVisibleItem {"));
+        assert!(source.contains("pub struct ModelVisibleItem(pub Box<CanonicalMessage>);"));
         assert!(source.contains("pub struct ExecutionEventMcpConnectionHttp {"));
         assert!(source.contains("pub struct CapabilitiesModifyContent {"));
         assert!(source.contains("pub type NativeEvent = JsonValue;"));

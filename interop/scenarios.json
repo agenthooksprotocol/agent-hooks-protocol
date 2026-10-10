@@ -5652,7 +5652,7 @@
               "type": "modify",
               "target": "output",
               "operation": "replace",
-              "value": {}
+              "value": []
             }
           ]
         }
@@ -8559,9 +8559,21 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "now",
-              "value": {
-                "text": "Context now"
-              }
+              "value": [
+                {
+                  "id": "context-now",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-now-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context now"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -8587,9 +8599,21 @@
             "target": "context",
             "operation": "append",
             "deliverAt": "now",
-            "value": {
-              "text": "Context now"
-            }
+            "value": [
+              {
+                "id": "context-now",
+                "role": "user",
+                "parts": [
+                  {
+                    "id": "context-now-text",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "body",
+                    "text": "Context now"
+                  }
+                ]
+              }
+            ]
           }
         ]
       }
@@ -8671,9 +8695,21 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "next_turn",
-              "value": {
-                "text": "Context later"
-              }
+              "value": [
+                {
+                  "id": "context-later",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-later-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context later"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -8699,9 +8735,21 @@
             "target": "context",
             "operation": "append",
             "deliverAt": "next_turn",
-            "value": {
-              "text": "Context later"
-            }
+            "value": [
+              {
+                "id": "context-later",
+                "role": "user",
+                "parts": [
+                  {
+                    "id": "context-later-text",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "body",
+                    "text": "Context later"
+                  }
+                ]
+              }
+            ]
           }
         ]
       }
@@ -8783,18 +8831,42 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "now",
-              "value": {
-                "text": "Context now"
-              }
+              "value": [
+                {
+                  "id": "context-now",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-now-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context now"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "inject",
               "target": "context",
               "operation": "append",
               "deliverAt": "next_turn",
-              "value": {
-                "text": "Context later"
-              }
+              "value": [
+                {
+                  "id": "context-later",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-later-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context later"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "message",
@@ -8827,18 +8899,42 @@
             "target": "context",
             "operation": "append",
             "deliverAt": "now",
-            "value": {
-              "text": "Context now"
-            }
+            "value": [
+              {
+                "id": "context-now",
+                "role": "user",
+                "parts": [
+                  {
+                    "id": "context-now-text",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "body",
+                    "text": "Context now"
+                  }
+                ]
+              }
+            ]
           },
           {
             "type": "inject",
             "target": "context",
             "operation": "append",
             "deliverAt": "next_turn",
-            "value": {
-              "text": "Context later"
-            }
+            "value": [
+              {
+                "id": "context-later",
+                "role": "user",
+                "parts": [
+                  {
+                    "id": "context-later-text",
+                    "kind": "text",
+                    "mediaType": "text/plain",
+                    "selection": "body",
+                    "text": "Context later"
+                  }
+                ]
+              }
+            ]
           }
         ]
       }
@@ -8914,9 +9010,21 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "now",
-              "value": {
-                "text": "Context now"
-              }
+              "value": [
+                {
+                  "id": "context-now",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-now-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context now"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -9005,18 +9113,42 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "now",
-              "value": {
-                "text": "Context now"
-              }
+              "value": [
+                {
+                  "id": "context-now",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-now-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context now"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "inject",
               "target": "context",
               "operation": "append",
               "deliverAt": "next_turn",
-              "value": {
-                "text": "Context later"
-              }
+              "value": [
+                {
+                  "id": "context-later",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-later-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context later"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -9096,9 +9228,21 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "now",
-              "value": {
-                "text": "Context now"
-              }
+              "value": [
+                {
+                  "id": "context-now",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-now-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context now"
+                    }
+                  ]
+                }
+              ]
             }
           ]
         }
@@ -9188,9 +9332,21 @@
               "target": "context",
               "operation": "append",
               "deliverAt": "next_turn",
-              "value": {
-                "text": "Context later"
-              }
+              "value": [
+                {
+                  "id": "context-later",
+                  "role": "user",
+                  "parts": [
+                    {
+                      "id": "context-later-text",
+                      "kind": "text",
+                      "mediaType": "text/plain",
+                      "selection": "body",
+                      "text": "Context later"
+                    }
+                  ]
+                }
+              ]
             },
             {
               "type": "not-a-supported-effect"

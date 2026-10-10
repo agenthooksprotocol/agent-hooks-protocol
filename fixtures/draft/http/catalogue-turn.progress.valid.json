@@ -16,10 +16,15 @@
       },
       "delta": {
         "id": "item1",
-        "kind": "message",
-        "mediaType": "text/plain",
-        "selection": "metadata",
-        "role": "assistant"
+        "role": "assistant",
+        "parts": [
+          {
+            "id": "item1-part",
+            "kind": "text",
+            "mediaType": "text/plain",
+            "selection": "metadata"
+          }
+        ]
       },
       "final": false
     }

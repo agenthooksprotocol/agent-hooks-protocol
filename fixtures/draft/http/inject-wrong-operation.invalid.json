@@ -13,7 +13,21 @@
         "target": "context",
         "operation": "replace",
         "deliverAt": "now",
-        "value": "x"
+        "value": [
+          {
+            "id": "injected1",
+            "role": "system",
+            "parts": [
+              {
+                "id": "injected1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "x"
+              }
+            ]
+          }
+        ]
       }
     ]
   }

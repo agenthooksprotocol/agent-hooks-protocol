@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import calendar
+import copy
 import hashlib
 import ipaddress
 import math
@@ -525,6 +526,137 @@ def check_schema_structure(snapshot: Snapshot, store: SchemaStore) -> list[str]:
     return errors
 
 
+MESSAGE_TARGETS = frozenset({"prompt", "request", "response", "content", "output"})
+TEXT_TARGETS = frozenset({"instructions", "summary"})
+EDIT_TARGETS = MESSAGE_TARGETS | TEXT_TARGETS | {"input", "output", "workspace"}
+
+
+@dataclass(frozen=True)
+class EditContext:
+    """Host-resolved authority, NOT inferred from a fixture or reference string.
+
+    Selection and permissions are resolved per target before calling this helper.
+    authorized_attachments contains exact descriptors authorized in this invocation.
+    The host must also enforce category/part policy and authorization on duplicate
+    bodies in native JSON. This helper never fetches or modifies attachment bytes.
+    """
+
+    capabilities: frozenset[tuple[str, str]]
+    selection: dict[str, str]
+    readable: frozenset[str]
+    writable: frozenset[str]
+    authorized_attachments: tuple[dict[str, Any], ...] = ()
+    event: str = ""
+    elicitation_mode: str = ""
+    elicitation_action: str = ""
+
+
+def draft_value_errors(value: Any, schema: dict[str, Any]) -> list[str]:
+    """Use the canonical draft schema, rather than a second shape definition."""
+    snapshot = Snapshot.resolve(ROOT)
+    validator = SubsetValidator(SchemaStore(snapshot))
+    return validator.validate(value, schema, snapshot.schema_dir / "schema.json")
+
+
+def canonical_part_errors(part: Any, *, text_only: bool = False) -> list[str]:
+    suffix = "#/$defs/textPart" if text_only else ""
+    return draft_value_errors(part, {"$ref": "content-item.schema.json" + suffix})
+
+
+def canonical_list_errors(value: Any, *, messages: bool) -> list[str]:
+    definition = "messages" if messages else "textParts"
+    return draft_value_errors(value, {"$ref": "content-item.schema.json#/$defs/" + definition})
+
+
+def apply_modify_response(
+    current: dict[str, Any], effects: list[dict[str, Any]], context: EditContext,
+) -> dict[str, Any]:
+    """Stage a draft modify-only response atomically, returning a detached candidate.
+
+    Raise CheckFailure without changing current on ANY invalid effect. Call with
+    each accepted candidate to chain responses serially. This is not a general
+    response executor: non-modify effects fail closed and require a host executor
+    that stages their control state/side effects with the entire response.
+    event identifies the host-resolved boundary, never an effect-supplied claim.
+    Elicitation content requires accepted form context; ordinary message targets
+    reject objects even though the standalone content effect schema allows them.
+    The entire effect list is schema-validated before staging. The host must
+    validate the complete response envelope, event-specific roles/capabilities,
+    and target-specific JSON contracts before committing the returned candidate.
+    """
+    if not isinstance(effects, list):
+        raise CheckFailure("effects must be a list")
+    try:
+        json.dumps(effects, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise CheckFailure("effects must contain JSON values") from exc
+    schema_errors = draft_value_errors(effects, {"type": "array", "items": {"$ref": "effect.schema.json"}})
+    if schema_errors:
+        raise CheckFailure("; ".join(schema_errors))
+    staged = copy.deepcopy(current)
+    for effect in effects:
+        if (not isinstance(effect, dict)
+                or set(effect) != {"type", "target", "operation", "value"}
+                or effect.get("type") != "modify"):
+            raise CheckFailure("expected a strict modify effect")
+        target, operation, value = effect["target"], effect["operation"], effect["value"]
+        if not isinstance(target, str) or not isinstance(operation, str):
+            raise CheckFailure("target and operation must be strings")
+        if target not in staged or (target, operation) not in context.capabilities:
+            raise CheckFailure("target/operation is not available and advertised")
+        if (context.selection.get(target) != "body" or target not in context.readable
+                or target not in context.writable):
+            raise CheckFailure("body selection and read/write permission are required")
+        if context.event:
+            bounds = draft_value_errors(
+                {"effects": ["modify"], "modify": {target: {"replace": operation == "replace", "merge": operation == "merge"}}},
+                {"$ref": "capabilities.schema.json#/$defs/" + context.event})
+            if bounds:
+                raise CheckFailure("modify target is not supported at this boundary")
+        structured_content = context.event == "user.elicitation.result" and target == "content"
+        if structured_content:
+            if context.elicitation_mode != "form" or context.elicitation_action != "accept":
+                raise CheckFailure("content edits require an accepted form result")
+            content_schema = {"$ref": "mcp-elicitation.schema.json#/$defs/ElicitResult/properties/content"}
+            if draft_value_errors(staged[target], content_schema) or draft_value_errors(value, content_schema):
+                raise CheckFailure("elicitation content must be an MCP answer object")
+        elif target in MESSAGE_TARGETS and canonical_list_errors(value, messages=True):
+            raise CheckFailure("ordinary message target requires a canonical message list")
+        previous = staged[target]
+        if target in {"input", "workspace"} and not isinstance(previous, dict):
+            raise CheckFailure("actual input/workspace target must be an object")
+        messages = target in MESSAGE_TARGETS and not structured_content
+        lists = messages or target in TEXT_TARGETS
+        if lists:
+            if canonical_list_errors(previous, messages=messages):
+                raise CheckFailure("actual target is not a canonical list")
+            old_parts = [p for m in previous for p in m["parts"]] if messages else previous
+            new_parts = [p for m in value for p in m["parts"]] if messages else value
+            if operation == "replace" and any(
+                p["kind"] == "text" and (p["selection"] != "body" or "gap" in p)
+                for p in old_parts
+            ):
+                raise CheckFailure("whole-list replacement cannot remove or replace hidden text")
+            for part in new_parts:
+                for old in old_parts:
+                    if old["id"] == part["id"] and (old["kind"] != "text"
+                            or old["selection"] != "body" or "gap" in old):
+                        if old != part:
+                            raise CheckFailure("cannot edit an attachment or unselected part")
+                if messages and part["kind"] == "attachment" and "body" in part:
+                    if part not in context.authorized_attachments:
+                        raise CheckFailure("attachment descriptor is not authorized unchanged")
+        if operation == "replace":
+            staged[target] = copy.deepcopy(value)
+        elif isinstance(previous, dict) and isinstance(value, dict):
+            staged[target] = {**previous, **copy.deepcopy(value)}
+        elif lists and isinstance(value, list):
+            staged[target] = previous + copy.deepcopy(value)
+        else:
+            raise CheckFailure("merge requires matching objects or canonical lists")
+    return staged
+
+
 def semantic_errors(instance: Any, schema_path: Path) -> list[str]:
     errors: list[str] = []
     if (
@@ -537,6 +669,39 @@ def semantic_errors(instance: Any, schema_path: Path) -> list[str]:
                 errors.append("$: JSON-RPC request id must equal params.event.id")
         except (KeyError, TypeError):
             pass
+    # Only the current inline-text draft is parsed; frozen reference-based
+    # snapshots keep their original semantics. Resolve MCP schema locally.
+    if schema_path.parent.name == "draft" and isinstance(instance, dict):
+        event = instance
+        params = instance.get("params")
+        if isinstance(params, dict) and isinstance(params.get("event"), dict):
+            event = params["event"]
+        if event.get("type") in ("user.elicitation.request", "user.elicitation.result"):
+            kind = event["type"].rsplit(".", 1)[1]
+            elicitation = event.get("elicitation")
+            if isinstance(elicitation, dict):
+                part = elicitation.get(kind)
+                if (isinstance(part, dict) and part.get("selection") == "body"
+                        and "gap" not in part and isinstance(part.get("text"), str)):
+                    try:
+                        payload = json.loads(part["text"], object_pairs_hook=object_without_duplicates)
+                        json.dumps(payload, allow_nan=False)
+                    except (ValueError, CheckFailure) as exc:
+                        errors.append(f"elicitation {kind} text must contain valid JSON: {exc}")
+                    else:
+                        snapshot = Snapshot.resolve(schema_path.resolve().parents[2])
+                        validator = SubsetValidator(SchemaStore(snapshot))
+                        mcp_path = schema_path.parent / "mcp-elicitation.schema.json"
+                        errors.extend(validator.validate(payload, {"$ref": "#/$defs/" + kind}, mcp_path))
+                        if isinstance(payload, dict):
+                            if kind == "request" and payload.get("mode", "form") != elicitation.get("mode"):
+                                errors.append("elicitation mode must agree with parsed MCP request")
+                            if kind == "result":
+                                if payload.get("action") != elicitation.get("action"):
+                                    errors.append("elicitation action must agree with parsed MCP result")
+                                if "content" in payload and (payload.get("action") != "accept"
+                                        or elicitation.get("mode") != "form"):
+                                    errors.append("MCP content is only valid for accepted form results")
     if schema_path.name == "registration.schema.json" and isinstance(instance, dict):
         hooks = instance.get("hooks")
         if isinstance(hooks, list):
@@ -633,6 +798,27 @@ def check_fixture_cases(
         if actual_valid != case.get("expectedValid"):
             detail = case_errors[0] if case_errors else "fixture unexpectedly passed"
             errors.append(f"{case_id}: expected valid={case.get('expectedValid')}, got {actual_valid}: {detail}")
+
+        if "editContext" in case:
+            host = case["editContext"]
+            contextual_errors = list(case_errors)
+            if instance is not None and not contextual_errors:
+                try:
+                    effects = instance["result"]["effects"]
+                    targets = frozenset(host["current"])
+                    context = EditContext(
+                        capabilities=frozenset((t, op) for t in targets for op in ("replace", "merge")),
+                        selection={t: "body" for t in targets}, readable=targets, writable=targets,
+                        event=host["event"], elicitation_mode=host.get("mode", ""),
+                        elicitation_action=host.get("action", ""))
+                    apply_modify_response(host["current"], effects, context)
+                except (CheckFailure, KeyError, TypeError) as exc:
+                    contextual_errors.append(str(exc))
+            if not isinstance(case.get("contextualExpectedValid"), bool):
+                errors.append(f"{case_id}: contextualExpectedValid must be boolean")
+            elif (not contextual_errors) != case["contextualExpectedValid"]:
+                detail = contextual_errors[0] if contextual_errors else "context unexpectedly passed"
+                errors.append(f"{case_id}: contextual validity mismatch: {detail}")
 
         event_schema_value = case.get("eventSchema")
         if event_schema_value is not None:

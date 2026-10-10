@@ -10,7 +10,21 @@
       "type": "user.message.outbound",
       "message": {
         "channel": "example",
-        "payload": []
+        "messages": [
+          {
+            "id": "message1",
+            "role": "assistant",
+            "parts": [
+              {
+                "id": "message1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "How can I help?"
+              }
+            ]
+          }
+        ]
       }
     }
   }

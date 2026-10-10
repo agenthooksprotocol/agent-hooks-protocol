@@ -1,0 +1,30 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "instructions",
+        "operation": "merge",
+        "value": [
+          {
+            "id": "text1",
+            "kind": "text",
+            "mediaType": "text/plain",
+            "selection": "body",
+            "text": "Preserve the decisions and open questions."
+          },
+          {
+            "id": "text1",
+            "kind": "text",
+            "mediaType": "text/plain",
+            "selection": "body",
+            "text": "Preserve the decisions and open questions."
+          }
+        ]
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

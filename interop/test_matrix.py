@@ -56,6 +56,20 @@ class PreparedAdapterTests(unittest.TestCase):
 
 
 class ScenarioGeneration(unittest.TestCase):
+    def test_shared_responses_and_expected_injections_are_canonical(self):
+        document = matrix.load(generate_scenarios.HERE / 'scenarios.json')
+        self.assertEqual(document, generate_scenarios.build())
+        self.assertEqual(len(document['scenarios']), generate_scenarios.validate(document))
+        for row in document['scenarios']:
+            injections = row.get('expected', {}).get('injections', [])
+            for injection in injections:
+                self.assertIn(injection, row['response']['result']['effects'])
+                messages = injection['value']
+                self.assertIsInstance(messages, list)
+                self.assertEqual('user', messages[0]['role'])
+                self.assertEqual('text', messages[0]['parts'][0]['kind'])
+                self.assertEqual('body', messages[0]['parts'][0]['selection'])
+
     def test_continue_without_instruction_is_accepted(self):
         document = generate_scenarios.build()
         row = next(row for row in document['scenarios']

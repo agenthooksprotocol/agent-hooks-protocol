@@ -19,6 +19,28 @@ Control decisions must be deterministic. Serial order is easy to explain and tes
 Many harnesses already support OpenTelemetry, and telemetry should converge there. AHP observe mode remains useful for compatibility and control-adjacent audit, but making it part of minimum conformance would blur the protocol's purpose and create a competing event-export path.
 ### Why keep native payloads?
 Adapters need lossless diagnostics when providers drift or expose events that the portable model does not represent. Making native data optional and off by default preserves that escape hatch without allowing it to become the contract.
+### Why canonical inline messages and immutable attachments?
+Canonical roles and ordered message parts make ordinary prompt and response text
+portable and directly editable without uploading provider-native prompt JSON.
+Applications serialize structured content into ordinary text; a separate JSON
+part would introduce a second structured-content and mutation contract. Body,
+metadata, and omit selection apply to inline text as well as attachments, so
+inline delivery does not bypass content permissions.
+
+Only non-text, non-JSON media attachments use uploads. Their references identify
+immutable bytes; editing messages does not provide a binary editing interface.
+List replacement substitutes the whole list, while list merge appends in order
+without deduplication. This preserves intentional repetition and avoids implicit
+identity-based patching. Actual object targets retain shallow object merge.
+Atomic acceptance and serial chaining let each interceptor inspect the accepted
+effective value without observing partially applied responses.
+
+This is an unpublished material correction. It requires formal public discussion
+and an AHP proposal before merge under the repository's proposal process
+(`governance/AHP-PROCESS.md`) and public decision rules
+(`governance/PUBLIC-DECISIONS.md`). This rationale
+neither assigns a proposal number nor records proposal acceptance or publication.
+
 ## References
 - [Speakeasy ](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)[`agenthooks`](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)[ design](https://github.com/speakeasy-api/agenthooks/blob/main/DESIGN.md)
 - [DeepSeek shared Claude Code and Codex hook-protocol note](https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/feature/2026-06-30-hook-protocol-lib.md)

@@ -154,18 +154,10 @@
               "minLength": 1
             },
             "message": {
-              "type": "array",
-              "items": {
-                "$ref": "content-item.schema.json"
-              },
-              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+              "$ref": "content-item.schema.json#/$defs/textParts"
             },
             "title": {
-              "type": "array",
-              "items": {
-                "$ref": "content-item.schema.json"
-              },
-              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+              "$ref": "content-item.schema.json#/$defs/textParts"
             }
           },
           "additionalProperties": false
@@ -200,20 +192,8 @@
               ]
             },
             "request": {
-              "description": "Optional singular selection-aware descriptor. Omit when not selected; metadata/omit descriptors contain no body. Selected body bytes are complete unchanged MCP elicitation/create params JSON, validated against mcp-elicitation.schema.json#/$defs/request. Missing requested bytes use an explicit content gap, never inline content.",
-              "allOf": [
-                {
-                  "$ref": "content-item.schema.json"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "mediaType": {
-                      "const": "application/json"
-                    }
-                  }
-                }
-              ]
+              "$ref": "content-item.schema.json#/$defs/textPart",
+              "description": "Optional selection-aware ordinary text part. For body selection, text contains serialized complete MCP request JSON, validated after parsing against mcp-elicitation.schema.json. No upload or dedicated JSON content part."
             }
           },
           "additionalProperties": false
@@ -249,20 +229,8 @@
               ]
             },
             "result": {
-              "description": "Optional singular selection-aware descriptor. Omit when not selected; metadata/omit descriptors contain no body. Selected body bytes are complete unchanged MCP ElicitResult JSON, validated against mcp-elicitation.schema.json#/$defs/result. Missing requested bytes use an explicit content gap, never inline content.",
-              "allOf": [
-                {
-                  "$ref": "content-item.schema.json"
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "mediaType": {
-                      "const": "application/json"
-                    }
-                  }
-                }
-              ]
+              "$ref": "content-item.schema.json#/$defs/textPart",
+              "description": "Optional selection-aware ordinary text part. For body selection, text contains serialized complete MCP result JSON, validated after parsing against mcp-elicitation.schema.json. No upload or dedicated JSON content part."
             },
             "action": {
               "enum": [
@@ -291,7 +259,7 @@
           "required": [
             "channel",
             "sender",
-            "text"
+            "messages"
           ],
           "properties": {
             "channel": {
@@ -302,12 +270,22 @@
               "type": "string",
               "minLength": 1
             },
-            "text": {
+            "messages": {
               "type": "array",
               "items": {
-                "$ref": "content-item.schema.json"
-              },
-              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+                "allOf": [
+                  {
+                    "$ref": "content-item.schema.json#/$defs/message"
+                  },
+                  {
+                    "properties": {
+                      "role": {
+                        "const": "user"
+                      }
+                    }
+                  }
+                ]
+              }
             }
           },
           "additionalProperties": false
@@ -328,19 +306,29 @@
           "type": "object",
           "required": [
             "channel",
-            "payload"
+            "messages"
           ],
           "properties": {
             "channel": {
               "type": "string",
               "minLength": 1
             },
-            "payload": {
+            "messages": {
               "type": "array",
               "items": {
-                "$ref": "content-item.schema.json"
-              },
-              "description": "Selected authorized content descriptors; bodies use pre-uploaded references, never inline text. Empty when all content is omitted."
+                "allOf": [
+                  {
+                    "$ref": "content-item.schema.json#/$defs/message"
+                  },
+                  {
+                    "properties": {
+                      "role": {
+                        "const": "assistant"
+                      }
+                    }
+                  }
+                ]
+              }
             }
           },
           "additionalProperties": false

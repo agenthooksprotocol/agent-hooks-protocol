@@ -22,9 +22,11 @@ to the catalogue. Before events can be intercepted or observed; after events and
   not file edits, plugin discovery, or an automatic worktree lifecycle.
 * `file.changed`: nonempty `changes` contains `path`, `operation` (`create`,
   `update`, `remove`) and `agentCaused`. Optional `before`/`after` are canonical
-  uploaded-body content references, not inline file contents. Missing references
-  do not imply empty files. Content permissions and gaps still apply. No file
-  read event or file interception capability is added.
+  selection-aware content parts: text file snapshots are inline text and only
+  non-text, non-JSON media snapshots use immutable attachment references. JSON
+  file contents are serialized as ordinary text, never a JSON part or upload.
+  Missing snapshots do not imply empty files. Content permissions and gaps still
+  apply. No file read event or file interception capability is added.
 
 Extension strategy: event envelopes remain open for canonical envelope evolution
 and extension metadata. The `task`, `workspace`, workspace-state and file-change

@@ -128,7 +128,7 @@ class DraftShapeTests(unittest.TestCase):
         self.assertFalse(self.errors(upload, 'content-upload'))
         for key, bad in [('endpoint', 'file:///tmp/body'), ('timeoutMs', 0), ('maxBytes', -1)]:
             self.assertTrue(self.errors({**upload, key: bad}, 'content-upload'))
-        item = {'id': 'skill', 'kind': 'skill', 'mediaType': 'application/octet-stream',
+        item = {'id': 'skill', 'kind': 'attachment', 'mediaType': 'application/octet-stream',
                 'selection': 'body', 'body': {'ref': 'binary'}}
         self.assertFalse(self.errors(item, 'content-item'))
         for field, value in [('size', 0), ('sha256', '0' * 64)]:
@@ -239,17 +239,23 @@ class DraftShapeTests(unittest.TestCase):
                 response['result']['manifest']['events'] = [{'event': event, 'modes': ['intercept'], 'capabilities': caps}]
                 self.assertEqual(valid, not self.errors(response))
 
-    def test_generic_items_and_owned_blocks_have_distinct_role_contracts(self):
-        generic = {'id': 'file', 'kind': 'file', 'mediaType': 'text/plain', 'selection': 'metadata'}
+    def test_generic_parts_and_messages_have_distinct_role_contracts(self):
+        generic = {'id': 'file', 'kind': 'attachment', 'mediaType': 'application/pdf',
+                   'selection': 'metadata'}
         self.assertFalse(self.errors(generic, 'content-item'))
         path = ROOT / 'schema/draft/content-item.schema.json'
         schema = self.store.load(path)['$defs']['modelVisibleItem']
         self.assertTrue(self.validator.validate(generic, schema, path))
-        child = {**generic, 'id': 'reasoning', 'kind': 'reasoning', 'parentItemId': 'assistant'}
-        self.assertTrue(self.validator.validate(child, schema, path))
-        child['role'] = 'assistant'
-        self.assertFalse(self.validator.validate(child, schema, path))
-        # Equal roles and an existing parent require runtime cross-item checks.
+        message = {'id': 'message', 'parts': [generic]}
+        self.assertTrue(self.validator.validate(message, schema, path))
+        message['role'] = 'assistant'
+        self.assertFalse(self.validator.validate(message, schema, path))
+        # Nesting establishes ownership; parts cannot impersonate another role.
+        message['parts'][0]['role'] = 'user'
+        self.assertTrue(self.validator.validate(message, schema, path))
+        del message['parts'][0]['role']
+        message['role'] = 'vendor-role'
+        self.assertTrue(self.validator.validate(message, schema, path))
 
     def test_execution_literal_normalization_preserves_canonical_validity(self):
         path = ROOT / 'schema/draft/execution-event.schema.json'

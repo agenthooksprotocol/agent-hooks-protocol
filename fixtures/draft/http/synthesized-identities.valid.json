@@ -31,11 +31,18 @@
       "items": [
         {
           "id": "item-synthetic",
-          "synthesized": true,
           "role": "tool",
-          "kind": "tool_result",
-          "mediaType": "text/plain",
-          "selection": "metadata"
+          "parts": [
+            {
+              "id": "item-synthetic-part",
+              "synthesized": true,
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata",
+              "category": "tool_result"
+            }
+          ],
+          "synthesized": true
         }
       ],
       "synthesized": true,

@@ -233,7 +233,10 @@ Failures use event-level `error` with required `class` and `message` when
 `outcome` is `error`; there is no standard `tool.error` event. Other outcomes
 forbid `error`. Denial uses `outcome: "denied"` and skipped/policy execution.
 See [Execution payloads](../execution-payloads.md) for the complete event-specific
-requirements and [Content uploads](../content-upload.md) for selected bodies.
+requirements and [canonical content selection](../content-upload.md) for inline
+text parts and immutable non-text, non-JSON media attachments. Model-visible
+content uses ordered canonical messages; the owning message supplies the role,
+not a repeated role on each child part.
 
 ### Native payload
 The optional `native` object has this shape:

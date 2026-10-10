@@ -187,7 +187,7 @@
       }
     },
     "native": {
-      "description": "Opaque implementation-defined JSON, delivered only when includeNative is authorized. AHP does not prescribe its shape, completeness, or construction. Native data cannot replace required normalized fields or bypass content selection, upload-only bodies, permissions, or credential exclusions."
+      "description": "Opaque implementation-defined JSON, delivered only when includeNative is authorized. AHP does not prescribe its shape, completeness, or construction. Native data cannot replace required normalized fields or bypass content selection, inline text and attachment-only uploads, permissions, or credential exclusions."
     }
   }
 }

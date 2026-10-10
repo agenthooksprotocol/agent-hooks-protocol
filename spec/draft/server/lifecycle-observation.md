@@ -22,8 +22,8 @@ skipped execution with reason `policy`. A supplied result retains its ordinary
 outcome and uses skipped execution with reason `supplied_result`. The supplying
 subscription is tracked only in harness-local state.
 
-Result content uses `items` and the content selection/upload contract, not
-`tool.output`. An error outcome requires event-level `error` with `class` and
+Result content uses `items` and content selection, not `tool.output`: ordinary
+text parts are inline, and only non-text, non-JSON media attachments use uploads. An error outcome requires event-level `error` with `class` and
 `message`; other outcomes forbid it. `tool.error` is not a standard event.
 See [Execution payloads](../execution-payloads.md) for the complete wire rules.
 `tool.after` also supports interception with its event-specific capability grants;

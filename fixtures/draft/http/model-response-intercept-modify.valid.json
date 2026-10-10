@@ -23,10 +23,15 @@
       "items": [
         {
           "id": "assistant1",
-          "kind": "message",
-          "role": "assistant",
-          "mediaType": "text/plain",
-          "selection": "metadata"
+          "parts": [
+            {
+              "id": "assistant1-part",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata"
+            }
+          ],
+          "role": "assistant"
         }
       ],
       "finishReason": "example"

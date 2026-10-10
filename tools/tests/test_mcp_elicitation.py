@@ -1,5 +1,4 @@
 """Offline compatibility regression tests for the versioned MCP contract."""
-import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -82,7 +81,7 @@ class McpElicitationTests(unittest.TestCase):
             elicitation=fixture['params']['event']['elicitation']
             descriptor=elicitation[kind]
             self.assertEqual([], self.validator.validate(fixture, {'$ref':path.name}, path))
-            descriptor.pop('body')
+            descriptor.pop('text')
             descriptor['selection']='metadata'
             self.assertEqual([], self.validator.validate(fixture, {'$ref':path.name}, path))
             descriptor['selection']='omit'
@@ -114,20 +113,19 @@ class McpElicitationTests(unittest.TestCase):
         self.assertEqual([],self.validator.validate({'effects':['return']},{'$ref':'#/$defs/context.compact.before'},path))
         self.assertTrue(self.validator.validate({'effects':['return']},{'$ref':'#/$defs/context.compact.after'},path))
 
-    def test_exact_uploaded_body_fixtures(self):
+    def test_serialized_inline_text_fixtures(self):
         for kind in ['request', 'result']:
-            raw=(mcp_elicitation.PIN/'fixtures'/f'{kind}.json').read_bytes()
-            payload=json.loads(raw)
+            upstream=json.loads((mcp_elicitation.PIN/'fixtures'/f'{kind}.json').read_text())
             event=json.loads((ROOT/f'fixtures/draft/http/catalogue-user.elicitation.{kind}.valid.json').read_text())['params']['event']
-            reference=event['elicitation'][kind]['body']
-            self.assertEqual({'ref'}, set(reference))
-            receipt = {**reference, 'size': len(raw), 'sha256': hashlib.sha256(raw).hexdigest()}
-            receipt_path = ROOT/'schema/draft/content-upload-receipt.schema.json'
-            receipt_schema = json.loads(receipt_path.read_text())
-            self.assertEqual([], self.validator.validate(receipt, receipt_schema, receipt_path))
+            part=event['elicitation'][kind]
+            self.assertEqual('text', part['kind'])
+            self.assertEqual('text/plain', part['mediaType'])
+            self.assertNotIn('body', part)
+            payload=json.loads(part['text'])
+            self.assertEqual(upstream, payload)
             self.assertEqual([], self.errors(payload, kind))
             if kind == 'request':
-                self.assertNotIn('mode', payload)  # Normalized metadata does not mutate MCP bytes.
+                self.assertNotIn('mode', payload)  # Normalization must not mutate MCP JSON.
                 self.assertEqual(payload.get('mode', 'form'), event['elicitation']['mode'])
             else:
                 self.assertEqual(payload['action'], event['elicitation']['action'])

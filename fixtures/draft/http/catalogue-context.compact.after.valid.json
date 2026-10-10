@@ -8,13 +8,14 @@
       "source": "urn:test:harness",
       "time": "2026-09-15T12:00:00Z",
       "type": "context.compact.after",
-      "summary": {
-        "id": "item1",
-        "kind": "message",
-        "mediaType": "text/plain",
-        "selection": "metadata",
-        "role": "system"
-      },
+      "summary": [
+        {
+          "id": "item1",
+          "kind": "text",
+          "mediaType": "text/plain",
+          "selection": "metadata"
+        }
+      ],
       "removed": [],
       "execution": {
         "status": "executed"

@@ -1,0 +1,29 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "instructions",
+        "operation": "merge",
+        "value": [
+          {
+            "id": "message1",
+            "role": "user",
+            "parts": [
+              {
+                "id": "message1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "Hello, world!"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "method": "hooks/observe",
+  "params": {
+    "protocolVersion": "draft",
+    "event": {
+      "id": "evt1",
+      "source": "urn:test:harness",
+      "time": "2026-09-15T12:00:00Z",
+      "type": "context.compact.after",
+      "summary": [
+        {
+          "id": "text1",
+          "kind": "text",
+          "mediaType": "text/plain",
+          "selection": "body",
+          "text": "The user asked about photosynthesis; an explanation is pending."
+        }
+      ],
+      "removed": [],
+      "execution": {
+        "status": "executed"
+      }
+    }
+  }
+}

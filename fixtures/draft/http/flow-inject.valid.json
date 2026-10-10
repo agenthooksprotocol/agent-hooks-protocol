@@ -14,7 +14,21 @@
         "target": "context",
         "operation": "append",
         "deliverAt": "next_turn",
-        "value": "test feedback"
+        "value": [
+          {
+            "id": "injected1",
+            "role": "system",
+            "parts": [
+              {
+                "id": "injected1-text",
+                "kind": "text",
+                "mediaType": "text/plain",
+                "selection": "body",
+                "text": "test feedback"
+              }
+            ]
+          }
+        ]
       },
       {
         "type": "flow",

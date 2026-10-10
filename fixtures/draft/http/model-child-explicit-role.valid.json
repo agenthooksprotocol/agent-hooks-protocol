@@ -20,18 +20,28 @@
       "items": [
         {
           "id": "assistant",
-          "kind": "message",
-          "role": "assistant",
-          "mediaType": "text/plain",
-          "selection": "metadata"
+          "parts": [
+            {
+              "id": "assistant-part",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata"
+            }
+          ],
+          "role": "assistant"
         },
         {
           "id": "reasoning",
-          "kind": "reasoning",
-          "parentItemId": "assistant",
-          "role": "assistant",
-          "mediaType": "text/plain",
-          "selection": "metadata"
+          "parts": [
+            {
+              "id": "reasoning-part",
+              "kind": "text",
+              "mediaType": "text/plain",
+              "selection": "metadata",
+              "category": "reasoning"
+            }
+          ],
+          "role": "assistant"
         }
       ]
     }

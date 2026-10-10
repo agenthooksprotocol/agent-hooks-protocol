@@ -22,12 +22,13 @@
       "items": [
         {
           "id": "item1",
-          "kind": "tool_result",
-          "mediaType": "text/plain",
+          "kind": "attachment",
+          "mediaType": "application/octet-stream",
           "selection": "metadata",
           "body": {
             "ref": "upload1"
-          }
+          },
+          "category": "tool_result"
         }
       ]
     }

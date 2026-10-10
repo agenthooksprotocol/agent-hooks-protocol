@@ -442,7 +442,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "f490ee86373ed670bce17883b0164b43d0a8b54465b7e98bb9bd0e8961bfb5fe"
+      "sha256": "92adc7768495c1ad5883f80120d46c06a648b43a5bb5bc77313815a7d3fdf400"
     },
     {
       "id": "http.flow-no-operation.invalid",
@@ -490,7 +490,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "dfd36bd55fef337dd991ea5a43e37582c17ce72cba967dd14fa0cb921e75c3f9"
+      "sha256": "ffea08f68d19281ab5192e5f18b1d4faf660f8dc308929912c47d6fdb98b8ba5"
     },
     {
       "id": "http.atomic-unknown.invalid",
@@ -538,7 +538,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "a1bc6b06cba8ffcebd44da8856e517ee8019d2107ad4ca40250ef0e46cd81bd7"
+      "sha256": "ed5bf12028a248907aafc6d513263055a03d60a7a270a783a65d587b1b2a3b3f"
     },
     {
       "id": "http.content-negative-size.invalid",
@@ -550,7 +550,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "5a42ed0b6da1e481d7f14659418615d25100fde8447b1733769f0d024bf772e2"
+      "sha256": "de8502dfc7b3491f04954b9b65d8952951904699ba06579912289a9fcaefa097"
     },
     {
       "id": "http.content-bad-hash.invalid",
@@ -562,7 +562,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "ebe9af9d8d269542003f9a5269eb03888d66b3195f1a1f2fc51495ef6dc25819"
+      "sha256": "0ebf598711a4bad6048d3123d4a2ab44beb1b291480112b7fd35534599eedaf8"
     },
     {
       "id": "http.content-inline.invalid",
@@ -574,7 +574,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "d2ea1edb3038c0ad5d4152c3b4193945cf63db8c8aac45d7cd4c1d5685758649"
+      "sha256": "bff8dc8ddb67325bb73416367a17dc194c008eec07267b85339f545c2b9e9225"
     },
     {
       "id": "http.metadata-body.invalid",
@@ -586,7 +586,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "9213b012e580d4c9ab1f6d1e67789011ab35feb7261082cf7d4a3dacab098f25"
+      "sha256": "1915321d6ff1aa47d1cd25c2e8a94ba80218a33296271c3e06f038f9e0fb45c8"
     },
     {
       "id": "http.parent-empty.invalid",
@@ -598,7 +598,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "d0af0d18b5039177d40bdbd4dbc33a6a232b12d3fb5d126bec04835d18e7cabd"
+      "sha256": "803c13fc0d1d293f656eca68afae1611c8498c1c631ddc6d984ec517a5eb909f"
     },
     {
       "id": "http.task-id-missing.invalid",
@@ -610,7 +610,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "4d6aaf2bdf4754b099c33d3bf010a193418e1899c8b2584f8f3340544509d2f6"
+      "sha256": "339b6dedf0759dd222270c0732dd5f45fae6a1734f34c122f131df6d854fbb73"
     },
     {
       "id": "http.content-gap.valid",
@@ -622,7 +622,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "4b1cadff4249290afd79d80e9e33c8e212165496de708a440950ef31a2c4b76a"
+      "sha256": "e945a3038043c6d37bbeffdb2f28edef49ecba3643ad191a22cad1141ff7d6a1"
     },
     {
       "id": "http.catalogue-config.change.before.valid",
@@ -694,7 +694,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "63cea6f7c118c3d5a178c37bf96d5ecb3e79ce44a3aa04dec7670ef3104d0027"
+      "sha256": "edd3598c9b3a6b91839b7cd9050e8122a54d06751e629e372f906b1a04a86f86"
     },
     {
       "id": "http.catalogue-model.request.before.valid",
@@ -790,7 +790,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "3f8a44ff0c50ae1e556246e6301804e6e1b0596add52d62cf10b8ae3ad58ae50"
+      "sha256": "dcf78833b8d6d514cfbd19188528e7b67f26dae95e0a6d5e211cef3653d80f71"
     },
     {
       "id": "http.catalogue-tool.batch.after.valid",
@@ -826,7 +826,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "208f83f1145b9062700f74cc863b6d7df58d77a34b2abd2c5792b4b93da69d43"
+      "sha256": "3f81b08b1dae65a4204cbe4cb404e0fa2cca4b0192cd9427c98f2f89b16a2e89"
     },
     {
       "id": "http.catalogue-task.change.before.valid",
@@ -874,7 +874,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "70a2b7d8d70e4f9de01af4e5aeda26d196b8a94f9c5b9a74f710ddfd388db9dc"
+      "sha256": "94a25f08f57c78fbe0417bdfe61ba9663dceb0d6caf03f9577c2c9299d4ae27c"
     },
     {
       "id": "http.catalogue-user.elicitation.result.valid",
@@ -886,7 +886,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "da0657f9ade9256441b8a8b6daa252d13ccab98eab74a073bd93647bc3363dcd"
+      "sha256": "a9dbaf3edb3cb399415a2327dd5e08e577bb3baf69d2ce5f4fe5ee665b3e07e3"
     },
     {
       "id": "http.catalogue-user.message.inbound.valid",
@@ -898,7 +898,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "df9592415006dc5add9131445a8546e2bc726b29797435d396c2353c838d6532"
+      "sha256": "3fd03931e7c687036e559b576e3751d397718fbcdb38118d8d488e3d8a439bf0"
     },
     {
       "id": "http.catalogue-user.message.outbound.valid",
@@ -910,7 +910,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "fe31f019fe433c3e1eb8c1fdcedead5c290d0bcc6e1065f6769acd43ae3cbc61"
+      "sha256": "f6f5b79e000dbd4f9ead672ed440f558457959f40b75a0a8f475df9e42387126"
     },
     {
       "id": "http.catalogue-workspace.change.before.valid",
@@ -969,7 +969,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "1adbe18a0c1687f9f6b383e4dd7400dd083fcbb273a122915d39598bbe143162",
+      "sha256": "09d254cd4b5201efd6fb42b58b0fe83053ca50b961a68d5bc52f1c7f956cbcfc",
       "aggregateExpectedValid": true
     },
     {
@@ -981,7 +981,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "dc49110c38d6ce5a1f385033908111f24b37f6c7ad75ca5abd7d460b4b2ae535",
+      "sha256": "80d3dbd216b085a018ac55dd7c8c2fcf00beae25b59e99e92d8d7ab31047f9cc",
       "aggregateExpectedValid": true
     },
     {
@@ -993,7 +993,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "c6b18042b5dd1468fe7438e7858aa4e26991a54c411f2454a7fbc930841c16dc",
+      "sha256": "d34c2b0653773d2dfd98bd66bac4fb1560c5d6499ada2fd80d57fa4af702d0b5",
       "aggregateExpectedValid": true
     },
     {
@@ -1005,7 +1005,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "e45d2e6fa46f7b33134da54c5a158097f1cf778374a14bf4c1deffd089fdaf52",
+      "sha256": "6ffdfb29c97ede4dc3f813735c10fbb4aa033ba3c161f2b21f9f1fa4b1367570",
       "aggregateExpectedValid": false
     },
     {
@@ -1017,7 +1017,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "7f90daaf04223b5e8f7518ffe995707e8d0069efbfe46bed256e364220487960",
+      "sha256": "d83d23067f498e173e9bb03aaaadd22241092e0598835c3a826a3e300f5565ea",
       "aggregateExpectedValid": false
     },
     {
@@ -1053,7 +1053,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "f27b5f1985e64cd388baf712f484c85e4da8232e29fc6885dece0696376230bd",
+      "sha256": "c80a3f9cc78248b4103def6d2193615dc6c0f0815b1518aa3cdec7ed4134a775",
       "aggregateExpectedValid": false
     },
     {
@@ -1065,7 +1065,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "aabb484175a993477bfc63b3b44c5091c2ccb681a25a4bbd5080c4d39337d6f1",
+      "sha256": "e685e3b28502f6c88ab0ac9d49f189956342ed8e1d67218aad56f5916a787afc",
       "aggregateExpectedValid": false
     },
     {
@@ -1077,7 +1077,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "9740eaa870dc3eb8ade91a8ddb9dd345ff9ec9d1b6240e2e419424729ffd141f",
+      "sha256": "12fecfd974e49d9995a6b94ab147fbcca3b4b8dcb5f16abf0fa1f0e7228c3b70",
       "aggregateExpectedValid": false
     },
     {
@@ -1089,7 +1089,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "0721aa631989eabcee4fa40b9a669a6fed872084827a8158b855baa30a4b2033",
+      "sha256": "2c6acb1a5c622e0c3550891aaebf8444a6363827065da39cbf54c185404cb7d9",
       "aggregateExpectedValid": true
     },
     {
@@ -1101,7 +1101,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "e10796521e2c574a81247e1b01807f592b6eea8954fd6ae61950520f29fca213",
+      "sha256": "a4a7bd66d12b22a1b277c54d394951c9a42cbd31b248d0bc82dccd35f490f41d",
       "aggregateExpectedValid": false
     },
     {
@@ -1113,7 +1113,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "6649b047a3034df6535ba3b78720738702a364b9e791846bd524ec93577ff0d5",
+      "sha256": "9d3efffbbe993cb80a6b5c00a9a9169b5c79b351881f54a3f24411ef229499ca",
       "aggregateExpectedValid": true
     },
     {
@@ -1149,7 +1149,7 @@
       "requirements": [
         "AHP-RPC-001"
       ],
-      "sha256": "47e4a643aa3bc196fe9eb648ed833ca00d8dbb8ae1846a6716f3d94d44c9af52",
+      "sha256": "0406f4856ffda0f243e795e758e1d8c234043b13ed7e7e3313356f40c3cc0333",
       "aggregateExpectedValid": false
     },
     {
@@ -1315,6 +1315,805 @@
         "AHP-RPC-001"
       ],
       "sha256": "2b1c70056ef5a4c69003fe8d9a8d99a47092464035b98ab6bbae6f4e7971712b"
+    },
+    {
+      "id": "http.turn-start-inline-prompt.valid",
+      "path": "fixtures/draft/http/turn-start-inline-prompt.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "51a32986e9476d18b133d0576dd32ff2a73f046611a053f75f8169f1910fd278"
+    },
+    {
+      "id": "http.model-request-inline-prompt.valid",
+      "path": "fixtures/draft/http/model-request-inline-prompt.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "fd72680e2a70d31dd18c121a3cb4e61d0dca00e489eda9eacef084bd0790525e"
+    },
+    {
+      "id": "http.modify-prompt-merge.valid",
+      "path": "fixtures/draft/http/modify-prompt-merge.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "63fc119c28ebe1af5591c84e262f16360b77accbdd0440acee5fa46423a9f6c7"
+    },
+    {
+      "id": "http.modify-instructions-merge.valid",
+      "path": "fixtures/draft/http/modify-instructions-merge.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "eaada649d86240582e2ce966ee09ef676adbe92ca1195c953a86d23fc3ed03ad"
+    },
+    {
+      "id": "http.dedicated-json-part.invalid",
+      "path": "fixtures/draft/http/dedicated-json-part.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "d7f604cfb3c4943e6a66eefe4d700b5255282b4069a29cf12fd8cc5e4ad4d88b"
+    },
+    {
+      "id": "http.text-as-ref.invalid",
+      "path": "fixtures/draft/http/text-as-ref.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "74dd26babacced9089eff06e7c9b2f339ba1d6a7390619f8d4302cc0170ba41c"
+    },
+    {
+      "id": "http.text-wrong-media-type.invalid",
+      "path": "fixtures/draft/http/text-wrong-media-type.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "ea553c9f21cf05fcf41d3198e501b9dc34b0cf01bccd5a9546b9456bc9f4d5ec"
+    },
+    {
+      "id": "http.text-nonstring.invalid",
+      "path": "fixtures/draft/http/text-nonstring.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "0f0f919031403034b60bea9e4edc65ed022fa619cdae11692879e6d727c4f78a"
+    },
+    {
+      "id": "http.metadata-text-leak.invalid",
+      "path": "fixtures/draft/http/metadata-text-leak.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "17741efda10e02ae19f477301a4b10f7f4f28d5224a9af4533e73b5ffd89532e"
+    },
+    {
+      "id": "http.omit-text-leak.invalid",
+      "path": "fixtures/draft/http/omit-text-leak.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "95ac0e884c99f01ae6769ad8aa2c21e04b093aae1c7b5c7c8b18dca037bcbf4c"
+    },
+    {
+      "id": "http.gap-text-leak.invalid",
+      "path": "fixtures/draft/http/gap-text-leak.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "b60ca89683e08edaa7c2a765369e591ef749adff8eddd05f84d6eb02ce5ed602"
+    },
+    {
+      "id": "http.attachment-json.invalid",
+      "path": "fixtures/draft/http/attachment-json.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "d249eea0e63bdbedf6027eb973ec0e5b551e11f39bd294c46c82977be1de36b1"
+    },
+    {
+      "id": "http.attachment-json-suffix.invalid",
+      "path": "fixtures/draft/http/attachment-json-suffix.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "af981d72c4d5235e9ad21f6f7f5fd18e2560f66d2b2de1d1b4fde8dece8493d9"
+    },
+    {
+      "id": "http.attachment-content-edit.invalid",
+      "path": "fixtures/draft/http/attachment-content-edit.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "bd2772942ea3b93346fc965b08743cc631312c683f122edd80522123be573f5d"
+    },
+    {
+      "id": "http.text-part-role.invalid",
+      "path": "fixtures/draft/http/text-part-role.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "848c7c5082655da696bac6722f12e9cd8e64091c1b6765a48fb52fabd91c9b59"
+    },
+    {
+      "id": "http.text-part-parent.invalid",
+      "path": "fixtures/draft/http/text-part-parent.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "85a7ab15592c020daa7cc80f6db265e997c51788617412aa5333adb06d13ef7d"
+    },
+    {
+      "id": "http.message-wrong-role.invalid",
+      "path": "fixtures/draft/http/message-wrong-role.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "f468a9d424e8c5675b02c0079b7199e27272375e721322b28fc63cf6bbb900ae"
+    },
+    {
+      "id": "http.message-role-wrong-type.invalid",
+      "path": "fixtures/draft/http/message-role-wrong-type.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "c7e0a32017ce5e1e7b3dc2cfecf6e13620490594a10ca18ba8b2d8be8443a695"
+    },
+    {
+      "id": "http.user-message-inbound-wrong-role.invalid",
+      "path": "fixtures/draft/http/user-message-inbound-wrong-role.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "0b07b1efbdf64d35560417ffc69bdcf4812bb7bd773ccd129fd36d67d87f6f24"
+    },
+    {
+      "id": "http.user-message-outbound-wrong-role.invalid",
+      "path": "fixtures/draft/http/user-message-outbound-wrong-role.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "68258dd6df1e8da2d86f2b4da6f5aedd3c124b737e58f9e7ed58b8c0f0751d2d"
+    },
+    {
+      "id": "http.modify-invalid-target.invalid",
+      "path": "fixtures/draft/http/modify-invalid-target.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "7c44bdd3694927b400dfa25d3cb6f9a916074eda4021df5448b8126d3b7a4dd8"
+    },
+    {
+      "id": "http.modify-invalid-path.invalid",
+      "path": "fixtures/draft/http/modify-invalid-path.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "008a0642f04ac914215574c0bb7da42603958aa3173a19a52a8cdd6bc403d1e4"
+    },
+    {
+      "id": "http.modify-prompt-wrong-type.invalid",
+      "path": "fixtures/draft/http/modify-prompt-wrong-type.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "d0f4e84d67a12f377db3d635706a1010cce43c1368e28430efc5566a67449c84"
+    },
+    {
+      "id": "http.modify-instructions-message.invalid",
+      "path": "fixtures/draft/http/modify-instructions-message.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "eab1ab0b6d83dd9ed26543f6447c8ce8f5b69f2810dd0a2ca774f095b0fa2eba"
+    },
+    {
+      "id": "http.modify-attachment-bytes.invalid",
+      "path": "fixtures/draft/http/modify-attachment-bytes.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-EDIT-001"
+      ],
+      "sha256": "f72b4afe27e68768b75ef2a43fa652c6dae3aa7b8ba4b901354d0a0ac20a470b"
+    },
+    {
+      "id": "http.context.compact.before-inline.valid",
+      "path": "fixtures/draft/http/context.compact.before-inline.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "b5b1cf24c8203e2b9f1c5fa09b042db396f72107bca00f700ce9274db88f47e3"
+    },
+    {
+      "id": "http.context.compact.after-inline.valid",
+      "path": "fixtures/draft/http/context.compact.after-inline.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "c689dbfd4026479148069a2ec198f9442c7269c7844fa5ec08bba6e11e68faa0"
+    },
+    {
+      "id": "http.return-model-messages.valid",
+      "path": "fixtures/draft/http/return-model-messages.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "dfb7d634d8c137d5a6149ca032100a3b4f3ec601af41cfebd680af9c59332db5"
+    },
+    {
+      "id": "http.return-summary-parts.valid",
+      "path": "fixtures/draft/http/return-summary-parts.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "2d117bd4f673d25db8d5f62834e60ab8110e7f7e02300dfb61c0ba2316a4d33e"
+    },
+    {
+      "id": "http.model-request-text-attachment.valid",
+      "path": "fixtures/draft/http/model-request-text-attachment.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "15874d77a2adddc58a9539ff470e3714eb501b8eeeb1b45cbf59ae93b3382631"
+    },
+    {
+      "id": "http.text-metadata.valid",
+      "path": "fixtures/draft/http/text-metadata.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "ca1668206a9d71a7bcc3a5bec82d1b7b34b8cea84a0757eca2c75c5ae33414d4"
+    },
+    {
+      "id": "http.text-omit.valid",
+      "path": "fixtures/draft/http/text-omit.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001",
+        "AHP-CONTENT-002"
+      ],
+      "sha256": "30c7e80e1ebb6df8cca9f3d5a040a466a2800e009f8ac25ac51474f7797fafb2"
+    },
+    {
+      "id": "http.file-changed-inline.valid",
+      "path": "fixtures/draft/http/file-changed-inline.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/observe-notification.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "requirements": [
+        "AHP-RPC-001",
+        "AHP-CONTENT-001"
+      ],
+      "sha256": "05b7f0a5b9ac0d3459a79d57f0f67f06351a52668b1da444b14fa8bf336f70e0"
+    },
+    {
+      "id": "http.contextual-elicitation-content-object.valid",
+      "path": "fixtures/draft/http/contextual-elicitation-content-object.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": true,
+      "editContext": {
+        "event": "user.elicitation.result",
+        "current": {
+          "content": {
+            "name": "old",
+            "keep": true
+          }
+        },
+        "mode": "form",
+        "action": "accept"
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "1ad60d4f552dc1925a20f080b65a13246d8600d7c7cbd760c2d25d3ab480f540"
+    },
+    {
+      "id": "http.contextual-elicitation-content-list.invalid",
+      "path": "fixtures/draft/http/contextual-elicitation-content-list.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "user.elicitation.result",
+        "current": {
+          "content": {
+            "name": "old"
+          }
+        },
+        "mode": "form",
+        "action": "accept"
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "642f180dcc696b5cd197784de7d7024ea188aab8802788dbf967289f25b2ee08"
+    },
+    {
+      "id": "http.contextual-outbound-content-object.invalid",
+      "path": "fixtures/draft/http/contextual-outbound-content-object.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "user.message.outbound",
+        "current": {
+          "content": [
+            {
+              "id": "m1",
+              "role": "assistant",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "1ad60d4f552dc1925a20f080b65a13246d8600d7c7cbd760c2d25d3ab480f540"
+    },
+    {
+      "id": "http.contextual-outbound-content-list.valid",
+      "path": "fixtures/draft/http/contextual-outbound-content-list.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": true,
+      "editContext": {
+        "event": "user.message.outbound",
+        "current": {
+          "content": [
+            {
+              "id": "m1",
+              "role": "assistant",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "hello"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "642f180dcc696b5cd197784de7d7024ea188aab8802788dbf967289f25b2ee08"
+    },
+    {
+      "id": "http.contextual-elicitation-content-nested.invalid",
+      "path": "fixtures/draft/http/contextual-elicitation-content-nested.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "user.elicitation.result",
+        "current": {
+          "content": {}
+        },
+        "mode": "form",
+        "action": "accept"
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "74a776b1bc2986b58bb420853b18a5a34e5773b2edad5f981157415a14b425f8"
+    },
+    {
+      "id": "http.contextual-elicitation-content-url.invalid",
+      "path": "fixtures/draft/http/contextual-elicitation-content-url.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "user.elicitation.result",
+        "current": {
+          "content": {}
+        },
+        "mode": "url",
+        "action": "accept"
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "1ad60d4f552dc1925a20f080b65a13246d8600d7c7cbd760c2d25d3ab480f540"
+    },
+    {
+      "id": "http.contextual-elicitation-content-decline.invalid",
+      "path": "fixtures/draft/http/contextual-elicitation-content-decline.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "user.elicitation.result",
+        "current": {
+          "content": {}
+        },
+        "mode": "form",
+        "action": "decline"
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "641222a01b266b096697134f82ca90b9c7d6c2d9b838b3fe5e30732cd7a3ae95"
+    },
+    {
+      "id": "http.contextual-tool-output-replace.valid",
+      "path": "fixtures/draft/http/contextual-tool-output-replace.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": true,
+      "editContext": {
+        "event": "tool.after",
+        "current": {
+          "output": [
+            {
+              "id": "m1",
+              "role": "tool",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "result"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "0510bf822bcadadd2d3789201f8f6f7dfbe28ff6200158f7077d4b7cf8443220"
+    },
+    {
+      "id": "http.contextual-tool-output-append.valid",
+      "path": "fixtures/draft/http/contextual-tool-output-append.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": true,
+      "aggregateExpectedValid": true,
+      "contextualExpectedValid": true,
+      "editContext": {
+        "event": "tool.after",
+        "current": {
+          "output": [
+            {
+              "id": "m1",
+              "role": "tool",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "result"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "8e5b08a90e64266de0eb724e1bfbde41d9aabba24f2009cd62e7a304517ead7a"
+    },
+    {
+      "id": "http.contextual-tool-output-object.invalid",
+      "path": "fixtures/draft/http/contextual-tool-output-object.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "tool.after",
+        "current": {
+          "output": [
+            {
+              "id": "m1",
+              "role": "tool",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "result"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "d3e9fcc481b1cfe3923b673f892e7aec1cc120fecde84e5e428490a63f00d449"
+    },
+    {
+      "id": "http.contextual-tool-output-parts.invalid",
+      "path": "fixtures/draft/http/contextual-tool-output-parts.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "tool.after",
+        "current": {
+          "output": [
+            {
+              "id": "m1",
+              "role": "tool",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "result"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "197ce1bd26c2cb0116d2bfef6f017dd04fca97012ec0c997056025d90cf3bfb3"
+    },
+    {
+      "id": "http.contextual-tool-output-primitive.invalid",
+      "path": "fixtures/draft/http/contextual-tool-output-primitive.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/intercept-response.schema.json",
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
+      "contextualExpectedValid": false,
+      "editContext": {
+        "event": "tool.after",
+        "current": {
+          "output": [
+            {
+              "id": "m1",
+              "role": "tool",
+              "parts": [
+                {
+                  "id": "p1",
+                  "kind": "text",
+                  "mediaType": "text/plain",
+                  "selection": "body",
+                  "text": "result"
+                }
+              ]
+            }
+          ]
+        },
+        "mode": "",
+        "action": ""
+      },
+      "requirements": [
+        "AHP-EDIT-001"
+      ],
+      "sha256": "4d867e0c2e6e065b8b694a5f72ee88a397ac77f5846e49750aab80030c007e87"
     }
   ]
 }

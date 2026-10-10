@@ -338,7 +338,7 @@ def receiver_probes(endpoint, upload_endpoint, base_request, event_auth=None):
     original=deepcopy(base_request['params']['event']); original['id']='receiver-probe-event'
     def observe(descriptor=None):
         event=deepcopy(original)
-        event['items']=[{'id':'receiver-probe-item','kind':'text','mediaType':'application/octet-stream','selection':'body','body':descriptor if descriptor is not None else {'ref':body['ref']}}]
+        event['items']=[{'id':'receiver-probe-item','kind':'attachment','mediaType':'application/octet-stream','selection':'body','body':descriptor if descriptor is not None else {'ref':body['ref']}}]
         note={'jsonrpc':'2.0','method':'hooks/observe','params':{'protocolVersion':'draft','event':event}}
         return post(endpoint+'/observe',json.dumps(note).encode(),event_headers,context)
     changed_status,changed_payload=upload(b'changed bytes')

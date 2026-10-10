@@ -271,7 +271,8 @@ not an earlier checkout with uncommitted generator changes.
   `MarshalJSON`; every event input implements
   `AHPContentSources() map[string]*content.Source`. Named source fields use
   `*content.Source` or index-preserving `[]*content.Source` and never appear in
-  JSON. Paths are event-relative (`/instructions`, `/items/1`). The handwritten
+  JSON. Paths are event-relative (`/items/1`, `/items/2/parts/5`); nil rows and nil entries are gaps.
+  Inline text-only slots have no source binding. The handwritten
   `content` leaf package avoids an event/client import cycle. The runtime must
   collect bindings before serialization in either delivery mode. `capability.Event`
   and `capability.Mode` can be runtime aliases. Generic receiver methods require
@@ -499,3 +500,130 @@ branches, are carried as forbidden-property sets. Thus `ContentReference` reject
 receipt-only `size` and `sha256` by presence (including null), while unrelated
 unknown extra fields retain the existing forward-compatible parser behavior.
 `ContentUploadReceipt` is a distinct root for upload size and digest metadata.
+
+### Existing explicit source bindings
+
+Published singleton and one-index source APIs remain for unchanged slots such as
+`tool.before.items` and `tool.after.fileChangesBefore`. New canonical message
+parts do not introduce indexed caller APIs: embed the owner in the attachment
+part instead. Internal slot metadata retains arbitrary nested paths for runtime
+extraction; it is not a separate public binding API.
+
+### Direct owned attachments in host inputs
+
+Use host message/part adapters for ordinary construction, not separately indexed
+bindings. Wire models and parse/encode functions remain pure JSON. These adapters
+visit only schema-owned content slots; tool input, native payloads and extension
+objects are not searched for sources. Text stays inline. An owned attachment is
+retained outside the wire value without reading, opening, closing or uploading it.
+
+Python event inputs accept canonical host dictionaries directly:
+
+```python
+from sdk._models import OwnedAttachment
+from sdk.event import ContextCompactBeforeInput
+
+host = ContextCompactBeforeInput(trigger="manual", items=[{
+    "role": "user",
+    "parts": [
+        {"kind": "text", "text": "Summarize this"},
+        {"kind": "attachment", "mediaType": "image/png",
+         "body": OwnedAttachment(source)},
+    ],
+}])
+
+# Pass host directly to the runtime boundary method.
+```
+
+`source` is the runtime's owned source, not a JSON reference. Python slot keys
+remain compatible with `CONTENT_SOURCE_SLOTS` (for example,
+`context.compact.before.items_parts[0][1]`). Supplied part/message fields are
+preserved. Missing IDs receive synthesized provenance once per constructed input.
+
+TypeScript exposes canonical typed host inputs:
+
+```typescript
+const input: HostEventInputs<typeof source>["context.compact.before"] = {
+  trigger: "manual",
+  items: [{role: "user", parts: [
+    {kind: "text", text: "Summarize this"},
+    {kind: "attachment", mediaType: "image/png", body: ownedAttachment(source)},
+  ]}],
+};
+// Pass input directly to the runtime boundary method once wired.
+// Applications do not call the internal _projectHostInput conversion hook.
+```
+
+Bindings contain array-index paths such as `["items", 0, "parts", 1]`.
+Owned attachments project initially to metadata selection; `pending` identifies
+parts that runtime preparation must restore to body selection with resolved refs.
+Synthesized identities are stable for the lifetime of each host object.
+
+Go retains existing wire fields and adds optional schema-derived host overrides:
+
+```go
+messages := []*event.ModelVisibleItemInput{{
+    ModelVisibleItem: ahp.ModelVisibleItem{Role: "user"},
+    Parts: []*event.ContentPartInput{
+        {Text: &ahp.TextBodyPart{Text: "Summarize this"}},
+        {Attachment: &event.AttachmentBodyInput{
+            AttachmentBodyPart: ahp.AttachmentBodyPart{MediaType: "image/png"},
+            Body: source,
+        }},
+    },
+}}
+input := event.ContextCompactBeforeInput{Trigger: "manual", ItemsHost: &messages}
+// Pass input directly to the runtime boundary method.
+// The runtime collects /items/0/parts/1 internally.
+```
+
+`ItemsHost` overrides only `items`, including advanced bindings within that
+subtree. Nil slices/entries preserve their positions for extraction; malformed
+host parts fail encoding. Missing identities are initialized once on host objects;
+these mutable inputs must not be encoded or modified concurrently.
+
+Rust host envelopes own arbitrary non-serializable source types:
+
+```rust
+use sdk::ergonomic_inputs::*;
+use sdk::{CanonicalMessageRole, ContextCompactBeforeInputTrigger};
+
+let input = ContextCompactBeforeInput::new(
+    vec![], ContextCompactBeforeInputTrigger::Manual,
+);
+let host = input.with_sources().with_items(vec![MessageInput::from_parts(
+    CanonicalMessageRole::User,
+    vec![PartInput::inline_text("Summarize this"),
+         PartInput::owned(source, "image/png")],
+)]);
+// Pass host directly to the envelope-aware runtime method once wired.
+```
+
+Explicit metadata constructors preserve IDs, categories, media types and
+provenance. Convenience constructors generate identities once, not per encoding.
+Rust bindings use string-segment paths such as `["items", "0", "parts", "1"]`.
+
+#### Required handwritten runtime wiring
+
+These are generator adapters, not an implemented upload/transport feature:
+
+- Python and Go runtimes must collect `content_sources`/`AHPContentSources()`
+  before encoding, plan those sources using the existing ownership rules, and
+  replace pending attachment descriptors before validation and send. Python keys
+  must be resolved using `CONTENT_SOURCE_SLOTS`; Go keys are JSON Pointers.
+- Rust runtime methods accept the constructed `HostInput<I, S>` and internally
+  consume the doc-hidden `ProjectHostInput<S>::into_host_event()` hook. Existing
+  wire-input hook methods intentionally remain unchanged. Feed the returned
+  `(Value, Vec<ContentSourceBinding<S>>)` to planning before delivery.
+- TypeScript runtime methods accept `HostEventInputs<S>[K]` and internally invoke
+  `_projectHostInput<K, S>(type, input) -> HostInputProjection<S>`. Feed `bindings`
+  to planning and use `pending` to restore body selection and resolved refs.
+  This hook is exported only for runtime integration and marked `@internal`;
+  applications must not call it as an additional construction step.
+
+Python and Go use the local staging placeholder `ahp:owned:pending`; Rust uses
+`ahp:host-pending`. Neither is an uploaded receipt or a reference to send as-is.
+No cancellation, retry, transfer-of-ownership or source-consumption behavior is
+added by conversion. Runtime planning continues to own those policies. Host input
+adapters are outbound conversions; wire decoders do not create local source
+handles or fetch attachments.

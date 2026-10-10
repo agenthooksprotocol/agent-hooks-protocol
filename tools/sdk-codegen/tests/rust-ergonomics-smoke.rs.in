@@ -105,10 +105,127 @@ fn nonobject_intersections_and_distributed_content_stay_typed() {
     assert_eq!(serde_json::to_value(flow).unwrap(), json!(["continue"]));
     let provenance = ExecutionEventAttemptusageProvenance::Provider;
     assert_eq!(serde_json::to_value(provenance).unwrap(), json!("provider"));
-    let item = ModelVisibleItem::Omit(ModelVisibleItemOmit::new("i", "text", "text/plain", "user"));
-    assert!(matches!(&item, ModelVisibleItem::Omit(value) if value.role == "user" && value.id == "i"));
+    let item: ModelVisibleItem = serde_json::from_value(json!({"id":"i","role":"user","parts":[{"id":"p","kind":"text","mediaType":"text/plain","selection":"body","text":"inline"}]})).unwrap();
     let mut value = serde_json::to_value(item).unwrap();
     value["future"] = json!({"keep":true});
     let parsed: ModelVisibleItem = serde_json::from_value(value.clone()).unwrap();
     assert_eq!(serde_json::to_value(parsed).unwrap(), value);
+}
+
+#[test]
+fn published_single_index_source_helper_is_preserved() {
+    let binding = agenthooksprotocol::ergonomic_inputs::tool_before_sources::items(3, "source");
+    assert_eq!(binding.path, vec!["items", "3"]);
+}
+
+#[test]
+fn owned_host_attachments_project_nested_paths_without_serializing_sources() {
+    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    // Intentionally neither Serialize nor Clone; projection can only move it.
+    struct Source(Vec<u8>);
+    let input: UserMessageInboundInput = serde_json::from_value(json!({
+        "message":{"messages":[],"channel":"chat","sender":"host"}, "id":"event-id"
+    })).unwrap();
+    let metadata = AttachmentBodyPart::new(ContentReference::new("original"), "image-id", "image/png")
+        .with_category("skills").with_synthesized(false);
+    let message = MessageInput::new("host-message", CanonicalMessageRole::User, vec![
+        PartInput::text(TextBodyPart::new("text-id", "inline").with_category("reasoning")),
+        PartInput::attachment(metadata, Source(vec![1, 2, 3])),
+    ]);
+    let (event, sources) = input.with_sources().with_message_messages(vec![message]).into_host_event().unwrap();
+    assert_eq!(event["id"], "event-id");
+    assert_eq!(event["message"]["messages"][0]["id"], "host-message");
+    assert_eq!(event["message"]["messages"][0]["role"], "user");
+    let parts = &event["message"]["messages"][0]["parts"];
+    assert_eq!(parts[0]["text"], "inline");
+    assert!(parts[0].get("body").is_none());
+    assert_eq!(parts[0]["category"], "reasoning");
+    assert_eq!(parts[1]["id"], "image-id");
+    assert_eq!(parts[1]["mediaType"], "image/png");
+    assert_eq!(parts[1]["category"], "skills");
+    assert_eq!(parts[1]["synthesized"], false);
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].path, ["message", "messages", "0", "parts", "1"]);
+    assert_eq!(sources[0].source.0, [1, 2, 3]);
+    let _: CanonicalMessage = serde_json::from_value(event["message"]["messages"][0].clone()).unwrap();
+}
+
+#[test]
+fn owned_envelope_only_extracts_explicit_schema_slots_and_last_builder_wins() {
+    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    struct Source(&'static str);
+    let opaque = json!({"kind":"attachment", "body":{"ref":"opaque"}, "parts":[{"body":"never scan"}]});
+    let input: ToolBeforeInput<Value> = serde_json::from_value(json!({"callId":"c", "name":"n", "path":"/tool/n", "origin":"native", "input":opaque})).unwrap();
+    let (event, sources) = input.with_sources::<Source>().into_host_event().unwrap();
+    assert_eq!(event["tool"]["input"], opaque);
+    assert!(sources.is_empty());
+    let input: UserMessageInboundInput = serde_json::from_value(json!({"message":{"messages":[],"channel":"chat","sender":"host"}})).unwrap();
+    let old = MessageInput::synthesized("old", CanonicalMessageRole::User,
+        vec![PartInput::synthesized_attachment("old-part", "image/png", Source("old"))]);
+    let new = MessageInput::synthesized("new", CanonicalMessageRole::User,
+        vec![PartInput::synthesized_attachment("new-part", "image/png", Source("new"))]);
+    let (event, sources) = input.with_sources().with_message_messages(vec![old])
+        .with_message_messages(vec![new]).into_host_event().unwrap();
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].source.0, "new");
+    assert_eq!(event["message"]["messages"][0]["synthesized"], true);
+    assert_eq!(event["message"]["messages"][0]["parts"][0]["synthesized"], true);
+}
+
+#[test]
+fn synthesized_host_constructors_assign_identity_once() {
+    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    struct Source;
+    let input = UserMessageInboundInput::new(UserMessageInboundInputMessage::new("chat", vec![], "host"));
+    let message = MessageInput::from_parts(CanonicalMessageRole::User, vec![
+        PartInput::inline_text("inline"), PartInput::owned(Source, "image/png"),
+    ]);
+    let message_id = message.metadata.id.clone();
+    let part_ids: Vec<String> = message.parts.iter().map(|part| match part {
+        PartInput::Text(metadata) => metadata.id.clone(),
+        PartInput::Attachment { metadata, .. } => metadata.id.clone(),
+        _ => unreachable!(),
+    }).collect();
+    assert_ne!(part_ids[0], part_ids[1]);
+    let (event, sources) = input.with_sources().with_message_messages(vec![message]).into_host_event().unwrap();
+    let projected = &event["message"]["messages"][0];
+    assert_eq!(projected["id"], message_id);
+    assert_eq!(projected["synthesized"], true);
+    for index in 0..2 {
+        assert_eq!(projected["parts"][index]["id"], part_ids[index]);
+        assert_eq!(projected["parts"][index]["synthesized"], true);
+    }
+    assert_eq!(sources.len(), 1);
+}
+
+#[test]
+fn owned_projection_rejects_invalid_metadata_and_bounds() {
+    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    struct Source;
+    fn input() -> UserMessageInboundInput {
+        UserMessageInboundInput::new(UserMessageInboundInputMessage::new("chat", vec![], "host"))
+    }
+    for media in ["", "text/plain", "TeXt/html", "application/json", "APPLICATION/JSON; charset=utf-8", "application/problem+json", "image/foo+JSON"] {
+        let part = PartInput::owned(Source, media);
+        assert!(input().with_sources().with_items(vec![part]).into_host_event().is_err(), "accepted {media}");
+    }
+    let mut metadata = AttachmentBodyPart::new(ContentReference::new("original"), "id", "image/png");
+    metadata.additional_properties.insert("selection".into(), json!("metadata"));
+    assert!(input().with_sources().with_items(vec![PartInput::attachment(metadata, Source)]).into_host_event().is_err());
+    for (key, value) in [("size", json!(4)), ("sha256", json!("a".repeat(64)))] {
+        let mut metadata = AttachmentBodyPart::new(ContentReference::new("original"), "id", "image/png");
+        metadata.additional_properties.insert(key.into(), value);
+        assert!(input().with_sources().with_items(vec![PartInput::attachment(metadata, Source)]).into_host_event().is_err());
+    }
+    let part = PartInput::owned_attachment("", "image/png", Source);
+    assert!(input().with_sources().with_items(vec![part]).into_host_event().is_err());
+    let part = PartInput::text(TextBodyPart::new("id", "inline").with_category(""));
+    assert!(input().with_sources::<Source>().with_items(vec![part]).into_host_event().is_err());
+    let message = MessageInput::new("", CanonicalMessageRole::User, vec![]);
+    assert!(input().with_sources::<Source>().with_message_messages(vec![message]).into_host_event().is_err());
+    let tool: ToolAfterInput<Value> = serde_json::from_value(json!({
+        "callId":"c", "name":"n", "path":"/tool/n", "origin":"native", "input":{},
+        "execution":{"status":"executed"}, "outcome":"ok", "items":[], "fileChanges":[]
+    })).unwrap();
+    assert!(tool.with_sources().with_file_changes_after(0, PartInput::owned(Source, "image/png")).into_host_event().is_err());
 }

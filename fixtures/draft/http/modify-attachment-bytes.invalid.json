@@ -1,0 +1,32 @@
+{
+  "jsonrpc": "2.0",
+  "id": "evt1",
+  "result": {
+    "effects": [
+      {
+        "type": "modify",
+        "target": "content",
+        "operation": "replace",
+        "value": [
+          {
+            "id": "message1",
+            "role": "user",
+            "parts": [
+              {
+                "id": "image1",
+                "kind": "attachment",
+                "mediaType": "image/png",
+                "selection": "body",
+                "body": {
+                  "ref": "upload1",
+                  "text": "edited"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "protocolVersion": "draft"
+  }
+}

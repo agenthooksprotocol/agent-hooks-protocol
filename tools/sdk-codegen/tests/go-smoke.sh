@@ -410,19 +410,11 @@ func TestTypedCompositionConsumers(t *testing.T) {
         var decoded ahp.ExecutionEventMcpConnection
         if err := json.Unmarshal([]byte(input), &decoded); err == nil { t.Fatalf("location/structure predicate lost: %s", input) }
     }
-    item := ahp.ModelVisibleItem{Metadata: ahp.Some(ahp.ModelVisibleItemMetadata{
-        ID: "item", Kind: "text", MediaType: "text/plain", Selection: "metadata", Role: "user",
-    })}
-    if item.Metadata.Value.Role != "user" || item.Metadata.Value.Kind != "text" { t.Fatal("composed item fields unavailable") }
-    for _, input := range []string{
-        `{"id":"item","kind":"text","mediaType":"text/plain","selection":"metadata"}`,
-        `{"id":"item","kind":"text","mediaType":"text/plain","selection":"body","role":"user"}`,
-    } {
-        var decoded ahp.ModelVisibleItem
-        if err := json.Unmarshal([]byte(input), &decoded); err == nil { t.Fatalf("composed content constraints lost: %s", input) }
-    }
     var decoded ahp.ModelVisibleItem
-    if err := json.Unmarshal([]byte(`{"id":"item","kind":"text","mediaType":"text/plain","selection":"metadata","role":"user","future":true}`), &decoded); err != nil || decoded.Metadata.Value.Role != "user" || !bytes.Equal(decoded.Metadata.Value.AdditionalProperties["future"], []byte("true")) { t.Fatalf("composed decode: %+v %v", decoded, err) }
+    if err := json.Unmarshal([]byte(`{"id":"item","role":"user","parts":[{"id":"p","kind":"text","mediaType":"text/plain","selection":"body","text":"inline"}],"future":true}`), &decoded); err != nil || decoded.Role != "user" || !bytes.Equal(decoded.AdditionalProperties["future"], []byte("true")) { t.Fatalf("canonical message decode: %+v %v", decoded, err) }
+    for _, input := range []string{`{"id":"item","parts":[]}`, `{"id":"item","role":"user","parts":[{"kind":"text","selection":"body"}]}`} {
+        if err := json.Unmarshal([]byte(input), &decoded); err == nil { t.Fatalf("canonical message constraints lost: %s", input) }
+    }
 }
 
 func exportedFixture(t *testing.T, path string) []byte {

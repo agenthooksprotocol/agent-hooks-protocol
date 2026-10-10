@@ -19,10 +19,15 @@
       "path": "example",
       "partialOutput": {
         "id": "item1",
-        "kind": "tool_result",
-        "mediaType": "text/plain",
-        "selection": "metadata",
-        "role": "tool"
+        "role": "tool",
+        "parts": [
+          {
+            "id": "item1-part",
+            "kind": "text",
+            "mediaType": "text/plain",
+            "selection": "metadata"
+          }
+        ]
       },
       "backgrounded": false
     }
