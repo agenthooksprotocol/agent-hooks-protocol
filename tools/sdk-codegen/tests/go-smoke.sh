@@ -666,6 +666,8 @@ for negative in \
   'var _ = capability.ToolBefore{Flow:capability.Continue(1,2)}' \
   'var _ = capability.ToolBefore{Flow:capability.ContinueAndStop(1,2)}' \
   'var _ = capability.Continue(-1,0)' \
+  'var _ = capability.Stop().WithMaxContinuations(-1)' \
+  'var _ = capability.ToolBefore{Flow:capability.Continue(1,2).WithMaxContinuations(3)}' \
   'var _ = capability.Injection{deliveries:[]string{"now"}}' \
   'var _ = capability.New(nil)' \
   'var _ = capability.Intercept()' \

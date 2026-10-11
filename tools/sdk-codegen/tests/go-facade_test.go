@@ -392,6 +392,49 @@ func TestNamedContentSourceBindingsAreOutOfBand(t *testing.T) {
 	}
 }
 
+func TestFlowMaxContinuations(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		host  capability.Host
+		event string
+		want  string
+	}{
+		{"stop", capability.Host{ToolBefore: capability.ToolBefore{Flow: capability.Stop().WithMaxContinuations(0)}}, "tool.before", `{"effects":["flow"],"flow":{"operations":["stop"],"maxContinuations":0}}`},
+		{"continue", capability.Host{TurnFinishBefore: capability.TurnFinishBefore{Flow: capability.Continue(2, 1).WithMaxContinuations(3)}}, "turn.finish.before", `{"effects":["flow"],"flow":{"operations":["continue"],"remainingContinuations":2,"continuationCount":1,"maxContinuations":3}}`},
+		{"both", capability.Host{TurnFinishBefore: capability.TurnFinishBefore{Flow: capability.ContinueAndStop(2, 1).WithMaxContinuations(3)}}, "turn.finish.before", `{"effects":["flow"],"flow":{"operations":["continue","stop"],"remainingContinuations":2,"continuationCount":1,"maxContinuations":3}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := json.Marshal(test.host.Wire()[test.event].Capabilities)
+			if err != nil || string(data) != test.want {
+				t.Fatalf("configured maximum: %s %v", data, err)
+			}
+			if parsed := ahp.ParseCapabilities(data); !parsed.OK {
+				t.Fatal(parsed.Diagnostics)
+			}
+		})
+	}
+	for _, host := range []capability.Host{
+		{ToolBefore: capability.ToolBefore{Flow: (capability.StopFlow{}).WithMaxContinuations(3)}},
+		{TurnFinishBefore: capability.TurnFinishBefore{Flow: (capability.ContinueFlow{}).WithMaxContinuations(3)}},
+		{TurnFinishBefore: capability.TurnFinishBefore{Flow: (capability.StopContinueFlow{}).WithMaxContinuations(3)}},
+	} {
+		if len(host.Wire()) != 0 {
+			t.Fatal("maximum created flow authority")
+		}
+	}
+	base := capability.Continue(2, 1)
+	limited := base.WithMaxContinuations(3)
+	limited = limited.WithMaxContinuations(4)
+	original := (capability.Host{TurnFinishBefore: capability.TurnFinishBefore{Flow: base}}).Wire()["turn.finish.before"].Capabilities.Flow
+	wire := (capability.Host{TurnFinishBefore: capability.TurnFinishBefore{Flow: limited}}).Wire()["turn.finish.before"].Capabilities.Flow
+	if original.MaxContinuations != nil || wire.MaxContinuations == nil || *wire.MaxContinuations != 4 {
+		t.Fatal("maximum mutation or missing maximum")
+	}
+	*wire.MaxContinuations = 9
+	if *(capability.Host{TurnFinishBefore: capability.TurnFinishBefore{Flow: limited}}).Wire()["turn.finish.before"].Capabilities.Flow.MaxContinuations != 4 {
+		t.Fatal("wire maximum aliases typed value")
+	}
+}
 func TestDependentFlowConstruction(t *testing.T) {
 	stop := (capability.Host{ToolBefore: capability.ToolBefore{Flow: capability.Stop()}}).Wire()["tool.before"]
 	if stop.Capabilities.Flow == nil || len(stop.Capabilities.Flow.Operations) != 1 || stop.Capabilities.Flow.Operations[0] != "stop" {

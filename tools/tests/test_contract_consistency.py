@@ -75,6 +75,19 @@ class ContractConsistencyTests(unittest.TestCase):
         self.assertFalse(self.errors({'effects': ['flow'], 'flow': {'operations': ['stop']}},
                                      'capabilities'))
 
+    def test_typed_flow_maximum_golden_declarations_are_canonical(self):
+        for event, flow in [
+            ("tool.before", {"operations": ["stop"], "maxContinuations": 0}),
+            ("turn.finish.before", {"operations": ["continue"], "remainingContinuations": 2,
+                                    "continuationCount": 1, "maxContinuations": 3}),
+            ("turn.finish.before", {"operations": ["continue", "stop"], "remainingContinuations": 2,
+                                    "continuationCount": 1, "maxContinuations": 3}),
+        ]:
+            capabilities = {"effects": ["flow"], "flow": flow}
+            self.assertFalse(self.errors(capabilities, "capabilities"))
+            self.assertFalse(self.errors(capabilities, "capabilities", event))
+            self.assertTrue(self.errors({**capabilities, "flow": {**flow, "maxContinuations": -1}}, "capabilities"))
+
     def test_continue_instruction_is_optional_but_nonempty_when_present(self):
         effect = {'type': 'flow', 'operation': 'continue'}
         self.assertFalse(self.errors(effect, 'effect'))

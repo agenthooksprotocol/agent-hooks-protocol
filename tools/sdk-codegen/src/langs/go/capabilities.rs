@@ -21,7 +21,7 @@ func ReplaceAndMerge() Modify { return Modify{replace:true,merge:true} }
 func (v Modify) granted() bool { return v.replace || v.merge }
 type WireModification struct { Replace bool `json:"replace"`; Merge bool `json:"merge"` }
 func (v Modify) wire() WireModification { return WireModification{v.replace,v.merge} }
-type WireFlow struct { Operations []string `json:"operations"`; RemainingContinuations *uint64 `json:"remainingContinuations,omitempty"`; ContinuationCount *uint64 `json:"continuationCount,omitempty"` }
+type WireFlow struct { Operations []string `json:"operations"`; RemainingContinuations *uint64 `json:"remainingContinuations,omitempty"`; ContinuationCount *uint64 `json:"continuationCount,omitempty"`; MaxContinuations *uint64 `json:"maxContinuations,omitempty"` }
 type WireContextInjection struct { Append bool `json:"append"`; DeliverAt []string `json:"deliverAt"` }
 type WireInjection struct { Context WireContextInjection `json:"context"` }
 type WireCapabilities struct {
@@ -35,14 +35,18 @@ type WireDeclaration struct { Modes []string `json:"modes"`; Capabilities *WireC
 func addEffect(v *WireCapabilities, effect string) { for _, existing := range v.Effects { if existing == effect { return } }; v.Effects = append(v.Effects,effect) }
 // Flow is closed. Stop-only event fields use concrete StopFlow.
 type Flow interface { flowWire() *WireFlow }
-type StopFlow struct { granted bool }
-type ContinueFlow struct { granted bool; remaining,count uint64 }
+type StopFlow struct { granted bool; max uint64; hasMax bool }
+type ContinueFlow struct { granted bool; remaining,count,max uint64; hasMax bool }
 type StopContinueFlow struct { continuation ContinueFlow }
 func Stop() StopFlow { return StopFlow{granted:true} }
 func Continue(remaining,count uint64) ContinueFlow { return ContinueFlow{granted:true,remaining:remaining,count:count} }
 func ContinueAndStop(remaining,count uint64) StopContinueFlow { return StopContinueFlow{continuation:Continue(remaining,count)} }
-func (v StopFlow) flowWire() *WireFlow { if !v.granted { return nil }; return &WireFlow{Operations:[]string{"stop"}} }
-func (v ContinueFlow) flowWire() *WireFlow { if !v.granted { return nil }; remaining,count := v.remaining,v.count; return &WireFlow{Operations:[]string{"continue"},RemainingContinuations:&remaining,ContinuationCount:&count} }
+// WithMaxContinuations returns a copy with an explicit maximum; zero grants remain inactive.
+func (v StopFlow) WithMaxContinuations(max uint64) StopFlow { if v.granted { v.max,v.hasMax = max,true }; return v }
+func (v ContinueFlow) WithMaxContinuations(max uint64) ContinueFlow { if v.granted { v.max,v.hasMax = max,true }; return v }
+func (v StopContinueFlow) WithMaxContinuations(max uint64) StopContinueFlow { v.continuation = v.continuation.WithMaxContinuations(max); return v }
+func (v StopFlow) flowWire() *WireFlow { if !v.granted { return nil }; wire := &WireFlow{Operations:[]string{"stop"}}; if v.hasMax { max := v.max; wire.MaxContinuations = &max }; return wire }
+func (v ContinueFlow) flowWire() *WireFlow { if !v.granted { return nil }; remaining,count := v.remaining,v.count; wire := &WireFlow{Operations:[]string{"continue"},RemainingContinuations:&remaining,ContinuationCount:&count}; if v.hasMax { max := v.max; wire.MaxContinuations = &max }; return wire }
 func (v StopContinueFlow) flowWire() *WireFlow { w := v.continuation.flowWire(); if w!=nil { w.Operations = append(w.Operations,"stop") }; return w }
 func renderFlow(v Flow) *WireFlow { switch grant := v.(type) {
 case StopFlow: return grant.flowWire()
