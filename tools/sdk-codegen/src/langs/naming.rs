@@ -222,7 +222,7 @@ fn label(shape: &Shape) -> String {
         Shape::Never => "Never".into(),
         Shape::Null => "Null".into(),
         Shape::Boolean => "Boolean".into(),
-        Shape::Integer => "Integer".into(),
+        Shape::Integer | Shape::BoundedInteger { .. } => "Integer".into(),
         Shape::Number => "Number".into(),
         Shape::String => "String".into(),
         Shape::Ref { name } => pascal(name),

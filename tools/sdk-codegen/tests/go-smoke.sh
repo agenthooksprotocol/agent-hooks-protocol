@@ -64,6 +64,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -240,8 +241,22 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	}
 	numericSubscriptions[0].(map[string]any)["timeoutMs"] = json.Number("9007199254740992")
 	result = ParseRegistration(inputJSON(t, numeric))
-	if result.OK || !hasDiagnostic(result.Diagnostics, DiagnosticInvalidType) {
-		t.Fatal("integer outside the cross-language safe range was accepted")
+	if !result.OK {
+		t.Fatal("valid integer was rejected by an invented safe-range maximum", result.Diagnostics)
+	}
+	for _, counter := range []string{"1208925819614629174706176", "1267650600228229401496703205376"} {
+		request := fixture(t, "fixtures/draft/http/intercept-request.valid.json")
+		session := request["params"].(map[string]any)["event"].(map[string]any)["session"].(map[string]any)
+		session["counters"] = map[string]any{"turns": json.Number(counter), "futureCounter": json.Number(counter)}
+		parsed := ParseInterceptRequest(inputJSON(t, request))
+		if !parsed.OK { t.Fatal(parsed.Diagnostics) }
+		encoded, err := EncodeInterceptRequest(parsed.Value)
+		if err != nil { t.Fatal(err) }
+		if !strings.Contains(string(encoded), counter) { t.Fatal("large counter lost fidelity") }
+		for _, field := range []string{"turns", "futureCounter"} {
+			session["counters"] = map[string]any{field: json.Number("-1")}
+			if ParseInterceptRequest(inputJSON(t, request)).OK { t.Fatal("negative counter accepted") }
+		}
 	}
 
 	request := fixture(t, "fixtures/draft/http/intercept-request.valid.json")

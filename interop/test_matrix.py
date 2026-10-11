@@ -70,6 +70,39 @@ class ScenarioGeneration(unittest.TestCase):
                 self.assertEqual('text', messages[0]['parts'][0]['kind'])
                 self.assertEqual('body', messages[0]['parts'][0]['selection'])
 
+    def test_absent_and_empty_effects_are_neutral_without_wire_normalization(self):
+        rows = {row["id"]: row for row in generate_scenarios.build()["scenarios"]}
+        empty = rows["empty-response-preserves-input"]
+        self.assertEqual(empty["response"]["result"]["effects"], [])
+        for name in ("missing-effects-array", "omitted-effects-preserves-input"):
+            with self.subTest(name=name):
+                row = rows[name]
+                self.assertNotIn("effects", row["response"]["result"])
+                self.assertNotIn("expectError", row)
+                self.assertNotIn("negative", row["tags"])
+                self.assertEqual(row["expected"], empty["expected"])
+        for suffix, decision in (("incoming-ask", "ask"), ("incoming-deny", "deny")):
+            row = rows["omitted-effects-preserves-" + suffix]
+            self.assertNotIn("effects", row["response"]["result"])
+            self.assertEqual(row["expected"]["decision"], decision)
+            self.assertFalse(row["expected"]["executed"])
+        for suffix, value in (("candidate", {"cached": 1}), ("null-candidate-value", None)):
+            row = rows["omitted-effects-preserves-" + suffix]
+            self.assertNotIn("effects", row["response"]["result"])
+            self.assertEqual(row["expected"]["result"], value)
+            self.assertFalse(row["expected"]["executed"])
+
+    def test_null_effects_are_schema_invalid(self):
+        document = generate_scenarios.build()
+        row = next(row for row in document["scenarios"] if row["id"] == "null-effects-array")
+        self.assertIn("effects", row["response"]["result"])
+        self.assertIsNone(row["response"]["result"]["effects"])
+        self.assertTrue(row["expectError"])
+        self.assertIn("schema-invalid", row["tags"])
+        self.assertIn("atomic-rejection", row["tags"])
+        self.assertNotIn("expected", row)
+        generate_scenarios.validate(document)
+
     def test_continue_without_instruction_is_accepted(self):
         document = generate_scenarios.build()
         row = next(row for row in document['scenarios']
@@ -130,7 +163,7 @@ class Integrity(unittest.TestCase):
     def test_all_22_deny_ask_outcomes_reject_supplied_output(self):
         scenarios=matrix.load(matrix.HERE/'scenarios.json')['scenarios']
         rows=[s for s in scenarios if s.get('expected',{}).get('decision') in ('deny','ask')]
-        self.assertEqual(len(rows),22)
+        self.assertEqual(len(rows),24)
         for scenario in rows:
             actual=deepcopy(scenario['expected']);actual['result']='unauthorized supplied output'
             report={'language':'fake','results':[{'id':scenario['id'],'status':'passed','actual':actual}]}

@@ -216,7 +216,7 @@ func TestStructuralAgreement(t *testing.T) {
  agreement(t,ahp.ParseOpen,[]string{`"yes"`,`"future"`},[]string{`null`,`3`})
  if result := ahp.ParseOpen([]byte(`"future"`)); len(result.Diagnostics)!=1 || result.Diagnostics[0].Severity!=ahp.SeverityWarning { t.Fatal(result) }
  agreement(t,ahp.ParseLiteral,[]string{`"yes"`},[]string{`"future"`,`null`})
- agreement(t,ahp.ParseInteger,[]string{`1`,`1.0`,`1e0`},[]string{`null`,`"1"`,`1.5`,`9007199254740992`})
+ agreement(t,ahp.ParseInteger,[]string{`1`,`1.0`,`1e0`,`9007199254740992`},[]string{`null`,`"1"`,`1.5`})
  agreement(t,ahp.ParseNumber,[]string{`1.5`,`1e100`,`1e9999`},[]string{`null`,`"1"`})
  agreement(t,ahp.ParseTextAlias,[]string{`""`},[]string{`null`,`3`})
  agreement(t,ahp.ParseUnionAlias,[]string{`{"kind":"future"}`},[]string{`null`,`{}`})
@@ -313,4 +313,186 @@ fn schema_compositions_keep_original_descriptors_and_typed_fields() {
             }
         }
     }
+}
+
+#[test]
+fn typed_additional_properties_validate_and_hydrate_maps() {
+    let dictionary = |shape| Shape::Object {
+        properties: vec![],
+        forbidden_property_sets: vec![],
+        additional: AdditionalProperties::Typed {
+            shape: Box::new(shape),
+        },
+    };
+    let nullable_integer = Shape::Union {
+        mode: UnionMode::AnyOf,
+        variants: vec![Shape::Integer, Shape::Null],
+        discriminator: None,
+    };
+    let mut mixed = dictionary(Shape::Integer);
+    if let Shape::Object { properties, .. } = &mut mixed {
+        properties.push(Property {
+            constructor_default: None,
+            wire_name: "label".into(),
+            required: true,
+            shape: Shape::String,
+        });
+    }
+    let nonnegative = Shape::BoundedInteger {
+        minimum: Some(0.into()),
+        maximum: None,
+    };
+    let shapes = [
+        (
+            "SessionCounters",
+            Shape::Object {
+                properties: vec![Property {
+                    constructor_default: None,
+                    wire_name: "inputTokens".into(),
+                    required: false,
+                    shape: nonnegative.clone(),
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Typed {
+                    shape: Box::new(nonnegative),
+                },
+            },
+        ),
+        ("UnboundedInteger", Shape::Integer),
+        (
+            "BoundedIntegerValue",
+            Shape::BoundedInteger {
+                minimum: Some((-2).into()),
+                maximum: Some(2.into()),
+            },
+        ),
+        ("Dictionary", dictionary(Shape::String)),
+        ("NullableDictionary", dictionary(nullable_integer)),
+        (
+            "NestedDictionary",
+            dictionary(Shape::Ref {
+                name: "NullableDictionary".into(),
+            }),
+        ),
+        ("MixedDictionary", mixed),
+        (
+            "ClosedBag",
+            Shape::Object {
+                properties: vec![],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Forbidden,
+            },
+        ),
+    ];
+    let ir = Ir {
+        schema_revision: "test".into(),
+        protocol_version: "test".into(),
+        roots: shapes
+            .iter()
+            .map(|(name, _)| PublicRoot {
+                name: (*name).into(),
+                schema: "test.json".into(),
+            })
+            .collect(),
+        types: shapes
+            .into_iter()
+            .map(|(name, shape)| NamedType {
+                name: name.into(),
+                source: "test.json#".into(),
+                shape,
+            })
+            .collect(),
+    };
+    let output = emit(&ir).unwrap();
+    assert!(output.contains("type Dictionary map[string]string"));
+    assert!(output.contains("type NullableDictionary map[string]Nullable["));
+    assert!(output.contains("type NestedDictionary map[string]*NullableDictionary"));
+    assert!(output.contains("AdditionalProperties map[string]json.Number"));
+    let dir = std::env::temp_dir().join(format!("ahp-go-typed-maps-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("go.mod"), "module typedmaps\n\ngo 1.23\n").unwrap();
+    std::fs::write(dir.join("models.go"), output).unwrap();
+    std::fs::write(dir.join("models_test.go"), r#"package ahp
+import ("encoding/json"; "testing"; "fmt")
+func TestTypedMaps(t *testing.T) {
+    good := ParseDictionary([]byte(`{"hello":"world"}`))
+    if !good.OK || good.Value["hello"] != "world" { t.Fatal(good) }
+    bad := ParseDictionary([]byte(`{"a/b":false}`))
+    if bad.OK || len(bad.Diagnostics) != 1 || bad.Diagnostics[0].Path != "/a~1b" { t.Fatal(bad) }
+    var direct Dictionary
+    if json.Unmarshal([]byte(`{"wrong":null}`), &direct) == nil { t.Fatal("direct validation missing") }
+    nested := ParseNestedDictionary([]byte(`{"outer":{"zero":0,"nil":null}}`))
+    if !nested.OK || nested.Value["outer"] == nil { t.Fatal(nested) }
+    values := *nested.Value["outer"]
+    if !values["zero"].Valid || values["nil"].Valid { t.Fatal("nullable map hydration", values) }
+    encoded, err := EncodeNestedDictionary(nested.Value)
+    if err != nil || string(encoded) != `{"outer":{"nil":null,"zero":0}}` { t.Fatal(string(encoded), err) }
+    mixed := ParseMixedDictionary([]byte(`{"label":"ok","count":2}`))
+    if !mixed.OK || string(mixed.Value.AdditionalProperties["count"]) != "2" { t.Fatal(mixed) }
+    if ParseMixedDictionary([]byte(`{"label":"ok","count":"bad"}`)).OK { t.Fatal("additional validation missing") }
+    encoded, err = EncodeMixedDictionary(mixed.Value)
+    if err != nil || string(encoded) != `{"count":2,"label":"ok"}` { t.Fatal(string(encoded), err) }
+    var directMixed MixedDictionary
+    if json.Unmarshal([]byte(`{"label":"ok","count":false}`), &directMixed) == nil { t.Fatal("direct mixed validation missing") }
+    closed := ParseClosedBag([]byte(`{"future":{"opaque":true}}`))
+    if !closed.OK || string(closed.Value.AdditionalProperties["future"]) != `{"opaque":true}` { t.Fatal("closed unknown bag", closed) }
+    for _, lexeme := range []string{"1208925819614629174706176", "1267650600228229401496703205376", "340282366920938463463374607431768211456"} {
+        for _, key := range []string{"inputTokens", "futureCounter"} {
+            text := fmt.Sprintf(`{"%s":%s}`, key, lexeme)
+            parsed := ParseSessionCounters([]byte(text))
+            if !parsed.OK { t.Fatal(text, parsed.Diagnostics) }
+            integer := parsed.Value.AdditionalProperties[key]
+            if key == "inputTokens" { integer = parsed.Value.InputTokens.Value }
+            if integer.String() != lexeme { t.Fatal("rounded counter", integer, lexeme) }
+            encoded, err := EncodeSessionCounters(parsed.Value)
+            if err != nil || string(encoded) != text { t.Fatal(text, string(encoded), err) }
+            var direct SessionCounters
+            if err := json.Unmarshal([]byte(text), &direct); err != nil { t.Fatal(text, err) }
+            encoded, err = json.Marshal(direct)
+            if err != nil || string(encoded) != text { t.Fatal(text, string(encoded), err) }
+            for _, invalid := range []string{"-"+lexeme, lexeme+".5", "null", "true"} {
+                text := fmt.Sprintf(`{"%s":%s}`, key, invalid)
+                if ParseSessionCounters([]byte(text)).OK { t.Fatal("invalid counter", text) }
+                if json.Unmarshal([]byte(text), &direct) == nil { t.Fatal("invalid direct counter", text) }
+            }
+        }
+        for _, sign := range []string{"", "-"} {
+            text := sign+lexeme
+            parsed := ParseUnboundedInteger([]byte(text))
+            if !parsed.OK { t.Fatal(text, parsed.Diagnostics) }
+            encoded, err := EncodeUnboundedInteger(parsed.Value)
+            if err != nil || string(encoded) != text { t.Fatal(text, string(encoded), err) }
+        }
+    }
+    for _, text := range []string{"-2", "2", "0", "-0.0", "20e-1", "1e10000"} {
+        if !ParseUnboundedInteger([]byte(text)).OK { t.Fatal("integral lexeme rejected", text) }
+    }
+    for _, text := range []string{"1.5", "1e-1", "1208925819614629174706176.5"} {
+        if ParseUnboundedInteger([]byte(text)).OK { t.Fatal("fraction accepted", text) }
+    }
+    for _, text := range []string{"-2", "2", "0", "-0.0", "20e-1"} {
+        if !ParseBoundedIntegerValue([]byte(text)).OK { t.Fatal("bounded integer rejected", text) }
+        var direct BoundedIntegerValue
+        if json.Unmarshal([]byte(text), &direct) != nil { t.Fatal("direct bounded integer rejected", text) }
+    }
+    for _, text := range []string{"-3", "3", "1e10000", "-1e10000", "2.1"} {
+        if ParseBoundedIntegerValue([]byte(text)).OK { t.Fatal("bounds ignored", text) }
+        var direct BoundedIntegerValue
+        if json.Unmarshal([]byte(text), &direct) == nil { t.Fatal("direct bounds ignored", text) }
+    }
+
+}
+"#).unwrap();
+    let result = std::process::Command::new("go")
+        .args(["test", "./..."])
+        .current_dir(&dir)
+        .output()
+        .expect("Go is required for typed-map regression");
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(
+        result.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&result.stdout),
+        String::from_utf8_lossy(&result.stderr)
+    );
 }

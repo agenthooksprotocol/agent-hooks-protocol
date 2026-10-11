@@ -27,7 +27,7 @@ WORKFLOW = (
 class InstallGeneratedSdkTests(unittest.TestCase):
     def test_install_and_stage_all_languages(self):
         artifacts = {
-            "typescript": ["generated.ts", "schemas.ts"],
+            "typescript": ["raw.ts", "public.ts", "codecs.ts", "types.ts", "schemas.ts"],
             "python": ["generated.py", "schemas.json", "_boundaries.py", "future/nested.py"],
             "go": ["generated.go", "schemas.json", "client/boundaries_generated.go",
                    "client/facade_generated_test.go", "facade_generated_test.go",
@@ -43,6 +43,13 @@ class InstallGeneratedSdkTests(unittest.TestCase):
                 workflow = sdk / ".github/workflows/ci.yml"
                 workflow.write_text(WORKFLOW)
                 (sdk / "unrelated.txt").write_text("do not stage\n")
+                preserved = {}
+                if language == "typescript":
+                    for name in ("packages/sdk/src/draft/index.ts", "packages/sdk/src/generated.ts"):
+                        target = sdk / name
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text("SDK-owned: " + name)
+                        preserved[name] = target.read_bytes()
                 for name in files:
                     artifact = source / name
                     artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -61,6 +68,9 @@ class InstallGeneratedSdkTests(unittest.TestCase):
                     expected.add("ahp-codegen.lock.json")
                     self.assertEqual((sdk / "ahp-codegen.lock.json").read_bytes(), lock.read_bytes())
                 self.assertEqual(set(paths), expected | {".github/workflows/ci.yml"})
+                for name, contents in preserved.items():
+                    self.assertEqual((sdk / name).read_bytes(), contents)
+                    self.assertNotIn(name, paths)
                 self.assertEqual(workflow.read_text(), WORKFLOW.replace("ref: " + "a" * 40, "ref: " + COMMIT))
                 for name in expected:
                     self.assertEqual((sdk / name).stat().st_mode & 0o777, 0o644)
@@ -71,6 +81,20 @@ class InstallGeneratedSdkTests(unittest.TestCase):
                 self.assertEqual(set(staged), set(paths))
                 self.assertEqual(installer.install_sdk(source, sdk, language), paths)
                 subprocess.run(["git", "-C", str(sdk), "diff", "--exit-code"], check=True)
+
+    def test_reject_typescript_handwritten_index_collision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, sdk = root / "generated", root / "sdk"
+            source.mkdir()
+            sdk.mkdir()
+            (source / "ahp-codegen.lock.json").write_text(
+                json.dumps({"language": "typescript", "sourceCommit": COMMIT})
+            )
+            (source / "index.ts").write_text("must not install")
+            with self.assertRaisesRegex(ValueError, "index.ts is SDK-owned"):
+                installer.install_sdk(source, sdk, "typescript")
+            self.assertEqual(list(sdk.iterdir()), [])
 
     def test_reject_invalid_pin_before_installing(self):
         for commit, workflow in [("main", WORKFLOW), (COMMIT, "steps: []\n"),

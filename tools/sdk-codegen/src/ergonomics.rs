@@ -71,6 +71,130 @@ pub fn object_fields(ir: &Ir, shape: &Shape) -> Option<Vec<Property>> {
     visit(ir, shape, &mut BTreeSet::new())
 }
 
+/// Resolve finite string discriminators through schema references.
+pub fn string_values(ir: &Ir, shape: &Shape) -> Vec<String> {
+    fn visit(ir: &Ir, shape: &Shape, seen: &mut BTreeSet<String>) -> Vec<String> {
+        match shape {
+            Shape::Literal { value } => value
+                .as_str()
+                .map(|v| vec![v.to_owned()])
+                .unwrap_or_default(),
+            Shape::Enum { values, .. } => values
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect(),
+            Shape::Union { variants, .. } => variants
+                .iter()
+                .flat_map(|variant| visit(ir, variant, seen))
+                .collect(),
+            Shape::Ref { name } if seen.insert(name.clone()) => {
+                let values = ir
+                    .types
+                    .iter()
+                    .find(|t| t.name == *name)
+                    .map(|t| visit(ir, &t.shape, seen))
+                    .unwrap_or_default();
+                seen.remove(name);
+                values
+            }
+            _ => Vec::new(),
+        }
+    }
+    let mut values = visit(ir, shape, &mut BTreeSet::new());
+    values.sort();
+    values.dedup();
+    values
+}
+
+/// Canonical effect alternatives, recursively unwrapping referenced unions.
+/// Preserve object refs so language emitters can use the canonical named model.
+pub fn effect_variants(ir: &Ir) -> Vec<Shape> {
+    fn walk(ir: &Ir, shape: &Shape, seen: &mut BTreeSet<String>) -> Vec<Shape> {
+        match shape {
+            Shape::Union { variants, .. } => {
+                variants.iter().flat_map(|v| walk(ir, v, seen)).collect()
+            }
+            Shape::Ref { name } if seen.insert(name.clone()) => {
+                let result = if object_fields(ir, shape).is_some() {
+                    vec![shape.clone()]
+                } else {
+                    ir.types
+                        .iter()
+                        .find(|t| t.name == *name)
+                        .map(|t| walk(ir, &t.shape, seen))
+                        .unwrap_or_default()
+                };
+                seen.remove(name);
+                result
+            }
+            _ => vec![shape.clone()],
+        }
+    }
+    ir.types
+        .iter()
+        .find(|t| t.name == "Effect")
+        .map(|t| walk(ir, &t.shape, &mut BTreeSet::new()))
+        .unwrap_or_default()
+}
+
+/// Keep family names when unique, otherwise use the canonical definition name.
+pub fn effect_builder_name(ir: &Ir, variant: &Shape) -> String {
+    let fields = object_fields(ir, variant).unwrap_or_default();
+    let discriminator = |key: &str| {
+        fields
+            .iter()
+            .find(|p| p.wire_name == key)
+            .map(|p| string_values(ir, &p.shape))
+            .filter(|v| v.len() == 1)
+            .map(|v| v[0].clone())
+    };
+    let tag = discriminator("type").unwrap_or_default();
+    let basic = format!(
+        "{}{}",
+        tag,
+        discriminator("operation")
+            .map(|v| format!("_{v}"))
+            .unwrap_or_default()
+    );
+    let count = effect_variants(ir)
+        .iter()
+        .filter(|v| {
+            let f = object_fields(ir, v).unwrap_or_default();
+            let d = |key: &str| {
+                f.iter()
+                    .find(|p| p.wire_name == key)
+                    .map(|p| string_values(ir, &p.shape))
+                    .filter(|v| v.len() == 1)
+                    .map(|v| v[0].clone())
+            };
+            format!(
+                "{}{}",
+                d("type").unwrap_or_default(),
+                d("operation").map(|v| format!("_{v}")).unwrap_or_default()
+            ) == basic
+        })
+        .count();
+    if count > 1 {
+        if let Shape::Ref { name } = variant {
+            return name
+                .trim_start_matches("Effect")
+                .trim_end_matches("Effect")
+                .to_owned();
+        }
+    }
+    basic
+}
+
+/// Content has both outbound-message and elicitation-form alternatives. Keep
+/// the published content helper for messages and qualify the form overload.
+pub fn modify_helper_target(target: &str, value: &Shape) -> String {
+    if target == "content" && matches!(value, Shape::Ref { name } if name == "FormAnswers") {
+        "content_form".into()
+    } else {
+        target.into()
+    }
+}
+
 /// Every retained host fact maps to exactly one canonical path. Required nested
 /// call/tool wrappers are flattened; optional wrappers retain their presence.
 pub fn input_fields(ir: &Ir, fields: &[Property], event: &str) -> Result<Vec<InputField>> {
@@ -430,5 +554,67 @@ mod tests {
             constructor_default: None,
         });
         assert!(input_fields(&ir, &collision, "tool.before").is_err());
+    }
+}
+
+/// Stable snake-case spelling of schema definition names.
+pub fn snake_builder_name(name: &str) -> String {
+    let mut result = String::new();
+    for (i, c) in name.chars().enumerate() {
+        if c.is_uppercase() && i > 0 {
+            result.push('_');
+        }
+        result.extend(c.to_lowercase());
+    }
+    result
+}
+
+/// Event-to-response correlation comes from canonical stable definition names.
+pub fn contextual_responses(ir: &Ir) -> Vec<(String, String, String)> {
+    let mut result = Vec::new();
+    for named in ir.types.iter().filter(|t| t.name.ends_with("Event")) {
+        let response = format!("{}InterceptResponse", named.name.trim_end_matches("Event"));
+        if !ir.types.iter().any(|t| t.name == response) {
+            continue;
+        }
+        if let Some(event) = object_fields(ir, &named.shape)
+            .and_then(|fields| fields.into_iter().find(|p| p.wire_name == "type"))
+            .and_then(|p| string_values(ir, &p.shape).into_iter().next())
+        {
+            result.push((event, named.name.clone(), response));
+        }
+    }
+    result.sort();
+    result.dedup_by(|a, b| a.0 == b.0);
+    result
+}
+
+#[cfg(test)]
+mod contextual_metadata_tests {
+    use super::*;
+    #[test]
+    fn finite_union_selectors_are_sorted_and_deduplicated() {
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![],
+            types: vec![],
+        };
+        let shape = Shape::Union {
+            mode: crate::model::UnionMode::OneOf,
+            discriminator: None,
+            variants: vec![
+                Shape::Literal {
+                    value: serde_json::json!("replace"),
+                },
+                Shape::Literal {
+                    value: serde_json::json!("merge"),
+                },
+                Shape::Literal {
+                    value: serde_json::json!("replace"),
+                },
+            ],
+        };
+        assert_eq!(string_values(&ir, &shape), vec!["merge", "replace"]);
     }
 }

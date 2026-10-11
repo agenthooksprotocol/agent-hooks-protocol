@@ -1,7 +1,5 @@
 
 #[cfg(test)]
-pub mod generated { pub use super::*; }
-#[cfg(test)]
 pub mod hooks {
     // This is the SDK's lazy input_for contract: retain input+projector until poll.
     pub struct InputBoundary<'a, T> {
@@ -34,7 +32,7 @@ impl TestHooks {
     }
     // Handwritten primary API must coexist with the generated event boundary.
     fn tool_before(&self) -> bool { true }
-    ahp_ergonomic_hook_methods!();
+    crate::generated::ahp_ergonomic_hook_methods!();
 }
 #[test]
 fn named_macro_projects_only_when_polled_without_flat_wire_leakage() {
@@ -49,10 +47,10 @@ fn named_macro_projects_only_when_polled_without_flat_wire_leakage() {
     let h = TestHooks;
     assert!(h.tool_before());
     let count = Rc::new(Cell::new(0));
-    let make_input = || ergonomic_inputs::ToolBeforeInput::new("c".into(), "/tool".into(), Probe(count.clone()), "read".into(), ToolBeforeInputOrigin::Native).with_parent_event_id("parent".into());
+    let make_input = || inputs::ToolBeforeInput::new("c".into(), "/tool".into(), Probe(count.clone()), "read".into(), ToolBeforeInputOrigin::Native).with_parent_event_id("parent".into());
     drop(h.tool_before_event(make_input()));
     assert_eq!(count.get(), 0, "dropping an unpolled operation must not serialize");
-    let mut call: hooks::InputBoundary<'_, ergonomic_inputs::ToolBeforeInput<Probe>> = h.tool_before_event(make_input());
+    let mut call: hooks::InputBoundary<'_, inputs::ToolBeforeInput<Probe>> = h.tool_before_event(make_input());
     assert_eq!(call.name, "tool.before");
     assert_eq!(count.get(), 0, "constructing a boundary must not serialize");
     let Poll::Ready(result) = Pin::new(&mut call).poll(&mut Context::from_waker(Waker::noop())) else { panic!("projection is ready"); };
@@ -66,7 +64,10 @@ fn named_macro_projects_only_when_polled_without_flat_wire_leakage() {
 #[test]
 fn content_sources_bind_without_serialization() {
     struct Source;
-    let binding = ergonomic_inputs::tool_before_sources::items(2, Source);
+    let binding = inputs::__support::ContentSourceBinding {
+        path: vec!["items".to_owned(), "2".to_owned()],
+        source: Source,
+    };
     assert_eq!(binding.path, ["items", "2"]);
     let _source = binding.source;
 }

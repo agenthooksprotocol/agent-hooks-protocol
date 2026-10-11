@@ -22,6 +22,11 @@ class SdkGenerationTests(unittest.TestCase):
             calls.append(command)
             if 'generate' in command:
                 target = Path(command[command.index('--output') + 1])
+                if 'typescript-facade' in command:
+                    target.mkdir(parents=True, exist_ok=True)
+                    for name in ('raw.ts', 'codecs.ts', 'types.ts', 'public.ts'):
+                        (target / name).write_text('source\n')
+                    return subprocess.CompletedProcess(command, 0)
                 if 'go-facade' in command or 'python-facade' in command:
                     target = target / ('event/generated.go' if 'go-facade' in command else '_models/__init__.py')
                     target.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +63,7 @@ class SdkGenerationTests(unittest.TestCase):
                 with self.subTest(language=language):
                     folder = output / language
                     expected = 'formatted\n'
-                    self.assertEqual(expected, (folder / ('generated.' + extension)).read_text())
+                    self.assertEqual(expected, (folder / ('raw.ts' if language == 'typescript' else 'generated.' + extension)).read_text())
                     lock = json.loads((folder / 'ahp-codegen.lock.json').read_text())
                     self.assertEqual(language, lock['language'])
                     self.assertEqual('a' * 40, lock['sourceCommit'])
@@ -70,7 +75,11 @@ class SdkGenerationTests(unittest.TestCase):
             self.assertEqual('formatted\n', (output / 'go/event/generated.go').read_text())
             self.assertEqual((output / 'go/schemas.json').read_bytes(), (output / 'go/internal/canonical/schemas.json').read_bytes())
             self.assertEqual('formatted\n', (output / 'typescript/schemas.ts').read_text())
-            self.assertEqual(2, sum(command[:3] == ['npx', '--yes', 'prettier@3.6.2'] for command in calls))
+            for name in ('public.ts', 'codecs.ts', 'types.ts'):
+                self.assertEqual('formatted\n', (output / 'typescript' / name).read_text())
+            self.assertFalse((output / 'typescript/index.ts').exists())
+            self.assertFalse((output / 'typescript/generated.ts').exists())
+            self.assertEqual(5, sum(command[:3] == ['npx', '--yes', 'prettier@3.6.2'] for command in calls))
             self.assertTrue(any(command[1:7] == ['-m', 'ruff', 'format', '--isolated', '--target-version', 'py311'] for command in calls))
             self.assertEqual(1, sum(command[:2] == ['cargo', 'build'] for command in calls))
             self.assertTrue(any(command[:4] == ['rustfmt', '+1.88.0', '--edition', '2024'] for command in calls))

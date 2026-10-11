@@ -7,7 +7,7 @@ use std::fmt::Write;
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use crate::model::{Ir, Property, Shape};
+use crate::model::{AdditionalProperties, Ir, Property, Shape};
 
 const RESERVED_TYPE_NAMES: &[&str] = &[
     // Imported, prelude, and generated runtime names used unqualified below.
@@ -36,6 +36,7 @@ const RESERVED_TYPE_NAMES: &[&str] = &[
     "Result",
     "SchemaNode",
     "SchemaProperty",
+    "SchemaAdditionalProperties",
     "Serialize",
     "Serializer",
     "String",
@@ -184,7 +185,7 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
             modes = modes.iter().collect::<Vec<_>>()
         )?;
     }
-    output.push_str("];\n}\n\n/// Add typed complete-event entrypoints inside the runtime Client implementation.\n/// This macro has no runtime dependency until expanded.\n#[macro_export]\nmacro_rules! ahp_event_boundary_methods {\n    () => {\n");
+    output.push_str("];\n}\n\n/// Add typed complete-event entrypoints inside the runtime Client implementation.\n/// This macro has no runtime dependency until expanded.\n#[allow(unused_macros)]\nmacro_rules! ahp_event_boundary_methods {\n    () => {\n");
     let mut methods = BTreeSet::new();
     for name in boundaries.keys() {
         let method = format!("{}_event", snake_identifier(name));
@@ -197,8 +198,10 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
             "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::runtime::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
         )?;
     }
-    output.push_str("    };\n}\n");
-    output.push_str("\n/// Add complete-event entrypoints inside the Hooks facade implementation.\n/// Use the `inventory` arm as an expression to obtain the canonical event names.\n/// This macro has no facade dependency until expanded.\n#[macro_export]\nmacro_rules! ahp_hooks_boundary_methods {\n    (inventory) => {\n        &[");
+    output.push_str(
+        "    };\n}\n#[allow(unused_imports)]\npub(crate) use ahp_event_boundary_methods;\n",
+    );
+    output.push_str("\n/// Add complete-event entrypoints inside the Hooks facade implementation.\n/// Use the `inventory` arm as an expression to obtain the canonical event names.\n/// This macro has no facade dependency until expanded.\n#[allow(unused_macros)]\nmacro_rules! ahp_hooks_boundary_methods {\n    (inventory) => {\n        &[");
     for name in boundaries.keys() {
         write!(output, "{name:?},")?;
     }
@@ -220,7 +223,9 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
             "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::hooks::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
         )?;
     }
-    output.push_str("    };\n}\n");
+    output.push_str(
+        "    };\n}\n#[allow(unused_imports)]\npub(crate) use ahp_hooks_boundary_methods;\n",
+    );
     Ok(())
 }
 
@@ -264,8 +269,27 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
         let name = context.type_name(&named.name);
         declarations.push_str(&context.emit_declaration(&name, &named.shape)?);
     }
-    ergonomics::emit(ir, &mut context, &mut declarations)?;
-    declarations.push_str(&crate::capability_ergonomics::rust(ir)?);
+    let mut public_exports = ergonomics::emit(ir, &mut context, &mut declarations)?;
+    let capability_api = crate::capability_ergonomics::rust(ir)?;
+    if !capability_api.is_empty() {
+        public_exports.insert("capability".into());
+    }
+    declarations.push_str(&capability_api);
+    public_exports.extend(context.type_names.values().cloned());
+    public_exports.extend(context.helper_names.values().flatten().cloned());
+    public_exports.extend(
+        [
+            "SCHEMA_REVISION",
+            "PROTOCOL_VERSION",
+            "Integer",
+            "Presence",
+            "DiagnosticCode",
+            "DiagnosticSeverity",
+            "ParseDiagnostic",
+            "ParseResult",
+        ]
+        .map(str::to_owned),
+    );
     output.push_str(&declarations);
     output.push_str(&context.helpers);
     let mut modules: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -333,6 +357,7 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
             }
         }
     }
+    public_exports.extend(modules.keys().cloned());
     for (module, names) in modules {
         writeln!(
             output,
@@ -354,6 +379,11 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     for root in &ir.roots {
         let rust_name = context.type_name(&root.name);
         let function_name = &function_names[&root.name];
+        public_exports.extend([
+            format!("parse_{function_name}"),
+            format!("parse_{function_name}_value"),
+            format!("encode_{function_name}"),
+        ]);
         writeln!(
             output,
             "/// Parse and structurally check a `{rust_name}` JSON document.\npub fn parse_{function_name}(input: &str) -> ParseResult<{rust_name}> {{\n    parse_root({:?}, input)\n}}",
@@ -369,6 +399,11 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
             "/// Encode a `{rust_name}` without applying canonical normalization.\npub fn encode_{function_name}(value: &{rust_name}) -> Result<String, serde_json::Error> {{\n    serde_json::to_string(value)\n}}\n"
         )?;
     }
+    writeln!(
+        output,
+        "/// Deliberate runtime re-export seam: schema API only, never assembly/support.\n#[allow(unused_imports)]\npub(crate) mod public_exports {{\n    pub use super::{{{}}};\n}}",
+        public_exports.into_iter().collect::<Vec<_>>().join(", ")
+    )?;
     Ok(output)
 }
 
@@ -376,8 +411,10 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
 fn validated_declaration(name: &str, shape: &Shape, declaration: String) -> Result<String> {
     // Primitive intersections and `never` cannot be aliases: aliases cannot
     // own Deserialize, and their primitive projection omits source predicates.
-    let declaration = if matches!(shape, Shape::Intersection { .. } | Shape::Never)
-        && declaration.starts_with("pub type ")
+    let declaration = if matches!(
+        shape,
+        Shape::Intersection { .. } | Shape::Never | Shape::BoundedInteger { .. }
+    ) && declaration.starts_with("pub type ")
     {
         let target = declaration
             .split_once(" = ")
@@ -438,6 +475,7 @@ struct EmitContext<'a> {
     ergonomic_fields: BTreeMap<String, Vec<(String, String)>>,
     ergonomic_arms: BTreeMap<String, Vec<(String, String)>>,
     defaults: BTreeMap<(String, String), Value>,
+    unit_structs: BTreeSet<String>,
 }
 
 impl<'a> EmitContext<'a> {
@@ -477,6 +515,7 @@ impl<'a> EmitContext<'a> {
             ergonomic_fields: BTreeMap::new(),
             ergonomic_arms: BTreeMap::new(),
             defaults: BTreeMap::new(),
+            unit_structs: BTreeSet::new(),
         })
     }
 
@@ -499,6 +538,22 @@ impl<'a> EmitContext<'a> {
             }
         }
         match shape {
+            Shape::Object {
+                properties,
+                additional: AdditionalProperties::Typed { shape },
+                ..
+            } if properties.is_empty() => {
+                let value = self.render_type(shape, &format!("{name} value"))?;
+                let map = format!("BTreeMap<String, {value}>");
+                Ok(format!(
+                    "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub {map});\n\nimpl {name} {{ pub fn new(value: impl Into<{map}>) -> Self {{ Self(value.into()) }} }}\n\nimpl From<{map}> for {name} {{ fn from(value: {map}) -> Self {{ Self::new(value) }} }}\n\nimpl Deref for {name} {{ type Target = {map}; fn deref(&self) -> &Self::Target {{ &self.0 }} }}\n\n"
+                ))
+            }
+            Shape::Object {
+                properties,
+                additional: AdditionalProperties::Typed { shape },
+                ..
+            } => self.emit_struct_with_additional(name, properties, Some(shape)),
             Shape::Object { properties, .. } => self.emit_struct(name, properties),
             Shape::Intersection { .. } => {
                 let mut visiting = BTreeSet::new();
@@ -551,10 +606,23 @@ impl<'a> EmitContext<'a> {
     }
 
     fn emit_struct(&mut self, name: &str, properties: &[Property]) -> Result<String> {
+        self.emit_struct_with_additional(name, properties, None)
+    }
+
+    fn emit_struct_with_additional(
+        &mut self,
+        name: &str,
+        properties: &[Property],
+        additional: Option<&Shape>,
+    ) -> Result<String> {
+        let additional_type = match additional {
+            Some(shape) => self.render_type(shape, &format!("{name} additional value"))?,
+            None => "JsonValue".into(),
+        };
         let mut output = String::new();
         writeln!(
             output,
-            "#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]\npub struct {name} {{"
+            "#[derive(Debug, Clone, PartialEq, Serialize)]\npub struct {name} {{"
         )?;
         let mut used = BTreeSet::new();
         let mut fields = Vec::new();
@@ -583,7 +651,7 @@ impl<'a> EmitContext<'a> {
         let extra = unique_field_identifier("additional_properties", &mut used);
         writeln!(
             output,
-            "    /// Members not known to this schema revision.\n    #[serde(flatten)]\n    pub {extra}: BTreeMap<String, JsonValue>,\n}}\n"
+            "    /// Members not known to this schema revision.\n    #[serde(flatten)]\n    pub {extra}: BTreeMap<String, {additional_type}>,\n}}\n"
         )?;
         let mut arguments = Vec::new();
         let mut initializers = Vec::new();
@@ -642,6 +710,36 @@ impl<'a> EmitContext<'a> {
                 "impl Default for {name} {{\n    fn default() -> Self {{ Self::new() }}\n}}\n"
             )?;
         }
+        let mutable = if fields.is_empty() { "" } else { "mut " };
+        // Do not route arbitrary-precision numbers through serde's flatten
+        // buffering: its intermediate integer visitor can lose the JSON number
+        // representation. Hydrate each member directly from its exact JsonValue.
+        writeln!(
+            output,
+            "impl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        let {mutable}fields = value.as_object().cloned().ok_or_else(|| <D::Error as serde::de::Error>::custom(\"expected object\"))?;"
+        )?;
+        for (field, ty, property) in &fields {
+            let key = &property.wire_name;
+            if property.required {
+                writeln!(
+                    output,
+                    "        let {field} = serde_json::from_value::<{ty}>(fields.remove({key:?}).ok_or_else(|| <D::Error as serde::de::Error>::custom(\"missing required property\"))?).map_err(<D::Error as serde::de::Error>::custom)?;"
+                )?;
+            } else {
+                writeln!(
+                    output,
+                    "        let {field} = match fields.remove({key:?}) {{ Some(value) => Presence::Present(serde_json::from_value::<{ty}>(value).map_err(<D::Error as serde::de::Error>::custom)?), None => Presence::Missing }};"
+                )?;
+            }
+        }
+        writeln!(
+            output,
+            "        let {extra} = serde_json::from_value::<BTreeMap<String, {additional_type}>>(JsonValue::Object(fields)).map_err(<D::Error as serde::de::Error>::custom)?;\n        Ok(Self {{"
+        )?;
+        for (field, _, _) in &fields {
+            writeln!(output, "            {field},")?;
+        }
+        writeln!(output, "            {extra},\n        }})\n    }}\n}}\n")?;
         Ok(output)
     }
 
@@ -684,7 +782,7 @@ impl<'a> EmitContext<'a> {
                 Some(Shape::Any | Shape::Never) => "JsonValue".into(),
                 Some(Shape::Null) => "()".into(),
                 Some(Shape::Boolean) => "bool".into(),
-                Some(Shape::Integer) => "Integer".into(),
+                Some(Shape::Integer | Shape::BoundedInteger { .. }) => "Integer".into(),
                 Some(Shape::Number) => "JsonNumber".into(),
                 Some(Shape::String) => "String".into(),
                 _ => ty.to_owned(),
@@ -701,7 +799,7 @@ impl<'a> EmitContext<'a> {
             Shape::Any | Shape::Never => "JsonValue".into(),
             Shape::Null => "()".into(),
             Shape::Boolean => "bool".into(),
-            Shape::Integer => "Integer".into(),
+            Shape::Integer | Shape::BoundedInteger { .. } => "Integer".into(),
             Shape::Number => "JsonNumber".into(),
             Shape::String => "String".into(),
             Shape::Array { items } => {
@@ -728,7 +826,16 @@ impl<'a> EmitContext<'a> {
         Ok(name)
     }
 
-    fn emit_literal(&self, name: &str, value: &Value) -> Result<String> {
+    fn default_expression(&self, ty: &str) -> String {
+        if self.unit_structs.contains(&self.type_identity(ty)) {
+            ty.to_owned()
+        } else {
+            format!("{ty}::default()")
+        }
+    }
+
+    fn emit_literal(&mut self, name: &str, value: &Value) -> Result<String> {
+        self.unit_structs.insert(name.to_owned());
         let encoded = serde_json::to_string(value)?;
         Ok(format!(
             "#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]\npub struct {name};\n\nimpl {name} {{ pub fn new() -> Self {{ Self }} }}\n\nimpl Serialize for {name} {{\n    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {{\n        let value: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        value.serialize(serializer)\n    }}\n}}\n\nimpl<'de> Deserialize<'de> for {name} {{\n    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {{\n        let value = JsonValue::deserialize(deserializer)?;\n        let expected: JsonValue = serde_json::from_str({encoded:?}).expect(\"generated literal is valid JSON\");\n        if same_json(&value, &expected) {{ Ok(Self) }} else {{ Err(<D::Error as serde::de::Error>::custom(format!(\"expected {{expected}}\"))) }}\n    }}\n}}\n\n"
@@ -1052,6 +1159,7 @@ fn project_intersection(shape: &Shape, named: &BTreeMap<&str, &Shape>) -> Option
                 | Shape::String
                 | Shape::Boolean
                 | Shape::Integer
+                | Shape::BoundedInteger { .. }
                 | Shape::Number
                 | Shape::Enum { .. }
                 | Shape::Literal { .. }
@@ -1402,14 +1510,15 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_json::{Number as JsonNumber, Value as JsonValue};
 
-/// A JSON integer that is exactly usable by every generated SDK. The original
-/// JSON number representation is retained, including an integral `1.0`.
+/// An exact JSON integer of arbitrary magnitude. The original JSON number
+/// representation is retained, including integral decimal and exponent forms.
+/// Consumers must enable serde_json's `arbitrary_precision` feature.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Integer(JsonNumber);
 
 impl Integer {
     pub fn new(value: JsonNumber) -> Option<Self> {
-        is_safe_integer_number(&value).then_some(Self(value))
+        is_integer_number(&value).then_some(Self(value))
     }
 
     pub fn from_i64(value: i64) -> Option<Self> {
@@ -1435,7 +1544,7 @@ impl<'de> Deserialize<'de> for Integer {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = JsonNumber::deserialize(deserializer)?;
         Self::new(value).ok_or_else(|| {
-            <D::Error as serde::de::Error>::custom("expected safely representable integer")
+            <D::Error as serde::de::Error>::custom("expected integer")
         })
     }
 }
@@ -1573,6 +1682,7 @@ enum SchemaNode {
     Null,
     Boolean,
     Integer,
+    BoundedInteger { minimum: Option<JsonNumber>, maximum: Option<JsonNumber> },
     Number,
     String,
     Literal { value: JsonValue },
@@ -1581,8 +1691,7 @@ enum SchemaNode {
     Object {
         properties: Vec<SchemaProperty>,
         forbidden_property_sets: Vec<Vec<String>>,
-        #[serde(rename = "additional")]
-        _additional: JsonValue,
+        additional: SchemaAdditionalProperties,
     },
     Union {
         mode: UnionMode,
@@ -1591,6 +1700,14 @@ enum SchemaNode {
     },
     Intersection { variants: Vec<SchemaNode> },
     Ref { name: String },
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+enum SchemaAdditionalProperties {
+    Allowed,
+    Forbidden,
+    Typed { shape: Box<SchemaNode> },
 }
 
 #[derive(Debug, Deserialize)]
@@ -1722,13 +1839,25 @@ fn check_node(
             }
         }
         SchemaNode::Integer => {
-            if !value.as_number().is_some_and(is_safe_integer_number) {
+            if !value.as_number().is_some_and(is_integer_number) {
                 push_error(
                     diagnostics,
                     path,
                     DiagnosticCode::InvalidType,
-                    "Expected safely representable integer",
+                    "Expected integer",
                 );
+            }
+        }
+        SchemaNode::BoundedInteger { minimum, maximum } => {
+            let Some(number) = value.as_number().filter(|number| is_integer_number(number)) else {
+                push_error(diagnostics, path, DiagnosticCode::InvalidType, "Expected integer");
+                return;
+            };
+            if minimum.as_ref().is_some_and(|bound| compare_numbers(number, bound) == Some(std::cmp::Ordering::Less)) {
+                push_error(diagnostics, path, DiagnosticCode::InvalidType, "Integer is below minimum");
+            }
+            if maximum.as_ref().is_some_and(|bound| compare_numbers(number, bound) == Some(std::cmp::Ordering::Greater)) {
+                push_error(diagnostics, path, DiagnosticCode::InvalidType, "Integer is above maximum");
             }
         }
         SchemaNode::Number => {
@@ -1784,7 +1913,7 @@ fn check_node(
         SchemaNode::Object {
             properties,
             forbidden_property_sets,
-            ..
+            additional,
         } => match value.as_object() {
             Some(object) => {
                 for forbidden in forbidden_property_sets {
@@ -1795,6 +1924,13 @@ fn check_node(
                             DiagnosticCode::InvalidType,
                             format!("Forbidden property combination: {}", forbidden.join(", ")),
                         );
+                    }
+                }
+                if let SchemaAdditionalProperties::Typed { shape } = additional {
+                    for (key, child) in object {
+                        if !properties.iter().any(|property| property.wire_name == *key) {
+                            check_node(shape, child, &join_path(path, key), diagnostics);
+                        }
                     }
                 }
                 for property in properties {
@@ -1939,23 +2075,34 @@ fn discriminator_value<'a>(schema: &'a SchemaNode, property: &str) -> Option<&'a
     }
 }
 
-fn is_safe_integer_number(number: &JsonNumber) -> bool {
-    const MAX_SAFE_INTEGER: &str = "9007199254740991";
-    let Some((_, digits, scale)) = normalized_number(number) else {
-        return false;
-    };
-    if digits == "0" {
-        return true;
+fn is_integer_number(number: &JsonNumber) -> bool {
+    normalized_number(number).is_some_and(|(_, digits, scale)| digits == "0" || scale >= 0)
+}
+
+// Compare decimal magnitudes without converting to floats or expanding exponents.
+fn compare_numbers(left: &JsonNumber, right: &JsonNumber) -> Option<std::cmp::Ordering> {
+    let (left_negative, left_digits, left_scale) = normalized_number(left)?;
+    let (right_negative, right_digits, right_scale) = normalized_number(right)?;
+    if left_negative != right_negative {
+        return Some(if left_negative { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater });
     }
-    let Ok(scale) = usize::try_from(scale) else {
-        return false;
+    let magnitude = match (left_digits.as_str(), right_digits.as_str()) {
+        ("0", "0") => std::cmp::Ordering::Equal,
+        ("0", _) => std::cmp::Ordering::Less,
+        (_, "0") => std::cmp::Ordering::Greater,
+        _ => {
+            let left_length = left_digits.len() as i128 + i128::from(left_scale);
+            let right_length = right_digits.len() as i128 + i128::from(right_scale);
+            left_length.cmp(&right_length).then_with(|| {
+                (0..left_digits.len().max(right_digits.len()))
+                    .map(|index| left_digits.as_bytes().get(index).copied().unwrap_or(b'0')
+                        .cmp(&right_digits.as_bytes().get(index).copied().unwrap_or(b'0')))
+                    .find(|order| *order != std::cmp::Ordering::Equal)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        }
     };
-    let Some(length) = digits.len().checked_add(scale) else {
-        return false;
-    };
-    length < MAX_SAFE_INTEGER.len()
-        || (length == MAX_SAFE_INTEGER.len()
-            && format!("{digits}{}", "0".repeat(scale)).as_str() <= MAX_SAFE_INTEGER)
+    Some(if left_negative { magnitude.reverse() } else { magnitude })
 }
 
 fn same_json(left: &JsonValue, right: &JsonValue) -> bool {
@@ -2044,6 +2191,245 @@ fn push_error(
 mod tests {
     use super::*;
     use crate::model::{AdditionalProperties, NamedType, PublicRoot, UnionMode};
+
+    #[test]
+    fn typed_additional_properties_emit_maps_and_runtime_constraints() {
+        let shape = Shape::Object {
+            properties: vec![],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Typed {
+                shape: Box::new(Shape::String),
+            },
+        };
+        let mut ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "test".into(),
+            roots: vec![PublicRoot {
+                name: "Dictionary".into(),
+                schema: "test.json".into(),
+            }],
+            types: vec![NamedType {
+                name: "Dictionary".into(),
+                source: "test.json#".into(),
+                shape,
+            }],
+        };
+        ir.roots.push(PublicRoot {
+            name: "Counters".into(),
+            schema: "test.json".into(),
+        });
+        ir.types.push(NamedType {
+            name: "Counters".into(),
+            source: "test.json#".into(),
+            shape: Shape::Object {
+                properties: vec![Property {
+                    constructor_default: None,
+                    wire_name: "label".into(),
+                    required: false,
+                    shape: Shape::String,
+                }],
+                forbidden_property_sets: vec![],
+                additional: AdditionalProperties::Typed {
+                    shape: Box::new(Shape::Integer),
+                },
+            },
+        });
+        let nonnegative = Shape::BoundedInteger {
+            minimum: Some(0.into()),
+            maximum: None,
+        };
+        let signed = Shape::BoundedInteger {
+            minimum: Some((-2).into()),
+            maximum: Some(2.into()),
+        };
+        let shapes = [
+            (
+                "SessionCounters",
+                Shape::Object {
+                    properties: vec![Property {
+                        constructor_default: None,
+                        wire_name: "inputTokens".into(),
+                        required: false,
+                        shape: nonnegative.clone(),
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Typed {
+                        shape: Box::new(nonnegative),
+                    },
+                },
+            ),
+            ("UnboundedInteger", Shape::Integer),
+            ("BoundedIntegerValue", signed),
+        ];
+        for (name, shape) in shapes {
+            ir.roots.push(PublicRoot {
+                name: name.into(),
+                schema: "test.json".into(),
+            });
+            ir.types.push(NamedType {
+                name: name.into(),
+                source: "test.json#".into(),
+                shape,
+            });
+        }
+        let output = emit(&ir).unwrap();
+        assert!(output.contains("pub struct Dictionary(pub BTreeMap<String, String>)"));
+        assert!(output.contains("pub additional_properties: BTreeMap<String, Integer>"));
+        assert!(output.contains("Typed { shape: Box<SchemaNode> }"));
+        assert!(output.contains("check_node(shape, child, &join_path(path, key), diagnostics)"));
+        let descriptor = serde_json::to_value(&ir.types[0].shape).unwrap();
+        assert_eq!(descriptor["additional"]["kind"], "typed");
+        assert_eq!(descriptor["additional"]["shape"]["kind"], "string");
+
+        // Compile and exercise the emitted serde implementation with this test
+        // binary's already-built dependencies (no additional Cargo project).
+        let deps = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_owned();
+        let executable_hash = std::env::current_exe()
+            .unwrap()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .rsplit_once('-')
+            .unwrap()
+            .1
+            .to_owned();
+        let fingerprints = deps.parent().unwrap().join(".fingerprint");
+        let build: Value = serde_json::from_str(
+            &std::fs::read_to_string(fingerprints.join(format!(
+                "ahp-codegen-{executable_hash}/test-bin-ahp-codegen.json"
+            )))
+            .unwrap(),
+        )
+        .unwrap();
+        let library = |name: &str| {
+            std::fs::read_dir(&deps)
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .starts_with(&format!("lib{name}-"))
+                        && path
+                            .extension()
+                            .is_some_and(|extension| extension == "rlib")
+                })
+                .filter(|path| {
+                    let filename = path.file_stem().unwrap().to_string_lossy();
+                    let hash = filename.rsplit_once('-').unwrap().1;
+                    let fingerprint = fingerprints.join(format!("{name}-{hash}/lib-{name}.json"));
+                    let Ok(source) = std::fs::read_to_string(fingerprint) else {
+                        return false;
+                    };
+                    let metadata: Value = serde_json::from_str(&source).unwrap();
+                    metadata["rustc"] == build["rustc"]
+                        && (name != "serde_json"
+                            || metadata["features"]
+                                .as_str()
+                                .unwrap()
+                                .contains("arbitrary_precision"))
+                })
+                .max_by_key(|path| std::fs::metadata(path).unwrap().modified().unwrap())
+                .unwrap()
+        };
+        let dir = std::env::temp_dir().join(format!("ahp-rust-typed-map-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = dir.join("typed_map.rs");
+        let binary = dir.join("typed_map");
+        let checks = r##"
+fn main() {
+    let good = parse_dictionary(r#"{"hello":"world"}"#);
+    assert!(good.is_ok());
+    assert_eq!(good.value().unwrap().0["hello"], "world");
+    let bad = parse_dictionary(r#"{"a/b":false}"#);
+    assert!(!bad.is_ok());
+    assert_eq!(bad.diagnostics()[0].path, "/a~1b");
+    assert!(serde_json::from_str::<Dictionary>(r#"{"wrong":null}"#).is_err());
+    let direct = serde_json::from_str::<Dictionary>(r#"{"hello":"world"}"#).unwrap();
+    assert_eq!(serde_json::to_string(&direct).unwrap(), r#"{"hello":"world"}"#);
+    let mixed = parse_counters(r#"{"label":"session","future":2}"#);
+    assert!(mixed.is_ok());
+    assert_eq!(mixed.value().unwrap().additional_properties["future"].as_number().as_i64(), Some(2));
+    assert!(!parse_counters(r#"{"label":"session","future":false}"#).is_ok());
+    let direct = serde_json::from_str::<Counters>(r#"{"future":2}"#).unwrap();
+    assert!(direct.label.is_missing());
+    assert_eq!(serde_json::to_string(&direct).unwrap(), r#"{"future":2}"#);
+    for lexeme in ["1208925819614629174706176", "1267650600228229401496703205376", "340282366920938463463374607431768211456"] {
+        for key in ["inputTokens", "futureCounter"] {
+            let text = format!("{{\"{key}\":{lexeme}}}");
+            let parsed = parse_session_counters(&text);
+            assert!(parsed.is_ok(), "{text}: {:?}", parsed.diagnostics());
+            let value = parsed.value().unwrap();
+            let integer = if key == "inputTokens" {
+                match &value.input_tokens { Presence::Present(value) => value, _ => panic!("missing counter") }
+            } else { &value.additional_properties[key] };
+            assert_eq!(integer.as_number().to_string(), lexeme);
+            assert_eq!(serde_json::to_string(value).unwrap(), text);
+            assert_eq!(serde_json::to_string(&serde_json::from_str::<SessionCounters>(&text).unwrap()).unwrap(), text);
+            for invalid in [format!("-{lexeme}"), format!("{lexeme}.5"), "null".into(), "true".into()] {
+                let text = format!("{{\"{key}\":{invalid}}}");
+                assert!(!parse_session_counters(&text).is_ok(), "{text}");
+                assert!(serde_json::from_str::<SessionCounters>(&text).is_err(), "{text}");
+            }
+        }
+        for negative in [false, true] {
+            let text = format!("{}{lexeme}", if negative { "-" } else { "" });
+            let value = parse_unbounded_integer(&text);
+            assert!(value.is_ok());
+            assert_eq!(serde_json::to_string(value.value().unwrap()).unwrap(), text);
+        }
+    }
+    for text in ["-2", "2", "0", "-0.0", "20e-1", "1e10000"] {
+        assert!(parse_unbounded_integer(text).is_ok(), "{text}");
+    }
+    for text in ["1.5", "1e-1", "1208925819614629174706176.5"] {
+        assert!(!parse_unbounded_integer(text).is_ok(), "{text}");
+    }
+    for text in ["-2", "2", "0", "-0.0", "20e-1"] {
+        assert!(parse_bounded_integer_value(text).is_ok(), "{text}");
+        assert!(serde_json::from_str::<BoundedIntegerValue>(text).is_ok(), "{text}");
+    }
+    for text in ["-3", "3", "1e10000", "-1e10000", "2.1"] {
+        assert!(!parse_bounded_integer_value(text).is_ok(), "{text}");
+        assert!(serde_json::from_str::<BoundedIntegerValue>(text).is_err(), "{text}");
+    }
+
+
+}
+"##;
+        std::fs::write(&source, format!("{output}\n{checks}")).unwrap();
+        let compiled = std::process::Command::new("rustc")
+            .arg("--edition=2024")
+            .arg("--crate-name=typed_map")
+            .arg(&source)
+            .arg("-o")
+            .arg(&binary)
+            .arg("-L")
+            .arg(format!("dependency={}", deps.display()))
+            .arg("--extern")
+            .arg(format!("serde={}", library("serde").display()))
+            .arg("--extern")
+            .arg(format!("serde_json={}", library("serde_json").display()))
+            .output()
+            .unwrap();
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+        let result = std::process::Command::new(binary).output().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
 
     #[test]
     fn tagged_reference_arms_preserve_existing_semantic_names_and_payloads() {
@@ -2186,7 +2572,36 @@ mod tests {
         let source = emit(&ir).unwrap();
         assert_eq!(before, serde_json::to_value(&ir).unwrap());
         let mut declarations = BTreeSet::new();
+        let mut depth = 0i64;
+        let mut quoted = false;
+        let mut escaped = false;
         for line in source.lines() {
+            let top_level = depth == 0;
+            let mut characters = line.chars().peekable();
+            while let Some(character) = characters.next() {
+                if quoted {
+                    if escaped {
+                        escaped = false;
+                    } else if character == '\\' {
+                        escaped = true;
+                    } else if character == '"' {
+                        quoted = false;
+                    }
+                } else if character == '/' && characters.peek() == Some(&'/') {
+                    break;
+                } else if character == '"' {
+                    quoted = true;
+                } else if character == '{' {
+                    depth += 1;
+                } else if character == '}' {
+                    depth -= 1;
+                }
+            }
+            // Context-bound helpers intentionally reuse model names in distinct
+            // modules. Only declarations in the root namespace can collide.
+            if !top_level {
+                continue;
+            }
             let Some(rest) = line
                 .strip_prefix("pub enum ")
                 .or_else(|| line.strip_prefix("pub struct "))
@@ -2212,6 +2627,7 @@ mod tests {
             );
             assert!(declarations.insert(name), "duplicate declaration {name}");
         }
+        assert_eq!(depth, 0, "unbalanced emitted declarations");
         let mut in_enum = false;
         let mut payloads = BTreeSet::new();
         for line in source.lines() {
@@ -2435,14 +2851,14 @@ mod runtime {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: 
 mod hooks {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
 struct Hooks;
 impl Hooks {{
-    ahp_hooks_boundary_methods!();
+    crate::generated::ahp_hooks_boundary_methods!();
     fn tool_before(&self) {{}}
     fn event_for<T>(&self, name: &'static str, event: T) -> hooks::EventBoundary<'_, T> {{ hooks::EventBoundary {{ name, event }} }}
 }}
-const NAMED_BOUNDARIES: &[&str] = ahp_hooks_boundary_methods!(inventory);
+const NAMED_BOUNDARIES: &[&str] = crate::generated::ahp_hooks_boundary_methods!(inventory);
 struct Client;
 impl Client {{
-    ahp_event_boundary_methods!();
+    crate::generated::ahp_event_boundary_methods!();
     fn event_for<T>(&self, name: &'static str, event: T) -> runtime::EventBoundary<'_, T> {{ runtime::EventBoundary {{ name, event }} }}
 }}
 fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
@@ -2635,6 +3051,66 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
     }
 
     #[test]
+    fn public_exports_are_deliberate_and_runtime_support_is_sealed() {
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let ir = crate::compiler::compile(&repository, "draft").unwrap();
+        let output = emit(&ir).unwrap();
+        assert!(!output.contains("#[macro_export]"));
+        assert!(!output.contains("ergonomic_inputs"));
+        for assembly in [
+            "ahp_event_boundary_methods",
+            "ahp_hooks_boundary_methods",
+            "ahp_ergonomic_hook_methods",
+        ] {
+            assert!(output.contains(&format!("pub(crate) use {assembly};")));
+        }
+        let exports = output
+            .split("pub(crate) mod public_exports {\n")
+            .nth(1)
+            .unwrap();
+        for item in [
+            "EventType",
+            "EffectId",
+            "Candidate",
+            "ElicitResult",
+            "ParseResult",
+            "parse_execution_event",
+            "encode_execution_event",
+            "inputs",
+            "event",
+            "content",
+            "effect",
+            "transport",
+            "capability",
+        ] {
+            assert!(
+                exports
+                    .split(|c: char| !c.is_alphanumeric() && c != '_')
+                    .any(|token| token == item),
+                "missing export: {item}"
+            );
+        }
+        for internal in [
+            "ahp_",
+            "boundary_inventory",
+            "ContentSourceBinding",
+            "ProjectHostInput",
+            "EventInput",
+            "__support",
+            "SchemaNode",
+            "parse_root",
+        ] {
+            assert!(!exports.contains(internal), "leaked support: {internal}");
+        }
+        assert!(output.contains("#[doc(hidden)]\npub mod __support"));
+        assert!(output.contains("pub trait EventInput: sealed::Sealed"));
+        assert!(output.contains("pub trait ProjectHostInput<S>: sealed::Sealed"));
+        assert!(output.contains("pub(crate) fn project_event"));
+        assert!(!output.contains("pub(crate) mod tool_before_sources"));
+        assert!(!output.contains("fn to_event_value"));
+    }
+
+    #[test]
     fn output_is_deterministic_typed_and_open() {
         let ir = sample_ir();
         let first = emit(&ir).unwrap();
@@ -2702,12 +3178,33 @@ fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
     }
 
     #[test]
+    fn defaults_construct_units_directly_without_changing_nonunit_defaults() {
+        let ir = sample_ir();
+        let mut context = EmitContext::new(&ir);
+        context
+            .emit_literal("FixedTag", &serde_json::json!("fixed"))
+            .unwrap();
+        assert_eq!(context.default_expression("FixedTag"), "FixedTag");
+        assert_eq!(
+            context.default_expression("Box<FixedTag>"),
+            "Box<FixedTag>::default()"
+        );
+        assert_eq!(context.default_expression("Nonunit"), "Nonunit::default()");
+    }
+
+    #[test]
     fn draft_compositions_are_typed_without_rewriting_validator_descriptors() {
         let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let ir = crate::compiler::compile(&repository, "draft").unwrap();
         let source = emit(&ir).unwrap();
         assert!(!source.contains("pub fn items_parts<S>"));
-        assert!(source.contains("pub fn items<S>(index: usize, source: S)"));
+        assert!(!source.contains("pub(crate) fn items<S>(index: usize, source: S)"));
+        assert!(
+            source.contains(
+                "ModifyMessagesEffectOperation::Merge(ModifyMessagesEffectOperationMerge)"
+            )
+        );
+        assert!(!source.contains("ModifyMessagesEffectOperationMerge::default()"));
         assert!(
             !source
                 .lines()

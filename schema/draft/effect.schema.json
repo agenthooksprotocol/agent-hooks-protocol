@@ -7,6 +7,45 @@
       "$ref": "deny-effect.schema.json"
     },
     {
+      "$ref": "#/$defs/AllowEffect"
+    },
+    {
+      "$ref": "#/$defs/AskEffect"
+    },
+    {
+      "$ref": "#/$defs/ModifyMessagesEffect"
+    },
+    {
+      "$ref": "#/$defs/ModifyTextEffect"
+    },
+    {
+      "$ref": "#/$defs/ModifyWorkspaceEffect"
+    },
+    {
+      "$ref": "#/$defs/ModifyFormEffect"
+    },
+    {
+      "$ref": "#/$defs/ModifyInputEffect"
+    },
+    {
+      "$ref": "#/$defs/MessageEffect"
+    },
+    {
+      "$ref": "#/$defs/ReturnToolEffect"
+    },
+    {
+      "$ref": "#/$defs/StopFlowEffect"
+    },
+    {
+      "$ref": "#/$defs/ContinueFlowEffect"
+    },
+    {
+      "$ref": "#/$defs/InjectEffect"
+    }
+  ],
+  "title": "AHP Effect (Draft)",
+  "$defs": {
+    "AllowEffect": {
       "type": "object",
       "required": [
         "type"
@@ -18,7 +57,7 @@
       },
       "additionalProperties": false
     },
-    {
+    "AskEffect": {
       "type": "object",
       "required": [
         "type"
@@ -30,128 +69,7 @@
       },
       "additionalProperties": false
     },
-    {
-      "type": "object",
-      "required": [
-        "type",
-        "target",
-        "operation",
-        "value"
-      ],
-      "properties": {
-        "type": {
-          "const": "modify"
-        },
-        "target": {
-          "enum": [
-            "input",
-            "output",
-            "prompt",
-            "request",
-            "response",
-            "content",
-            "instructions",
-            "summary",
-            "workspace"
-          ]
-        },
-        "operation": {
-          "enum": [
-            "replace",
-            "merge"
-          ],
-          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values."
-        },
-        "value": {}
-      },
-      "allOf": [
-        {
-          "if": {
-            "properties": {
-              "target": {
-                "enum": [
-                  "prompt",
-                  "request",
-                  "response",
-                  "output"
-                ]
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "value": {
-                "$ref": "content-item.schema.json#/$defs/messages"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "target": {
-                "const": "content"
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "value": {
-                "oneOf": [
-                  {
-                    "$ref": "content-item.schema.json#/$defs/messages"
-                  },
-                  {
-                    "type": "object"
-                  }
-                ],
-                "description": "Canonical messages at user.message.outbound; MCP answer object at user.elicitation.result. The host MUST validate the boundary-specific target contract."
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "target": {
-                "enum": [
-                  "instructions",
-                  "summary"
-                ]
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "value": {
-                "$ref": "content-item.schema.json#/$defs/textParts"
-              }
-            }
-          }
-        },
-        {
-          "if": {
-            "properties": {
-              "target": {
-                "enum": [
-                  "input",
-                  "workspace"
-                ]
-              }
-            }
-          },
-          "then": {
-            "properties": {
-              "value": {
-                "type": "object"
-              }
-            }
-          }
-        }
-      ],
-      "additionalProperties": false
-    },
-    {
+    "MessageEffect": {
       "type": "object",
       "required": [
         "type",
@@ -167,21 +85,7 @@
       },
       "additionalProperties": false
     },
-    {
-      "type": "object",
-      "required": [
-        "type",
-        "value"
-      ],
-      "properties": {
-        "type": {
-          "const": "return"
-        },
-        "value": true
-      },
-      "additionalProperties": false
-    },
-    {
+    "StopFlowEffect": {
       "type": "object",
       "required": [
         "type",
@@ -202,7 +106,7 @@
       },
       "additionalProperties": false
     },
-    {
+    "ContinueFlowEffect": {
       "type": "object",
       "required": [
         "type",
@@ -222,7 +126,7 @@
       },
       "additionalProperties": false
     },
-    {
+    "InjectEffect": {
       "type": "object",
       "required": [
         "type",
@@ -252,7 +156,252 @@
         }
       },
       "additionalProperties": false
+    },
+    "ModifyMessagesEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "const": "prompt"
+            },
+            {
+              "const": "request"
+            },
+            {
+              "const": "response"
+            },
+            {
+              "const": "output"
+            },
+            {
+              "const": "content"
+            }
+          ]
+        },
+        "operation": {
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values.",
+          "oneOf": [
+            {
+              "const": "replace"
+            },
+            {
+              "const": "merge"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/messages"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModifyTextEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "oneOf": [
+            {
+              "const": "instructions"
+            },
+            {
+              "const": "summary"
+            }
+          ]
+        },
+        "operation": {
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values.",
+          "oneOf": [
+            {
+              "const": "replace"
+            },
+            {
+              "const": "merge"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/textParts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModifyWorkspaceEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "const": "workspace"
+        },
+        "operation": {
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values.",
+          "oneOf": [
+            {
+              "const": "replace"
+            },
+            {
+              "const": "merge"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "task-workspace-event.schema.json#/$defs/WorkspaceChange"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModifyFormEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "const": "content"
+        },
+        "operation": {
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values.",
+          "oneOf": [
+            {
+              "const": "replace"
+            },
+            {
+              "const": "merge"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "mcp-elicitation.schema.json#/$defs/FormAnswers"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ModifyInputEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "target",
+        "operation",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "modify"
+        },
+        "target": {
+          "const": "input"
+        },
+        "operation": {
+          "description": "replace substitutes the target value. merge appends canonical message/text-part lists in order, preserving duplicates; actual objects merge shallowly with literal null and whole nested values.",
+          "oneOf": [
+            {
+              "const": "replace"
+            },
+            {
+              "const": "merge"
+            }
+          ]
+        },
+        "value": {
+          "type": "object",
+          "description": "Tool-owned input contract; validate using the declared caller codec."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReturnMessagesEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/messages"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReturnTextEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/textParts"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReturnElicitResultEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": {
+          "$ref": "mcp-elicitation.schema.json#/$defs/ElicitResult"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReturnToolEffect": {
+      "type": "object",
+      "required": [
+        "type",
+        "value"
+      ],
+      "properties": {
+        "type": {
+          "const": "return"
+        },
+        "value": true
+      },
+      "additionalProperties": false
     }
-  ],
-  "title": "AHP Effect (Draft)"
+  }
 }

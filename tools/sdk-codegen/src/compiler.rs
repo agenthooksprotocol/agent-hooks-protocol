@@ -361,7 +361,15 @@ impl Compiler<'_> {
         match object.get("type").and_then(Value::as_str) {
             Some("null") => Ok(Shape::Null),
             Some("boolean") => Ok(Shape::Boolean),
-            Some("integer") => Ok(Shape::Integer),
+            Some("integer") => {
+                let minimum = object.get("minimum").cloned();
+                let maximum = object.get("maximum").cloned();
+                Ok(if minimum.is_some() || maximum.is_some() {
+                    Shape::BoundedInteger { minimum, maximum }
+                } else {
+                    Shape::Integer
+                })
+            }
             Some("number") => Ok(Shape::Number),
             Some("string") => Ok(Shape::String),
             Some("array") => {
@@ -424,9 +432,13 @@ impl Compiler<'_> {
                 let additional = match object.get("additionalProperties") {
                     None | Some(Value::Bool(true)) => AdditionalProperties::Allowed,
                     Some(Value::Bool(false)) => AdditionalProperties::Forbidden,
-                    // Codecs preserve unknown fields, including schema-typed map entries.
-                    // Their constraints are enforced by canonical schema validation, not parsing.
-                    Some(_) => AdditionalProperties::Allowed,
+                    Some(schema) => AdditionalProperties::Typed {
+                        shape: Box::new(self.lower(
+                            document,
+                            &format!("{pointer}/additionalProperties"),
+                            schema,
+                        )?),
+                    },
                 };
                 Ok(Shape::Object {
                     properties,
@@ -1047,6 +1059,43 @@ mod tests {
             python.contains("\"event\": Required[\"Event\"]"),
             "{python}"
         );
+    }
+
+    #[test]
+    fn schema_valued_additional_properties_keep_the_value_shape() {
+        let profile = Profile {
+            stable_names: BTreeMap::new(),
+        };
+        let documents = BTreeMap::new();
+        let compiler = Compiler {
+            profile: &profile,
+            documents: &documents,
+        };
+        let shape = compiler
+            .lower(
+                "map.json",
+                "",
+                &serde_json::json!({
+                    "type": "object",
+                    "additionalProperties": {"type": "integer", "minimum": 0}
+                }),
+            )
+            .unwrap();
+        let Shape::Object {
+            additional: AdditionalProperties::Typed { shape: value },
+            ..
+        } = &shape
+        else {
+            panic!("schema-valued dictionary must not lower to Allowed");
+        };
+        assert!(
+            matches!(value.as_ref(), Shape::BoundedInteger { minimum: Some(minimum), maximum: None } if minimum == &serde_json::json!(0))
+        );
+        let descriptor = serde_json::to_value(&shape).unwrap();
+        assert_eq!(descriptor["additional"]["kind"], "typed");
+        assert_eq!(descriptor["additional"]["shape"]["kind"], "boundedInteger");
+        assert_eq!(descriptor["additional"]["shape"]["minimum"], 0);
+        assert!(descriptor["additional"]["shape"].get("maximum").is_none());
     }
 
     #[test]

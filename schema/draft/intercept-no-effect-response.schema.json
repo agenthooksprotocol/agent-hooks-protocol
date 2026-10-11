@@ -19,8 +19,7 @@
         "result": {
           "type": "object",
           "required": [
-            "protocolVersion",
-            "effects"
+            "protocolVersion"
           ],
           "properties": {
             "protocolVersion": {
@@ -28,7 +27,10 @@
             },
             "effects": {
               "type": "array",
-              "maxItems": 0
+              "maxItems": 0,
+              "items": {
+                "$ref": "effect.schema.json"
+              }
             },
             "extensions": {
               "$ref": "extensions.schema.json"

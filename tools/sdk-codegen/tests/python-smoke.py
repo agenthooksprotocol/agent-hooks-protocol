@@ -99,8 +99,22 @@ def main() -> None:
         "",
         integer_diagnostics,
     )
-    if "invalid_type" not in {item["code"] for item in integer_diagnostics}:
-        fail("integer safe-range limit was not enforced for an integral decimal")
+    if integer_diagnostics:
+        fail("valid large integral decimal was rejected by an invented maximum")
+
+    for counter in (1208925819614629174706176, 1267650600228229401496703205376):
+        request = fixture(repository, "fixtures/draft/http/intercept-request.valid.json")
+        request["params"]["event"]["session"]["counters"] = {"turns": counter, "futureCounter": counter}
+        parsed = sdk.parse_intercept_request(json.dumps(request))
+        if not parsed["ok"]:
+            fail(str(parsed["diagnostics"]))
+        encoded = sdk.encode_intercept_request(parsed["value"])
+        if json.loads(encoded)["params"]["event"]["session"]["counters"] != {"turns": counter, "futureCounter": counter}:
+            fail("large session counters lost integer fidelity")
+        for field in ("turns", "futureCounter"):
+            request["params"]["event"]["session"]["counters"] = {field: -1}
+            if sdk.parse_intercept_request(json.dumps(request))["ok"]:
+                fail("negative session counter was accepted")
 
     lone_surrogate = "\ud800"
     registration["futureSurrogate"] = lone_surrogate

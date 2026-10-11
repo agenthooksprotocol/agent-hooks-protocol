@@ -1,6 +1,26 @@
 use super::*;
 
-pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> Result<()> {
+pub(super) fn emit(
+    ir: &Ir,
+    context: &mut EmitContext<'_>,
+    out: &mut String,
+) -> Result<BTreeSet<String>> {
+    let mut exports = BTreeSet::from(["DeliveryDiagnosticCode".into(), "inputs".into()]);
+    let support = String::from(
+        r#"
+#[allow(unused_imports)]
+use super::*;
+/// Out-of-band source binding, never serialized into wire events.
+pub struct ContentSourceBinding<S> { pub path: Vec<String>, pub source: S }
+pub(super) mod sealed { pub trait Sealed {} }
+/// Runtime projection contracts; implementations are schema-owned.
+pub trait ProjectHostInput<S>: sealed::Sealed {
+    fn into_host_event(self) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error>;
+}
+pub trait EventInput: sealed::Sealed { fn event_value(&self) -> Result<serde_json::Value, serde_json::Error>; }
+pub(crate) fn project_event<I: EventInput>(input: &I) -> Result<serde_json::Value, serde_json::Error> { input.event_value() }
+"#,
+    );
     // Reuse the schema's open effect vocabulary, including extension strings.
     if let Some(fields) = context.ergonomic_fields.get("Capabilities") {
         if let Some((_, effect_vec)) = fields.iter().find(|(name, _)| name == "effects") {
@@ -12,6 +32,7 @@ pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> 
                 .and_then(|arms| arms.iter().find(|(arm, _)| arm == "Known"))
                 .map(|(_, ty)| ty.clone())
             {
+                exports.insert("EffectId".into());
                 writeln!(
                     out,
                     "/// Schema effect-family identifier, including `Unknown(String)` extensions.\npub type EffectId = {known};"
@@ -42,6 +63,7 @@ pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> 
     }
     let events = boundary_inventory(ir);
     if !events.is_empty() {
+        exports.insert("EventType".into());
         out.push_str("\n#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]\npub enum EventType {\n");
         for event in events.keys() {
             writeln!(
@@ -64,7 +86,7 @@ pub(super) fn emit(ir: &Ir, context: &mut EmitContext<'_>, out: &mut String) -> 
             type_identifier(code)
         )?;
     }
-    out.push_str("}\n\npub mod ergonomic_inputs {\n#[allow(unused_imports)]\nuse super::*;\n/// Out-of-band source binding, never serialized into wire events.\npub struct ContentSourceBinding<S> { pub path: Vec<String>, pub source: S }\n");
+    out.push_str("}\n\npub mod inputs {\n#[allow(unused_imports)]\nuse super::*;\n#[allow(unused_imports)]\nuse __support::{ContentSourceBinding, EventInput, ProjectHostInput};\n");
 
     if ir.types.iter().any(|n| n.name == "CanonicalMessage") {
         out.push_str(r#"
@@ -169,13 +191,13 @@ fn project_parts<S>(parts: Vec<PartInput<S>>, path: Vec<String>, sources: &mut V
 enum HostReplacement<S> { Messages(Vec<MessageInput<S>>), Message(MessageInput<S>), Parts(Vec<PartInput<S>>), Part(PartInput<S>) }
 /// Envelope around unchanged typed event facts; builders exist only for schema-owned slots.
 pub struct HostInput<I, S> { pub input: I, replacements: Vec<(Vec<String>, HostReplacement<S>)> }
-/// Consuming runtime projection with no Serialize, Clone, IO or upload bound on S.
-#[doc(hidden)]
-pub trait ProjectHostInput<S> {
-    fn into_host_event(self) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error>;
+impl<I, S> __support::sealed::Sealed for HostInput<I, S> {}
+impl<I: EventInput, S> HostInput<I, S> {
+    /// Consume schema-owned content slots without serializing or opening sources.
+    pub fn into_host_event(self) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error> {
+        ProjectHostInput::into_host_event(self)
+    }
 }
-#[doc(hidden)]
-pub trait EventInput { fn event_value(&self) -> Result<serde_json::Value, serde_json::Error>; }
 impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
     fn into_host_event(self) -> Result<(serde_json::Value, Vec<ContentSourceBinding<S>>), serde_json::Error> {
         let mut event = self.input.event_value()?; let mut sources = Vec::new();
@@ -302,19 +324,24 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
             snake_identifier(&event)
         };
         let input_type = format!(
-            "$crate::$models::ergonomic_inputs::{name}{}",
+            "$crate::$models::inputs::{name}{}",
             if generic { "<T>" } else { "" }
         );
         let projection = format!(
-            "$crate::$models::ergonomic_inputs::{name}{}::to_event_value",
-            if generic { "::<T>" } else { "" }
+            "$crate::$models::inputs::__support::project_event::<$crate::$models::inputs::{name}{}>",
+            if generic { "<T>" } else { "" }
         );
         writeln!(
             methods,
             "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for({event:?}, input, {projection}) }}",
             if generic { "<T: serde::Serialize>" } else { "" }
         )?;
-        out.push_str("/// Project host facts; the runtime supplies owned fields and validates the complete request.\npub fn to_event_value(&self) -> Result<serde_json::Value, serde_json::Error> {\nlet flat = serde_json::to_value(self)?;\nlet mut event = serde_json::json!({\"type\": Self::EVENT_TYPE});\n");
+        let impl_generics = if generic { "<T: serde::Serialize>" } else { "" };
+        let type_generics = if generic { "<T>" } else { "" };
+        writeln!(
+            out,
+            "}}\nimpl{impl_generics} EventInput for {name}{type_generics} {{\nfn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {{\nlet flat = serde_json::to_value(self)?;\nlet mut event = serde_json::json!({{\"type\": Self::EVENT_TYPE}});"
+        )?;
         for f in &inputs {
             writeln!(
                 out,
@@ -336,13 +363,11 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
             )?;
         }
         out.push_str("Ok(event)\n}\n}\n");
+        writeln!(
+            out,
+            "impl{impl_generics} __support::sealed::Sealed for {name}{type_generics} {{}}"
+        )?;
         if ir.types.iter().any(|n| n.name == "CanonicalMessage") {
-            let impl_generics = if generic { "<T: serde::Serialize>" } else { "" };
-            let type_generics = if generic { "<T>" } else { "" };
-            writeln!(
-                out,
-                "impl{impl_generics} EventInput for {name}{type_generics} {{ fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> {{ self.to_event_value() }} }}"
-            )?;
             writeln!(
                 out,
                 "impl{impl_generics} {name}{type_generics} {{ pub fn with_sources<S>(self) -> HostInput<Self, S> {{ HostInput {{ input: self, replacements: Vec::new() }} }} }}"
@@ -417,61 +442,15 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
             }
             out.push_str("}\n");
         }
-
-        let legacy_slots = crate::ergonomics::content_slots(ir, &inputs)
-            .into_iter()
-            .filter(crate::ergonomics::legacy_source_binding)
-            .collect::<Vec<_>>();
-        writeln!(
-            out,
-            "pub mod {}_sources {{ {}",
-            snake_identifier(event.as_str()),
-            if legacy_slots.is_empty() {
-                ""
-            } else {
-                "use super::ContentSourceBinding;"
-            }
-        )?;
-        for slot in legacy_slots {
-            let indices = if slot.many {
-                vec!["index".to_owned()]
-            } else {
-                Vec::new()
-            };
-            let mut cursor = 0;
-            let path = slot
-                .path
-                .iter()
-                .map(|p| {
-                    if p == "*" {
-                        {
-                            let name = &indices[cursor];
-                            cursor += 1;
-                            format!("{name}.to_string()")
-                        }
-                    } else {
-                        format!("{p:?}.to_owned()")
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            writeln!(
-                out,
-                "pub fn {}<S>({}source: S) -> ContentSourceBinding<S> {{ ContentSourceBinding {{ path: vec![{path}], source }} }}",
-                snake_identifier(&slot.name),
-                indices
-                    .iter()
-                    .map(|i| format!("{i}: usize, "))
-                    .collect::<String>()
-            )?;
-        }
-        out.push_str("}\n");
     }
-    out.push_str("}\n");
+    writeln!(
+        out,
+        "#[doc(hidden)]\npub mod __support {{\n{support}\n}}\n}}"
+    )?;
     if !methods.is_empty() {
         writeln!(
             out,
-            "/// Named ergonomic boundaries; runtime retains projection failures and validates assembled events.\n#[macro_export]\nmacro_rules! ahp_ergonomic_hook_methods {{\n () => {{ $crate::ahp_ergonomic_hook_methods!(generated); }};\n ($models:ident) => {{\n{methods}\n }};\n}}"
+            "/// Named ergonomic boundaries; runtime retains projection failures and validates assembled events.\n#[allow(unused_macros)]\nmacro_rules! ahp_ergonomic_hook_methods {{\n () => {{ $crate::generated::ahp_ergonomic_hook_methods!(generated); }};\n ($models:ident) => {{\n{methods}\n }};\n}}\n#[allow(unused_imports)]\npub(crate) use ahp_ergonomic_hook_methods;"
         )?;
     }
     if let Some(request) = ir.types.iter().find(|t| t.name == "InterceptRequest") {
@@ -498,6 +477,7 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
                 else {
                     anyhow::bail!("canonical state permission must be an enum")
                 };
+                exports.extend(["Permission".into(), "state".into()]);
                 out.push_str("#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(rename_all = \"lowercase\")]\npub enum Permission {\n");
                 for permission in permissions.iter().filter_map(Value::as_str) {
                     writeln!(out, "{},", type_identifier(permission))?;
@@ -547,9 +527,11 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
         }
     }
     if let Some(effect) = ir.types.iter().find(|t| t.name == "Effect") {
-        if let Shape::Union { variants, .. } = &effect.shape {
+        if let Shape::Union { .. } = &effect.shape {
+            let variants = crate::ergonomics::effect_variants(ir);
+            exports.insert("effects".into());
             out.push_str("\npub mod effects {\nuse super::*;\n");
-            for (variant, label) in variants.iter().zip(context.try_union_names(variants)?) {
+            for (variant, label) in variants.iter().zip(context.try_union_names(&variants)?) {
                 let Some(properties) =
                     collect_object_properties(variant, &context.named_shapes, &mut BTreeSet::new())
                 else {
@@ -563,16 +545,7 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
                 else {
                     continue;
                 };
-                let op = properties
-                    .iter()
-                    .find(|p| p.wire_name == "operation")
-                    .and_then(|p| context.fixed_value(&p.shape, &mut BTreeSet::new()))
-                    .and_then(Value::as_str);
-                let name = snake_identifier(&format!(
-                    "{}{}",
-                    tag,
-                    op.map(|s| format!("_{s}")).unwrap_or_default()
-                ));
+                let name = snake_identifier(&crate::ergonomics::effect_builder_name(ir, variant));
                 let arm = &context.ergonomic_arms["Effect"]
                     .iter()
                     .find(|(n, _)| n == &label)
@@ -606,14 +579,14 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
                     args.join(", "),
                     values.join(", ")
                 )?;
-                if tag == "return" {
+                if tag == "return" && name == "return_" {
                     writeln!(
                         out,
                         "pub fn try_return<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {{ serde_json::to_value(value).map({name}) }}"
                     )?;
                 }
             }
-            for variant in variants {
+            for (variant, label) in variants.iter().zip(context.try_union_names(&variants)?) {
                 let Some(properties) =
                     collect_object_properties(variant, &context.named_shapes, &mut BTreeSet::new())
                 else {
@@ -629,43 +602,229 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
                 if tag != "modify" {
                     continue;
                 }
-                let Some(Shape::Enum {
-                    values: targets, ..
-                }) = properties
-                    .iter()
-                    .find(|p| p.wire_name == "target")
-                    .map(|p| &p.shape)
+                let Some(target_property) = properties.iter().find(|p| p.wire_name == "target")
                 else {
                     continue;
                 };
-                let Some(Shape::Enum {
-                    values: operations, ..
-                }) = properties
-                    .iter()
-                    .find(|p| p.wire_name == "operation")
-                    .map(|p| &p.shape)
+                let Some(operation_property) =
+                    properties.iter().find(|p| p.wire_name == "operation")
                 else {
                     continue;
                 };
-                for target in targets.iter().filter_map(Value::as_str) {
-                    writeln!(out, "pub mod modify_{target} {{ use super::*;")?;
-                    for operation in operations.iter().filter_map(Value::as_str) {
+                let Some(value_property) = properties.iter().find(|p| p.wire_name == "value")
+                else {
+                    continue;
+                };
+                let arm = &context.ergonomic_arms["Effect"]
+                    .iter()
+                    .find(|(n, _)| n == &label)
+                    .unwrap()
+                    .1;
+                let arm = arm
+                    .strip_prefix("Box<")
+                    .and_then(|s| s.strip_suffix('>'))
+                    .unwrap_or(arm);
+                let emitted_fields = &context.ergonomic_fields[arm];
+                let value_type = &emitted_fields.iter().find(|(n, _)| n == "value").unwrap().1;
+                for target in crate::ergonomics::string_values(ir, &target_property.shape) {
+                    let helper =
+                        crate::ergonomics::modify_helper_target(&target, &value_property.shape);
+                    writeln!(out, "pub mod modify_{helper} {{ use super::*;")?;
+                    for operation in crate::ergonomics::string_values(ir, &operation_property.shape)
+                    {
+                        let mut args = Vec::new();
+                        for p in &properties {
+                            if !p.required
+                                || context
+                                    .fixed_value(&p.shape, &mut BTreeSet::new())
+                                    .is_some()
+                            {
+                                continue;
+                            }
+                            let ty = &emitted_fields
+                                .iter()
+                                .find(|(n, _)| n == &p.wire_name)
+                                .unwrap()
+                                .1;
+                            args.push(match p.wire_name.as_str() {
+                                "target" | "operation" => {
+                                    let label = type_identifier(if p.wire_name == "target" {
+                                        &target
+                                    } else {
+                                        &operation
+                                    });
+                                    if let Some(arms) = context.ergonomic_arms.get(ty) {
+                                        let (_, payload) =
+                                            arms.iter().find(|(arm, _)| *arm == label).unwrap();
+                                        format!(
+                                            "{ty}::{label}({})",
+                                            context.default_expression(payload)
+                                        )
+                                    } else {
+                                        format!("{ty}::{label}")
+                                    }
+                                }
+                                _ => snake_identifier(&p.wire_name),
+                            });
+                        }
                         writeln!(
                             out,
-                            "pub fn {operation}(value: JsonValue) -> Effect {{ EffectModify::new(EffectModifyOperation::{}, EffectModifyTarget::{}, value).into() }}",
-                            type_identifier(operation),
-                            type_identifier(target)
+                            "pub fn {operation}(value: {value_type}) -> {arm} {{ {arm}::new({}) }}",
+                            args.join(", ")
                         )?;
                         writeln!(
                             out,
-                            "pub fn try_{operation}<T: serde::Serialize>(value: T) -> Result<Effect, serde_json::Error> {{ serde_json::to_value(value).map({operation}) }}"
+                            "pub fn try_{operation}<T: serde::Serialize>(value: T) -> Result<{arm}, serde_json::Error> {{ serde_json::to_value(value).and_then(serde_json::from_value).map({operation}) }}"
                         )?;
                     }
                     out.push_str("}\n");
                 }
             }
+            for named in ir.types.iter().filter(|t| {
+                t.name.starts_with("Return")
+                    && t.name.ends_with("Effect")
+                    && t.name != "ReturnToolEffect"
+            }) {
+                let arm = type_identifier(&named.name);
+                if let Some(emitted_fields) = context.ergonomic_fields.get(&arm) {
+                    let Some(properties) = crate::ergonomics::object_fields(ir, &named.shape)
+                    else {
+                        continue;
+                    };
+                    let mut args = Vec::new();
+                    let mut values = Vec::new();
+                    for p in properties.iter().filter(|p| {
+                        p.required
+                            && context
+                                .fixed_value(&p.shape, &mut BTreeSet::new())
+                                .is_none()
+                    }) {
+                        let arg = snake_identifier(&p.wire_name);
+                        let ty = &emitted_fields
+                            .iter()
+                            .find(|(n, _)| n == &p.wire_name)
+                            .unwrap()
+                            .1;
+                        args.push(format!("{arg}: {ty}"));
+                        values.push(arg);
+                    }
+                    let name = snake_identifier(named.name.trim_end_matches("Effect"));
+                    writeln!(
+                        out,
+                        "pub fn {name}({}) -> {arm} {{ {arm}::new({}) }}",
+                        args.join(", "),
+                        values.join(", ")
+                    )?;
+                }
+            }
             out.push_str("}\n");
         }
     }
-    Ok(())
+    // SDK generic projections copy their members from named canonical models.
+    // Payload substitution is the only semantic change; unknown bags remain.
+    for (source, public, params) in [
+        ("ToolCandidate", "Candidate", "T = JsonValue, P = JsonValue"),
+        (
+            "McpElicitationElicitResult",
+            "ElicitResult",
+            "T = FormAnswers",
+        ),
+    ] {
+        let Some(named) = ir.types.iter().find(|t| t.name == source) else {
+            continue;
+        };
+        let Some(properties) = crate::ergonomics::object_fields(ir, &named.shape) else {
+            continue;
+        };
+        let Some(emitted) = context.ergonomic_fields.get(source) else {
+            continue;
+        };
+        writeln!(
+            out,
+            "\n/// Generic SDK projection derived from `{source}`.\n#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
+        )?;
+        writeln!(
+            out,
+            "#[serde(bound(deserialize = {:?}))]",
+            if public == "Candidate" {
+                "T: serde::Deserialize<'de>, P: serde::Deserialize<'de>"
+            } else {
+                "T: serde::Deserialize<'de>"
+            }
+        )?;
+        exports.insert(public.into());
+        writeln!(out, "pub struct {public}<{params}> {{")?;
+        for p in &properties {
+            let field = snake_identifier(&p.wire_name);
+            let substitution = match p.wire_name.as_str() {
+                "value" | "content" => Some("T"),
+                "provenance" if public == "Candidate" => Some("P"),
+                _ => None,
+            };
+            let ty = if let Some(generic) = substitution {
+                if p.required {
+                    generic.into()
+                } else {
+                    format!("Presence<{generic}>")
+                }
+            } else {
+                {
+                    let canonical = &emitted.iter().find(|(n, _)| n == &p.wire_name).unwrap().1;
+                    if p.required {
+                        canonical.clone()
+                    } else {
+                        format!("Presence<{canonical}>")
+                    }
+                }
+            };
+            writeln!(out, "#[serde(rename = {:?})]", p.wire_name)?;
+            if !p.required {
+                out.push_str("#[serde(default, skip_serializing_if = \"Presence::is_missing\")]\n");
+            }
+            writeln!(out, "pub {field}: {ty},")?;
+        }
+        out.push_str(
+            "#[serde(flatten)]\npub additional_properties: BTreeMap<String, JsonValue>,\n}\n",
+        );
+    }
+    let responses = crate::ergonomics::contextual_responses(ir);
+    if !responses.is_empty() {
+        exports.extend(
+            [
+                "ContextualResponse",
+                "response_for_request",
+                "stage_response_for_request",
+                "responses",
+            ]
+            .map(str::to_owned),
+        );
+        out.push_str("\n/// Validated contextual responses; publication remains the runtime's responsibility.\n#[derive(Debug, Clone)]\npub enum ContextualResponse {\n");
+        for (_, event, response) in &responses {
+            writeln!(out, "{}(Box<{response}>),", event.trim_end_matches("Event"))?;
+        }
+        out.push_str("}\npub fn response_for_request(event_type: &str, input: &str) -> ParseResult<ContextualResponse> {\nmatch event_type {\n");
+        for (event, event_model, response) in &responses {
+            let arm = event_model.trim_end_matches("Event");
+            writeln!(
+                out,
+                "{event:?} => match parse_root::<{response}>({response:?}, input) {{ ParseResult::Success {{value, raw, diagnostics}} => ParseResult::Success {{value: ContextualResponse::{arm}(Box::new(value)), raw, diagnostics}}, ParseResult::Failure {{raw, diagnostics}} => ParseResult::Failure {{raw, diagnostics}} }},"
+            )?;
+        }
+        out.push_str("_ => ParseResult::Failure { raw: None, diagnostics: vec![ParseDiagnostic {path:String::new(), code:DiagnosticCode::UnknownVariant, severity:DiagnosticSeverity::Error, message:format!(\"Unknown request event: {event_type}\")}] },\n}\n}\n/// Run application validation before returning a publishable response. No state is changed.\npub fn stage_response_for_request(event_type: &str, input: &str, validate: impl FnOnce(&ContextualResponse) -> Result<(), String>) -> ParseResult<ContextualResponse> {\nmatch response_for_request(event_type, input) {\nParseResult::Success {value, raw, mut diagnostics} => match validate(&value) { Ok(()) => ParseResult::Success {value,raw,diagnostics}, Err(message) => { diagnostics.push(ParseDiagnostic {path:String::new(),code:DiagnosticCode::InvalidKnownVariant,severity:DiagnosticSeverity::Error,message}); ParseResult::Failure {raw:Some(raw),diagnostics} } },\nfailure => failure,\n}\n}\n");
+        out.push_str("\npub mod responses { use super::*;\n");
+        for event in ir.types.iter().filter(|t| t.name.ends_with("Event")) {
+            let boundary = event.name.trim_end_matches("Event");
+            let response = format!("{boundary}InterceptResponse");
+            if ir.types.iter().any(|t| t.name == response) {
+                let helper = snake_identifier(&format!("for_{boundary}"));
+                writeln!(
+                    out,
+                    "/// Compile-time correlation only; does not validate the response.\npub fn {helper}(_event: &{}, response: {response}) -> {response} {{ response }}",
+                    event.name
+                )?;
+            }
+        }
+        out.push_str("}\n");
+    }
+    Ok(exports)
 }

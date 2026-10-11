@@ -261,12 +261,11 @@ fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) ->
             out,
             "        if {param} is not _UNSET:\n            arguments[{param:?}] = {param}"
         )?;
-        if name == "Flow" && matches!(field.shape, Shape::Integer) {
+        if name == "Flow" && matches!(field.shape, Shape::Integer | Shape::BoundedInteger { .. }) {
             writeln!(
                 out,
-                "            if type({param}) is not int or not {min} <= {param} <= {max}:\n                raise ValueError(\"continuation counts must be nonnegative safe integers\")",
-                min = crate::ergonomics::MIN_CONTINUATION_COUNT,
-                max = crate::ergonomics::MAX_CONTINUATION_COUNT
+                "            if type({param}) is not int or {param} < {min}:\n                raise ValueError(\"continuation counts must be nonnegative integers\")",
+                min = crate::ergonomics::MIN_CONTINUATION_COUNT
             )?;
         }
         if matches!(field.shape, Shape::Boolean) {

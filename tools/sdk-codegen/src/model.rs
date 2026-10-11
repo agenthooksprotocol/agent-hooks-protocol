@@ -53,6 +53,12 @@ pub enum Shape {
     Null,
     Boolean,
     Integer,
+    BoundedInteger {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        minimum: Option<Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        maximum: Option<Value>,
+    },
     Number,
     String,
     Literal {
@@ -95,10 +101,11 @@ pub struct Property {
 }
 
 #[derive(Debug, Clone, Serialize)]
-#[serde(tag = "kind", content = "value", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase")]
 pub enum AdditionalProperties {
     Allowed,
     Forbidden,
+    Typed { shape: Box<Shape> },
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

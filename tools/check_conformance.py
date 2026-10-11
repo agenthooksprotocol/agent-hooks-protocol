@@ -804,7 +804,7 @@ def check_fixture_cases(
             contextual_errors = list(case_errors)
             if instance is not None and not contextual_errors:
                 try:
-                    effects = instance["result"]["effects"]
+                    effects = instance["result"].get("effects", [])
                     targets = frozenset(host["current"])
                     context = EditContext(
                         capabilities=frozenset((t, op) for t in targets for op in ("replace", "merge")),

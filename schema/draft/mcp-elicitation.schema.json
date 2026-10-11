@@ -164,30 +164,38 @@
           "type": "string"
         },
         "content": {
-          "additionalProperties": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": [
-                  "string",
-                  "number",
-                  "boolean"
-                ]
-              }
-            ]
-          },
-          "description": "The submitted form data, only present when action is \"accept\" and mode was \"form\".\nContains values matching the requested schema.\nOmitted for out-of-band mode responses.",
-          "type": "object"
+          "$ref": "#/$defs/FormAnswers"
         }
       },
       "required": [
         "action"
       ],
+      "type": "object"
+    },
+    "FormAnswerValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "FormAnswers": {
+      "additionalProperties": {
+        "$ref": "#/$defs/FormAnswerValue"
+      },
+      "description": "The submitted form data, only present when action is \"accept\" and mode was \"form\".\nContains values matching the requested schema.\nOmitted for out-of-band mode responses.",
       "type": "object"
     },
     "LegacyTitledEnumSchema": {

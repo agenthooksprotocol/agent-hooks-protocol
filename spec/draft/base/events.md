@@ -57,7 +57,9 @@ are not authorization claims. The JSON-RPC request `id` MUST equal
   }
 }
 ```
-An empty effect list means only that this interceptor requests no change. It does not grant permission, override another interceptor, or bypass the harness's permission system.
+An omitted `result.effects` or an empty effect list means only that this interceptor requests no change. Missing effects default to an empty list for composition; their wire presence is not rewritten. Neither form grants permission, overrides another interceptor, or bypasses the harness's permission system.
+
+Known effect values, pending candidates, injection state, and optional host-supplied session counters follow the [typed payload contracts](../typed-contracts.md).
 ### Intercept response denying the operation
 ```json
 {

@@ -334,6 +334,17 @@ impl Renderer<'_> {
         if matches!(shape, Shape::Ref { .. }) {
             return Ok(());
         }
+        if let Shape::Object {
+            properties,
+            additional: AdditionalProperties::Typed { shape: value },
+            ..
+        } = shape
+        {
+            self.emit_declarations(value, &format!("{hint}Value"), false, output)?;
+            if properties.is_empty() {
+                return Ok(());
+            }
+        }
         if let Some(properties) = self.model_properties(shape) {
             for (index, property) in properties.iter().enumerate() {
                 self.emit_declarations(
@@ -371,9 +382,21 @@ impl Renderer<'_> {
                     "{known_fields} = TypedDict({}, {{{fields}}}, total=False)",
                     python_string(&known_fields)?
                 )?;
+                let extras = if let Shape::Object {
+                    additional: AdditionalProperties::Typed { shape: value },
+                    ..
+                } = shape
+                {
+                    format!(
+                        "dict[str, {}]",
+                        self.render(value, &format!("{hint}Value"))?
+                    )
+                } else {
+                    "JsonObject".into()
+                };
                 writeln!(
                     output,
-                    "{name}: TypeAlias = {known_fields} | JsonObject  # permits additional JSON fields"
+                    "{name}: TypeAlias = {known_fields} | {extras}  # permits additional JSON fields"
                 )?;
             } else {
                 writeln!(
@@ -410,6 +433,7 @@ impl Renderer<'_> {
             | Shape::Null
             | Shape::Boolean
             | Shape::Integer
+            | Shape::BoundedInteger { .. }
             | Shape::Number
             | Shape::String
             | Shape::Literal { .. }
@@ -432,7 +456,7 @@ impl Renderer<'_> {
             Shape::Never => "Never".into(),
             Shape::Null => "None".into(),
             Shape::Boolean => "bool".into(),
-            Shape::Integer => "int | Decimal".into(),
+            Shape::Integer | Shape::BoundedInteger { .. } => "int | Decimal".into(),
             Shape::Number => "int | float | Decimal".into(),
             Shape::String => "str".into(),
             Shape::Literal { value } => render_literal(value)?,
@@ -446,6 +470,14 @@ impl Renderer<'_> {
             Shape::Ref { name } => {
                 python_string(self.names.get(name).map(String::as_str).unwrap_or(name))?
             }
+            Shape::Object {
+                properties,
+                additional: AdditionalProperties::Typed { shape: value },
+                ..
+            } if properties.is_empty() => format!(
+                "dict[str, {}]",
+                self.render(value, &format!("{hint}Value"))?
+            ),
             Shape::Object { .. } => self.model_name(hint, false),
             Shape::Union {
                 variants,
@@ -536,7 +568,8 @@ impl Renderer<'_> {
 
     fn allows_additional_inner(&self, shape: &Shape, visiting: &mut Vec<String>) -> bool {
         match shape {
-            Shape::Object { additional, .. } => matches!(additional, AdditionalProperties::Allowed),
+            // Closed objects also preserve opaque unknown property bags.
+            Shape::Object { .. } => true,
             Shape::Intersection { variants } => variants
                 .iter()
                 .any(|variant| self.allows_additional_inner(variant, visiting)),
@@ -567,10 +600,12 @@ impl Renderer<'_> {
                 additional,
                 ..
             } => {
-                match additional {
-                    AdditionalProperties::Allowed | AdditionalProperties::Forbidden => {}
+                if properties.is_empty() && matches!(additional, AdditionalProperties::Typed { .. })
+                {
+                    None
+                } else {
+                    Some(properties.clone())
                 }
-                Some(properties.clone())
             }
             Shape::Intersection { variants } => {
                 let mut merged = Vec::<Property>::new();
@@ -657,6 +692,7 @@ impl Renderer<'_> {
             | Shape::Null
             | Shape::Boolean
             | Shape::Integer
+            | Shape::BoundedInteger { .. }
             | Shape::Number
             | Shape::String
             | Shape::Literal { .. }
@@ -687,7 +723,8 @@ fn is_subshape(candidate: &Shape, broad: &Shape) -> bool {
         return true;
     }
     match (candidate, broad) {
-        (Shape::Integer, Shape::Number) => true,
+        (Shape::Integer | Shape::BoundedInteger { .. }, Shape::Number)
+        | (Shape::BoundedInteger { .. }, Shape::Integer) => true,
         (Shape::Literal { value }, Shape::String) => value.is_string(),
         (Shape::Literal { value }, Shape::Boolean) => value.is_boolean(),
         (Shape::Literal { value }, Shape::Null) => value.is_null(),
@@ -912,9 +949,14 @@ def _check_node_impl(schema: _SchemaNode, value: JsonValue, path: str, diagnosti
     elif kind == "boolean":
         if type(value) is not bool:
             _error(diagnostics, path, "invalid_type", "Expected boolean")
-    elif kind == "integer":
-        if not _is_integer(value) or abs(value) > 9_007_199_254_740_991:
-            _error(diagnostics, path, "invalid_type", "Expected safely representable integer")
+    elif kind in ("integer", "boundedInteger"):
+        if not _is_integer(value):
+            _error(diagnostics, path, "invalid_type", "Expected integer")
+        elif kind == "boundedInteger" and (
+            ("minimum" in schema and value < schema["minimum"])
+            or ("maximum" in schema and value > schema["maximum"])
+        ):
+            _error(diagnostics, path, "invalid_type", "Integer is outside its declared bounds")
     elif kind == "number":
         if not _is_number(value):
             _error(diagnostics, path, "invalid_type", "Expected finite number")
@@ -966,6 +1008,12 @@ def _check_node_impl(schema: _SchemaNode, value: JsonValue, path: str, diagnosti
                     )
             else:
                 _check_node(property["shape"], value[wire_name], _join_path(path, wire_name), diagnostics, cache)
+        additional = schema["additional"]
+        if additional["kind"] == "typed":
+            known = {property["wire_name"] for property in schema["properties"]}
+            for key, child in value.items():
+                if key not in known:
+                    _check_node(additional["shape"], child, _join_path(path, key), diagnostics, cache)
     elif kind == "intersection":
         for variant in schema["variants"]:
             _check_node(variant, value, path, diagnostics, cache)
@@ -1254,6 +1302,117 @@ mod tests {
     }
 
     #[test]
+    fn typed_additional_properties_emit_maps_and_validate_values() {
+        let dictionary = Shape::Object {
+            properties: vec![],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Typed {
+                shape: Box::new(Shape::String),
+            },
+        };
+        let ir = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "1".into(),
+            roots: vec![PublicRoot {
+                name: "Dictionary".into(),
+                schema: "test.json".into(),
+            }],
+            types: vec![NamedType {
+                name: "Dictionary".into(),
+                source: "test.json#".into(),
+                shape: dictionary,
+            }],
+        };
+        let mut source = emit(&ir).unwrap();
+        assert!(source.contains("Dictionary: TypeAlias = dict[str, str]"));
+        let mixed = Ir {
+            schema_revision: "test".into(),
+            protocol_version: "1".into(),
+            roots: vec![],
+            types: vec![NamedType {
+                name: "Counters".into(),
+                source: "test.json#".into(),
+                shape: Shape::Object {
+                    properties: vec![Property {
+                        wire_name: "turns".into(),
+                        required: false,
+                        constructor_default: None,
+                        shape: Shape::Integer,
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Typed {
+                        shape: Box::new(Shape::Integer),
+                    },
+                },
+            }],
+        };
+        let mixed_source = emit(&mixed).unwrap();
+        assert!(
+            mixed_source
+                .contains("Counters: TypeAlias = _CountersKnownFields | dict[str, int | Decimal]")
+        );
+        assert!(mixed_source.contains("\"turns\": NotRequired[int | Decimal]"));
+        let mut object_values = ir;
+        object_values.types[0].shape = Shape::Object {
+            properties: vec![],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Typed {
+                shape: Box::new(Shape::Object {
+                    properties: vec![Property {
+                        wire_name: "label".into(),
+                        required: true,
+                        constructor_default: None,
+                        shape: Shape::String,
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Forbidden,
+                }),
+            },
+        };
+        let nested = emit(&object_values).unwrap();
+        assert!(nested.contains("Dictionary: TypeAlias = dict[str, _DictionaryValueModel]"));
+        assert!(nested.contains("__DictionaryValueModelKnownFields = TypedDict("));
+        source.push_str(r#"
+assert parse_dictionary('{"a/b~c":"yes"}')["ok"]
+bad = parse_dictionary('{"a/b~c":1}')
+assert not bad["ok"]
+assert bad["diagnostics"][0]["path"] == "/a~1b~0c"
+assert parse_dictionary('{}')["ok"]
+closed = {"kind": "object", "properties": [], "forbidden_property_sets": [], "additional": {"kind": "forbidden"}}
+assert _parse_descriptor(closed, {"future": {"value": 1}})["ok"]
+known = {"kind": "object", "properties": [{"wire_name": "count", "required": True, "shape": {"kind": "integer"}}], "forbidden_property_sets": [], "additional": {"kind": "typed", "shape": {"kind": "string"}}}
+assert _parse_descriptor(known, {"count": 1, "extra": "yes"})["ok"]
+assert not _parse_descriptor(known, {"count": 1, "extra": False})["ok"]
+counters = {"kind": "object", "properties": [{"wire_name": "turns", "required": False, "shape": {"kind": "boundedInteger", "minimum": 0}}], "forbidden_property_sets": [], "additional": {"kind": "typed", "shape": {"kind": "boundedInteger", "minimum": 0}}}
+exact_counters = '{"turns":1208925819614629174706176,"futureCounter":1267650600228229401496703205376}'
+exact = _parse_descriptor(counters, exact_counters)
+assert exact["ok"]
+assert exact["value"]["turns"] == 1208925819614629174706176
+assert exact["value"]["futureCounter"] == 1267650600228229401496703205376
+assert _encode_json(exact["value"]) == exact_counters
+assert _parse_descriptor(counters, {"turns": Decimal("1208925819614629174706176"), "futureCounter": Decimal("1267650600228229401496703205376")})["ok"]
+for negative in ({"turns": -1}, {"futureCounter": -1}):
+    assert not _parse_descriptor(counters, negative)["ok"]
+assert _parse_descriptor({"kind": "integer"}, 1267650600228229401496703205376)["ok"]
+assert not _parse_descriptor({"kind": "boundedInteger", "maximum": 5}, 6)["ok"]
+
+"#);
+        if std::env::var_os("AHP_PYTHON_RUNTIME_TESTS").is_none() {
+            return;
+        }
+        let python = std::env::var("PYTHON").unwrap_or_else(|_| "python3".into());
+        let result = std::process::Command::new(python)
+            .args(["-c", &source])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
+    #[test]
     fn output_is_deterministic_typed_and_snake_case() {
         let ir = sample_ir();
         let first = emit(&ir).unwrap();
@@ -1442,9 +1601,9 @@ mod tests {
         };
 
         let source = emit(&ir).unwrap();
-        assert_eq!(source.matches("Node = TypedDict(").count(), 1);
-        assert_eq!(source.matches("Left = TypedDict(").count(), 1);
-        assert_eq!(source.matches("Right = TypedDict(").count(), 1);
+        assert_eq!(source.matches("_NodeKnownFields = TypedDict(").count(), 1);
+        assert_eq!(source.matches("_LeftKnownFields = TypedDict(").count(), 1);
+        assert_eq!(source.matches("_RightKnownFields = TypedDict(").count(), 1);
         assert!(source.contains("\"next\": NotRequired[\"Node\"]"));
         assert!(source.contains("\"right\": NotRequired[\"Right\"]"));
         assert!(source.contains("\"left\": NotRequired[\"Left\"]"));
@@ -1564,7 +1723,7 @@ mod tests {
         assert!(source.contains("ambiguous_union"));
         assert!(source.contains("return {\"ok\": True, \"value\": raw, \"raw\": raw"));
         assert!(source.contains("result[key] = _to_safe_json(child)"));
-        assert!(source.contains("9_007_199_254_740_991"));
+        assert!(!source.contains("9_007_199_254_740_991"));
         assert!(source.contains("def _escape_surrogates"));
         assert!(source.contains("0xD800 <= ord(character) <= 0xDFFF"));
     }

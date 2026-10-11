@@ -43,7 +43,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         }
     }
     let mut body = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nimport json\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\n_UNSET: Any = object()\n\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nfrom decimal import Decimal\nfrom typing import Self, get_args, get_origin, Union, Literal as _Literal\nfrom types import UnionType\nfrom functools import lru_cache\nfrom uuid import uuid4\nimport re\nimport json\nfrom .. import generated as _wire\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\nclass _Unset:\n    def __copy__(self) -> _Unset:\n        return self\n\n    def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:\n        return self\n\n_UNSET: Any = _Unset()\n\n"
     );
     body.push_str(MODEL_RUNTIME);
     body.push_str(OWNED_INPUT_RUNTIME);
@@ -67,13 +67,18 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     )?;
     let mut modules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut boundaries = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, cast\n\nif TYPE_CHECKING:\n    from ._hooks import HookResult, Hooks\n    from . import _models as models\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, Mapping, TypeVar, cast\nfrom .codec import Codec\nfrom ._content import ContentContext, ContentSources\nfrom . import _models as models\nfrom importlib import import_module as _import_module\n\nInputT = TypeVar(\"InputT\")\nResultT = TypeVar(\"ResultT\")\nProvenanceT = TypeVar(\"ProvenanceT\")\n\nif TYPE_CHECKING:\n    from ._hooks import Hooks\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
     );
     let mut content_slots_source =
         String::from("\nCONTENT_SOURCE_SLOTS: dict[str, tuple[str, tuple[str, ...]]] = {\n");
     let mut aliases = String::new();
     let mut count = 0;
     for (name, shape) in &shapes {
+        if matches!(shape, Shape::Object { properties, additional: AdditionalProperties::Typed { .. }, .. } if properties.is_empty())
+        {
+            writeln!(aliases, "{name} = {}", annotation(ir, shape, name, "")?)?;
+            continue;
+        }
         if let Some(fields) = properties(&renderer, shape) {
             if let Shape::Ref { name: target } = shape {
                 let mut target = target.as_str();
@@ -210,7 +215,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                     export(exports, input_name.clone(), input_name.clone())?;
                     writeln!(
                         boundaries,
-                        "\n    async def {}(self, input: models.{input_name} | dict[str, Any], **kwargs: Any) -> HookResult:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, **kwargs)",
+                        "\n    async def {}(self, input: models.{input_name} | dict[str, Any], *, initial_state: dict[str, Any] | None = None, capabilities: dict[str, Any] | None = None, event_id: str | None = None, content: ContentContext | None = None, sources: ContentSources | None = None, original_request: dict[str, Any] | None = None, uploads: dict[str, Any] | None = None, input_codec: Codec[InputT] | None = None, result_codec: Codec[ResultT] | None = None, provenance_codec: Codec[ProvenanceT] | None = None, event_codecs: Mapping[tuple[str, ...], Codec[Any]] | None = None) -> _hooks.HookResult[InputT, ResultT, ProvenanceT]:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, initial_state=initial_state, capabilities=capabilities, event_id=event_id, content=content, sources=sources, original_request=original_request, uploads=uploads, input_codec=input_codec, result_codec=result_codec, provenance_codec=provenance_codec, event_codecs=event_codecs)",
                         snake_case(short)
                     )?;
                     count += 1;
@@ -256,6 +261,24 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         "_FIELD_TYPES = json.loads({})\n",
         python_string(&serde_json::to_string(&hydration)?)?
     )?;
+    let mut additional_types = serde_json::Map::new();
+    for (name, shape) in &shapes {
+        if let Shape::Object {
+            additional: AdditionalProperties::Typed { shape },
+            ..
+        } = shape
+        {
+            additional_types.insert(
+                name.clone(),
+                Value::String(annotation(ir, shape, &format!("{name}Value"), "")?),
+            );
+        }
+    }
+    writeln!(
+        body,
+        "_ADDITIONAL_TYPES = json.loads({})",
+        python_string(&serde_json::to_string(&additional_types)?)?
+    )?;
     body.push_str(&aliases);
     body.push('\n');
     if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
@@ -270,11 +293,13 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             "Event".into(),
         )?;
     }
-    content_slots_source.push_str("}\n");
-    boundaries.push_str(&content_slots_source);
     if count == 0 {
         boundaries.push_str("    pass\n");
     }
+    content_slots_source.push_str("}\n");
+    boundaries.push_str(&content_slots_source);
+    // Import the module only after BoundaryMixin exists, avoiding either import order cycle.
+    boundaries.push_str("\n_hooks = _import_module(\"._hooks\", __package__)\n");
     // Stable semantic aliases use the same resolved schema names as Go/Rust.
     for (alias, model) in [
         ("Input", "ExecutionEventTool"),
@@ -336,7 +361,6 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
-    public.push("OwnedAttachment".into());
     modules
         .entry("content".into())
         .or_default()
@@ -418,10 +442,145 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         )?;
     }
     ergonomic_modules(&mut files, &renderer, &shapes)?;
-    files
-        .get_mut("effect.py")
-        .unwrap()
-        .push_str("\nfrom ._grants import EffectName as EffectName\n");
+    files.get_mut("effect.py").unwrap().insert_str(
+        HEADER.len(),
+        "from ._grants import EffectName as EffectName\n",
+    );
+    if let Some(event_module) = files.get_mut("event.py") {
+        event_module.push_str("\nfrom typing import overload, Any\nfrom . import _models\n");
+        let mut count = 0;
+        for named in ir.types.iter().filter(|t| t.name.ends_with("Event")) {
+            let response = format!("{}InterceptResponse", named.name.trim_end_matches("Event"));
+            if ir.types.iter().any(|t| t.name == response) {
+                writeln!(
+                    event_module,
+                    "@overload\ndef response_for_event(event: _models.{}, response: _models.{response}) -> _models.{response}: ...",
+                    named.name
+                )?;
+                count += 1;
+            }
+        }
+        if count > 0 {
+            event_module.push_str("def response_for_event(event: Any, response: Any) -> Any:\n    \"\"\"Correlate at type-check time only; does not validate the response.\"\"\"\n    return response\n");
+        }
+    }
+    let responses = crate::ergonomics::contextual_responses(ir);
+    let never_import = if responses.is_empty() { ", Never" } else { "" };
+    let mut response_source = format!(
+        "{HEADER}from __future__ import annotations\nfrom typing import Any, Callable, Literal, Sequence, overload{never_import}\nfrom . import _models, generated as _wire\nfrom .generated import JsonValue\n\n"
+    );
+    response_source.push_str(
+        "__all__ = [\"ContextualResponse\", \"response_for_request\"]\n\nContextualResponse = ",
+    );
+    if responses.is_empty() {
+        response_source.push_str("Never");
+    } else {
+        response_source.push_str(
+            &responses
+                .iter()
+                .map(|(_, _, name)| format!("_models.{name}"))
+                .collect::<Vec<_>>()
+                .join(" | "),
+        );
+    }
+    response_source.push_str("\n_RESPONSE_MODELS: dict[str, Any] = {\n");
+    for (event, _, response) in &responses {
+        writeln!(response_source, "{event:?}: _models.{response},")?;
+    }
+    response_source.push_str("}\n");
+    for (event, _, response) in &responses {
+        writeln!(
+            response_source,
+            "@overload\ndef response_for_request(event_type: Literal[{event:?}], raw: str | JsonValue, validate: Callable[[_models.{response}], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[_models.{response}]: ..."
+        )?;
+    }
+    response_source.push_str("@overload\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[ContextualResponse]: ...\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[Any]:\n    \"\"\"Validate and stage without publication. Unknown events are not authority.\"\"\"\n    model = _RESPONSE_MODELS.get(event_type)\n    if model is None:\n        return {'ok':False, 'diagnostics':[{'path':'', 'code':'unknown_variant', 'severity':'error', 'message':'Unknown request event: ' + event_type}]}\n    cache: dict[Any, Any] = {}\n    parsed = _wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)\n    if not parsed['ok']:\n        return parsed\n    value = model._hydrate_validated(parsed['value'], '', cache)\n    diagnostics = list(parsed['diagnostics'])\n    if validate is not None:\n        diagnostics.extend(validate(value))\n    if any(d['severity'] == 'error' for d in diagnostics):\n        return {'ok':False, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n    return {'ok':True, 'value':value, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n");
+    files.insert("response.py".into(), response_source);
+    let mut projections = format!(
+        "{HEADER}from __future__ import annotations\nfrom dataclasses import dataclass as _dataclass, field as _field\nfrom typing import Any, Generic, TypeVar\nfrom . import _models\nfrom .generated import JsonValue\n\nT = TypeVar('T')\nP = TypeVar('P')\n\n"
+    );
+    let mut projection_exports = Vec::new();
+    for (source, public, parameters) in [
+        ("ToolCandidate", "Candidate", "T, P"),
+        ("McpElicitationElicitResult", "ElicitResult", "T"),
+    ] {
+        let Some(named) = ir.types.iter().find(|t| t.name == source) else {
+            continue;
+        };
+        let Some(properties) = crate::ergonomics::object_fields(ir, &named.shape) else {
+            continue;
+        };
+        projection_exports.push(public);
+        writeln!(
+            projections,
+            "@_dataclass(kw_only=True)\nclass {public}(Generic[{parameters}]):\n    \"\"\"Schema-derived projection of {source}; codecs remain runtime-owned.\"\"\""
+        )?;
+        for p in &properties {
+            let field = snake_case(p.wire_name.trim_start_matches('_'));
+            let ty = match p.wire_name.as_str() {
+                "value" | "content" => "T".into(),
+                "provenance" if public == "Candidate" => "P".into(),
+                _ => annotation(ir, &p.shape, &field_hint(source, &p.wire_name)?, "_models.")?,
+            };
+            writeln!(
+                projections,
+                "    {field}: {ty}{}",
+                if p.required {
+                    ""
+                } else {
+                    " = _field(default=_models._UNSET)"
+                }
+            )?;
+        }
+        projections.push_str("    additional_properties: dict[str, JsonValue] = _field(default_factory=dict)\n\n    def to_dict(self) -> dict[str, Any]:\n        result: dict[str, Any] = dict(self.additional_properties)\n");
+        for p in &properties {
+            let field = snake_case(p.wire_name.trim_start_matches('_'));
+            if p.required {
+                writeln!(
+                    projections,
+                    "        result[{:?}] = self.{field}",
+                    p.wire_name
+                )?;
+            } else {
+                writeln!(
+                    projections,
+                    "        if self.{field} is not _models._UNSET:\n            result[{:?}] = self.{field}\n        else:\n            result.pop({:?}, None)",
+                    p.wire_name, p.wire_name
+                )?;
+            }
+        }
+        projections.push_str("        return result\n\n");
+    }
+    files.insert("contract.py".into(), projections);
+    for named in ir
+        .types
+        .iter()
+        .filter(|t| t.name == "McpElicitationElicitRequestFormParams")
+    {
+        if let Some(requested) = properties(&renderer, &named.shape).and_then(|fields| {
+            fields
+                .into_iter()
+                .find(|p| p.wire_name == "requestedSchema")
+        }) {
+            let model = annotation(
+                ir,
+                &requested.shape,
+                &field_hint(&named.name, &requested.wire_name)?,
+                "",
+            )?;
+            projection_exports.push("RequestedSchema");
+            files.get_mut("contract.py").unwrap().insert_str(
+                HEADER.len() + "from __future__ import annotations\n".len(),
+                &format!("from ._models import {model} as RequestedSchema\n"),
+            );
+            files.insert("elicitation.py".into(), format!("{HEADER}from ._models import {model} as RequestedSchema\nfrom ._models import FormAnswers as FormAnswers\nfrom .contract import ElicitResult as ElicitResult\n\n__all__ = [\"RequestedSchema\", \"FormAnswers\", \"ElicitResult\"]\n"));
+        }
+    }
+
+    files.get_mut("contract.py").unwrap().push_str(&format!(
+        "\n__all__ = {}\n",
+        serde_json::to_string(&projection_exports)?
+    ));
     for path in ["_models/__init__.py", "_grants.py", "state.py", "effect.py"] {
         add_annotation_imports(files.get_mut(path).expect("annotation-bearing module"));
     }
@@ -505,6 +664,14 @@ fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Sha
         name.len() <= 100,
         "public Python model name is too long: {name}; provide a canonical schema ref"
     );
+    if matches!(shape, Shape::Ref { name: target } if target == name) && shapes.contains_key(name) {
+        return Ok(());
+    }
+    // A parent field can claim the exact canonical ref name before that named
+    // definition is visited. Replace the provisional self-alias with its model.
+    if matches!(shapes.get(name), Some(Shape::Ref { name: target }) if target == name) {
+        shapes.remove(name);
+    }
     if let Some(existing) = shapes.get(name) {
         anyhow::ensure!(
             format!("{existing:?}") == format!("{original:?}"),
@@ -514,8 +681,15 @@ fn collect(ir: &Ir, name: &str, shape: &Shape, shapes: &mut BTreeMap<String, Sha
     }
     shapes.insert(name.into(), original.clone());
     match shape {
-        Shape::Object { properties, .. } => {
+        Shape::Object {
+            properties,
+            additional,
+            ..
+        } => {
             collect_properties(ir, name, properties.iter(), shapes)?;
+            if let AdditionalProperties::Typed { shape } = additional {
+                collect(ir, &format!("{name}Value"), shape, shapes)?;
+            }
         }
         Shape::Array { items } => collect(ir, &format!("{name}Item"), items, shapes)?,
         Shape::Union { variants, .. } => {
@@ -574,7 +748,14 @@ fn collect_union_validation(
     let projected = renderer.composed_union(shape);
     let shape = projected.as_ref().unwrap_or(shape);
     match shape {
-        Shape::Object { properties, .. } => {
+        Shape::Object {
+            properties,
+            additional,
+            ..
+        } => {
+            if let AdditionalProperties::Typed { shape } = additional {
+                collect_union_validation(ir, &format!("{name}Value"), shape, descriptors)?;
+            }
             for p in properties {
                 collect_union_validation(
                     ir,
@@ -826,8 +1007,9 @@ fn accessors(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Resu
     {
         out.push_str("    def supports(self, effect: str) -> bool:\n        \"\"\"Advertised family membership only, never authorization or grant checks.\"\"\"\n        return effect in self.get(\"effects\", ())\n\n");
     }
-    // Accessors leave the wire mapping intact. Optional fields return None when
-    // absent; required fields raise KeyError on malformed, manually mutated data.
+    // Accessors leave the wire mapping intact. Effects return detached plain lists,
+    // including for omitted fields, without inserting an absent wire property.
+    // Other optional fields return None; required fields raise KeyError if malformed.
     let mut accessors = HashSet::new();
     for p in fields {
         let mut accessor = snake_case(&p.wire_name);
@@ -855,8 +1037,15 @@ fn accessors(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Resu
         }
         let accessor = public_identifier(&accessor, "field", &mut accessors)?;
         let annotation = annotation(ir, &p.shape, &field_hint(name, &p.wire_name)?, "")?;
-        let optional = if p.required { "" } else { " | None" };
-        let read = if p.required {
+        let detached_effects = p.wire_name == "effects" && matches!(&p.shape, Shape::Array { .. });
+        let optional = if p.required || detached_effects {
+            ""
+        } else {
+            " | None"
+        };
+        let read = if detached_effects {
+            format!("list(self.get({:?}, []))", p.wire_name)
+        } else if p.required {
             format!("self[{:?}]", p.wire_name)
         } else {
             format!("self.get({:?})", p.wire_name)
@@ -893,7 +1082,7 @@ fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<Str
         Shape::Never => "Never".into(),
         Shape::String => "str".into(),
         Shape::Boolean => "bool".into(),
-        Shape::Integer => "int".into(),
+        Shape::Integer | Shape::BoundedInteger { .. } => "int".into(),
         Shape::Number => "float".into(),
         Shape::Null => "None".into(),
         Shape::Array { items } => format!(
@@ -916,6 +1105,14 @@ fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<Str
             additional: AdditionalProperties::Allowed,
             ..
         } if properties.is_empty() => "dict[str, Any]".into(),
+        Shape::Object {
+            properties,
+            additional: AdditionalProperties::Typed { shape },
+            ..
+        } if properties.is_empty() => format!(
+            "dict[str, {}]",
+            annotation(ir, shape, &format!("{hint}Value"), namespace)?
+        ),
         Shape::Ref { name } if name == "Event" => format!("{namespace}Event"),
         Shape::Ref { name } => {
             let target = ir
@@ -926,6 +1123,9 @@ fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<Str
             if matches!(&target.shape, Shape::Object { properties, additional: AdditionalProperties::Allowed, .. } if properties.is_empty())
             {
                 "dict[str, Any]".into()
+            } else if matches!(&target.shape, Shape::Object { properties, additional: AdditionalProperties::Typed { .. }, .. } if properties.is_empty())
+            {
+                annotation(ir, &target.shape, name, namespace)?
             } else if properties(&renderer, &target.shape).is_some() {
                 format!("{namespace}{name}")
             } else {
@@ -942,6 +1142,8 @@ fn annotation(ir: &Ir, shape: &Shape, hint: &str, namespace: &str) -> Result<Str
                     namespace,
                 )?);
             }
+            arms.sort();
+            arms.dedup();
             arms.sort();
             arms.dedup();
             if arms.is_empty() {
@@ -1009,7 +1211,7 @@ fn ergonomic_modules(
         })
         .ok_or_else(|| anyhow::anyhow!("decision state candidate has no value object"))?;
     let mut state = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom ._models import {state_name} as State\nfrom ._models import {state_name}Permission as Permission\nfrom ._models import {state_name}Flow as Flow\nfrom ._models import {candidate_name} as Candidate\nfrom ._models import {candidate_name}Provenance as Provenance\n\n_UNSET: Any = object()\n\ndef initial(permission: Permission, *, candidate: Candidate | None = None"
+        "{HEADER}from __future__ import annotations\nfrom ._models import _UNSET\nfrom ._models import {state_name} as State\nfrom ._models import {state_name}Permission as Permission\nfrom ._models import {state_name}Flow as Flow\nfrom ._models import {candidate_name} as Candidate\nfrom ._models import {candidate_name}Provenance as Provenance\n\ndef initial(permission: Permission, *, candidate: Candidate | None = None"
     );
     let fields = properties(renderer, &shapes[state_name]).expect("decision state object");
     for field in &fields {
@@ -1053,50 +1255,67 @@ fn ergonomic_modules(
     let effect = files.get_mut("effect.py").unwrap();
     let mut effect_names = reserved_identifiers();
     effect.push_str("\nfrom typing import Any\nfrom ._models import _UNSET\n\n");
-    // Match operation helpers to the exact same target grants as declarations.
-    let capabilities = renderer
-        .ir
-        .types
-        .iter()
-        .find(|n| n.name == "Capabilities")
-        .unwrap();
-    let dimensions = properties(renderer, &capabilities.shape).unwrap();
-    let modify = dimensions
-        .iter()
-        .find(|field| field.wire_name == "modify")
-        .unwrap();
-    for target in properties(renderer, &modify.shape).unwrap() {
-        for operation in properties(renderer, &target.shape).unwrap_or_default() {
-            if !matches!(
-                operation.shape,
-                Shape::Boolean
-                    | Shape::Literal {
-                        value: Value::Bool(_)
-                    }
-            ) {
-                continue;
+    let mut effect_variants = crate::ergonomics::effect_variants(renderer.ir);
+    effect_variants
+        .sort_by_key(|variant| crate::ergonomics::effect_builder_name(renderer.ir, variant));
+    for variant in effect_variants {
+        let Some(fields) = properties(renderer, &variant) else {
+            continue;
+        };
+        if !fields.iter().any(|p| {
+            p.wire_name == "type"
+                && literal(renderer.ir, &p.shape)
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    .as_deref()
+                    == Some("modify")
+        }) {
+            continue;
+        }
+        let Some(target) = fields.iter().find(|p| p.wire_name == "target") else {
+            continue;
+        };
+        let Some(operation) = fields.iter().find(|p| p.wire_name == "operation") else {
+            continue;
+        };
+        let Some(value) = fields.iter().find(|p| p.wire_name == "value") else {
+            continue;
+        };
+        let model = match &variant {
+            Shape::Ref { name } => name.as_str(),
+            _ => "EffectModify",
+        };
+        let value_type = annotation(
+            renderer.ir,
+            &value.shape,
+            &field_hint(model, "value")?,
+            "_models.",
+        )?;
+        for target_value in crate::ergonomics::string_values(renderer.ir, &target.shape) {
+            let helper = crate::ergonomics::modify_helper_target(&target_value, &value.shape);
+            for operation_value in crate::ergonomics::string_values(renderer.ir, &operation.shape) {
+                let name = public_identifier(
+                    &format!("{}_{}", snake_case(&operation_value), snake_case(&helper)),
+                    "effect",
+                    &mut effect_names,
+                )?;
+                writeln!(
+                    effect,
+                    "def {name}(value: {value_type}) -> _models.{model}:\n    return _models.{model}(target={target_value:?}, operation={operation_value:?}, value=value)\n"
+                )?;
             }
-            let name = format!(
-                "{}_{}",
-                snake_case(&operation.wire_name),
-                snake_case(&target.wire_name)
-            );
-            let name = public_identifier(&name, "effect", &mut effect_names)?;
-            writeln!(
-                effect,
-                "def {name}(value: Any) -> Modify:\n    return Modify(target={:?}, operation={:?}, value=value)\n",
-                target.wire_name, operation.wire_name
-            )?;
         }
     }
     for (name, shape) in shapes {
-        if name.starts_with("Effect") && name != "EffectModify" {
+        if (name.starts_with("Effect") || name.ends_with("Effect"))
+            && name != "EffectModify"
+            && name != "DenyEffect"
+        {
             if let Some(fields) = properties(renderer, shape) {
                 if fields
                     .iter()
                     .any(|p| p.wire_name == "type" && literal(renderer.ir, &p.shape).is_some())
                 {
-                    let short = name.trim_start_matches("Effect");
+                    let short = name.trim_start_matches("Effect").trim_end_matches("Effect");
                     let alias = public_identifier(&snake_case(short), "effect", &mut effect_names)?;
                     let params = fields
                         .iter()
@@ -1149,11 +1368,12 @@ fn ergonomic_modules(
                         .join("_");
                     let semantic =
                         public_identifier(&semantic, "effect", &mut reserved_identifiers())?;
-                    if semantic != alias {
-                        anyhow::ensure!(
-                            effect_names.insert(semantic.clone()),
-                            "public Python effect alias collision: {semantic}"
-                        );
+                    if semantic != alias
+                        && !(semantic == "return_"
+                            && name != "ReturnToolEffect"
+                            && name != "EffectReturn")
+                        && effect_names.insert(semantic.clone())
+                    {
                         writeln!(effect, "{semantic} = {alias}")?;
                     }
                 }
@@ -1170,10 +1390,7 @@ fn ergonomic_modules(
 }
 
 // Host adapters are separate from wire validation and hydration.
-const OWNED_INPUT_RUNTIME: &str = r#"from uuid import uuid4
-import re
-
-class OwnedAttachment:
+const OWNED_INPUT_RUNTIME: &str = r#"class OwnedAttachment:
     """Explicit host-only attachment handle. Construction never reads the source.
 
     Event input constructors retain source out-of-band. The runtime must replace
@@ -1301,13 +1518,7 @@ def _normalize_owned_input(value: Any, tag: str, roots: dict[str, list[str]]) ->
 
 // Decode once with the same engine used by parse_*; hydration deliberately does
 // not recurse through public constructors or silently apply constructor defaults.
-const MODEL_RUNTIME: &str = r#"from decimal import Decimal
-from typing import Self, get_args, get_origin, Union, Literal as _Literal
-from types import UnionType
-from functools import lru_cache
-from .. import generated as _wire
-
-class _ModelValidationError(ValueError):
+const MODEL_RUNTIME: &str = r#"class _ModelValidationError(ValueError):
     def __init__(self, result: Any) -> None:
         self.result = result
         self.diagnostics = result["diagnostics"]
@@ -1340,8 +1551,10 @@ class _WireModel(dict[str, Any]):
     def _hydrate_validated(cls, value: Any, path: str, cache: dict[Any, Any]) -> Self:
         model = cls.__new__(cls)
         fields = _field_types(cls.__name__)
+        extra = _ADDITIONAL_TYPES.get(cls.__name__)
+        extra_type = eval(extra, globals()) if extra is not None else Any
         dict.__init__(model, {
-            key: _hydrate(fields[key], child, _wire._join_path(path, key), cache) if key in fields else child
+            key: _hydrate(fields[key], child, _wire._join_path(path, key), cache) if key in fields else _hydrate(extra_type, child, _wire._join_path(path, key), cache)
             for key, child in value.items()
         })
         return model
@@ -1384,7 +1597,8 @@ def _matches(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> b
         _wire._check_node(schema, value, path, scalar_diagnostics, cache)
         return not any(item["severity"] == "error" for item in scalar_diagnostics)
     if origin is dict:
-        return isinstance(value, dict)
+        args = get_args(annotation)
+        return isinstance(value, dict) and all(_matches(args[1], child, _wire._join_path(path, key), cache) for key, child in value.items())
     return isinstance(value, annotation) if isinstance(annotation, type) else True
 
 def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> Any:
@@ -1395,6 +1609,10 @@ def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> A
         item_type = get_args(annotation)[0]
         hydrated = [_hydrate(item_type, child, f"{path}/{index}", cache) for index, child in enumerate(value)]
         return value if all(left is right for left, right in zip(value, hydrated)) else hydrated
+    if origin is dict and isinstance(value, dict):
+        value_type = get_args(annotation)[1]
+        hydrated = {key: _hydrate(value_type, child, _wire._join_path(path, key), cache) for key, child in value.items()}
+        return value if all(value[key] is child for key, child in hydrated.items()) else hydrated
     if origin in (Union, UnionType):
         # Prefer specific object models over an open mapping/Any fallback. The
         # shared validator's memoized branch decisions avoid rechecking subtrees.
@@ -1405,7 +1623,7 @@ def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> A
                 if not any(item["severity"] == "error" for item in diagnostics):
                     return value if isinstance(value, arm) else arm._hydrate_validated(value, path, cache)
         for arm in get_args(annotation):
-            if get_origin(arm) is list and _matches(arm, value, path, cache):
+            if get_origin(arm) in (list, dict) and _matches(arm, value, path, cache):
                 return _hydrate(arm, value, path, cache)
         return value
     if isinstance(annotation, type) and issubclass(annotation, _WireModel) and isinstance(value, dict):

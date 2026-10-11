@@ -68,7 +68,18 @@ def build():
     cached = {"executed": False, "result": {"cached": 2}}
 
     add("empty-response-preserves-input", [], tags=["no-effect"])
-    # State is optional; permission and candidate are required only when present.
+    for suffix, permission, candidate, expected in [
+        ("input", "none", None, {}),
+        ("candidate", "none", CANDIDATE, {"executed": False, "result": CANDIDATE["value"]}),
+        ("null-candidate-value", "none", {"value": None}, {"executed": False, "result": None}),
+        ("incoming-ask", "ask", None, pending),
+        ("incoming-deny", "deny", None, blocked),
+    ]:
+        row = add("omitted-effects-preserves-" + suffix, [], expected,
+                  permission=permission, candidate=candidate,
+                  tags=["no-effect", "omitted-effects", "state"])
+        del row["response"]["result"]["effects"]
+    # State and its candidate are optional; omitted effects preserve pending state.
     for name, effects, expected in [
         ("omitted-state-empty-response", [], {}),
         ("omitted-state-ask-defers-execution", [ask], pending),
@@ -184,8 +195,9 @@ def build():
     row["response"]["jsonrpc"] = "1.0"
     row = add("wrong-protocol-version", [msg], error="schema-invalid")
     row["response"]["result"]["protocolVersion"] = "unsupported"
-    row = add("missing-effects-array", [], error="schema-invalid")
+    row = add("missing-effects-array", [], tags=["no-effect", "omitted-effects"])
     del row["response"]["result"]["effects"]
+    row = add("null-effects-array", None, error="schema-invalid")
     row = add("non-array-effects", [], error="schema-invalid")
     row["response"]["result"]["effects"] = msg
     row = add("null-result-envelope", [], error="schema-invalid")

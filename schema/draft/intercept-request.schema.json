@@ -180,7 +180,9 @@
                 },
                 "injections": {
                   "type": "array",
-                  "items": {}
+                  "items": {
+                    "$ref": "effect.schema.json#/$defs/InjectEffect"
+                  }
                 }
               }
             }
@@ -565,6 +567,110 @@
                   }
                 }
               }
+            },
+            {
+              "if": {
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "model.request.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "state": {
+                    "$ref": "#/$defs/MessagesState"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "context.compact.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "state": {
+                    "$ref": "#/$defs/TextState"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "user.elicitation.request"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "state": {
+                    "$ref": "#/$defs/ElicitResultState"
+                  }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "required": [
+                      "type"
+                    ],
+                    "properties": {
+                      "type": {
+                        "const": "tool.before"
+                      }
+                    }
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "state": {
+                    "$ref": "#/$defs/ToolState"
+                  }
+                }
+              }
             }
           ]
         }
@@ -574,5 +680,257 @@
         "params"
       ]
     }
-  ]
+  ],
+  "$defs": {
+    "MessagesCandidate": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/messages"
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {},
+          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
+        }
+      }
+    },
+    "TextCandidate": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "content-item.schema.json#/$defs/textParts"
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {},
+          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
+        }
+      }
+    },
+    "ElicitResultCandidate": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "mcp-elicitation.schema.json#/$defs/ElicitResult"
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {},
+          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
+        }
+      }
+    },
+    "ToolCandidate": {
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": true,
+        "provenance": {
+          "type": "object",
+          "properties": {},
+          "description": "Optional provenance metadata; subscription identity remains harness-local and is not an authorization claim."
+        }
+      }
+    },
+    "MessagesState": {
+      "type": "object",
+      "required": [
+        "permission",
+        "candidate"
+      ],
+      "properties": {
+        "permission": {
+          "enum": [
+            "none",
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/MessagesCandidate"
+            }
+          ]
+        },
+        "flow": {
+          "enum": [
+            "none",
+            "stop",
+            "continue"
+          ]
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "injections": {
+          "type": "array",
+          "items": {
+            "$ref": "effect.schema.json#/$defs/InjectEffect"
+          }
+        }
+      }
+    },
+    "TextState": {
+      "type": "object",
+      "required": [
+        "permission",
+        "candidate"
+      ],
+      "properties": {
+        "permission": {
+          "enum": [
+            "none",
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/TextCandidate"
+            }
+          ]
+        },
+        "flow": {
+          "enum": [
+            "none",
+            "stop",
+            "continue"
+          ]
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "injections": {
+          "type": "array",
+          "items": {
+            "$ref": "effect.schema.json#/$defs/InjectEffect"
+          }
+        }
+      }
+    },
+    "ElicitResultState": {
+      "type": "object",
+      "required": [
+        "permission",
+        "candidate"
+      ],
+      "properties": {
+        "permission": {
+          "enum": [
+            "none",
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ElicitResultCandidate"
+            }
+          ]
+        },
+        "flow": {
+          "enum": [
+            "none",
+            "stop",
+            "continue"
+          ]
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "injections": {
+          "type": "array",
+          "items": {
+            "$ref": "effect.schema.json#/$defs/InjectEffect"
+          }
+        }
+      }
+    },
+    "ToolState": {
+      "type": "object",
+      "required": [
+        "permission",
+        "candidate"
+      ],
+      "properties": {
+        "permission": {
+          "enum": [
+            "none",
+            "allow",
+            "ask",
+            "deny"
+          ]
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/ToolCandidate"
+            }
+          ]
+        },
+        "flow": {
+          "enum": [
+            "none",
+            "stop",
+            "continue"
+          ]
+        },
+        "instructions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "injections": {
+          "type": "array",
+          "items": {
+            "$ref": "effect.schema.json#/$defs/InjectEffect"
+          }
+        }
+      }
+    }
+  }
 }

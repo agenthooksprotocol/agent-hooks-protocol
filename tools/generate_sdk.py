@@ -28,7 +28,7 @@ manifest_path = repository / 'schema/draft/manifest.json'
 manifest = json.loads(manifest_path.read_text())
 schemas = [json.loads((repository / doc['path']).read_text()) for doc in manifest['documents']]
 manifest_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-targets = [('typescript', args.sdk.resolve() / 'packages/sdk/src/draft', 'generated.ts')]
+targets = [('typescript', args.sdk.resolve() / 'packages/sdk/src/draft', 'raw.ts')]
 if args.all or args.output_dir:
     targets += [
         ('python', repository.parent / 'python-sdk/src/agenthooksprotocol', 'generated.py'),
@@ -55,7 +55,10 @@ generator = Path(metadata['target_directory']) / 'debug/ahp-codegen'
 for language, destination, filename in targets:
     with tempfile.TemporaryDirectory() as temporary:
         output = Path(temporary)
-        subprocess.run([str(generator), 'generate', '--repository', str(repository), '--revision', 'draft', '--language', language, '--output', str(output / filename)], check=True)
+        if language == 'typescript':
+            subprocess.run([str(generator), 'generate', '--repository', str(repository), '--revision', 'draft', '--language', 'typescript-facade', '--output', str(output)], check=True)
+        else:
+            subprocess.run([str(generator), 'generate', '--repository', str(repository), '--revision', 'draft', '--language', language, '--output', str(output / filename)], check=True)
         if language == 'python':
             subprocess.run([str(generator), 'generate', '--repository', str(repository), '--revision', 'draft', '--language', 'python-facade', '--output', str(output)], check=True)
         if language == 'go':
@@ -75,8 +78,8 @@ for language, destination, filename in targets:
                 canonical.parent.mkdir(parents=True, exist_ok=True)
                 canonical.write_text(schema_bundle)
         if language == 'typescript':
-            for source in ('generated.ts', 'schemas.ts'):
-                subprocess.run(['npx', '--yes', 'prettier@3.6.2', '--no-config', '--no-editorconfig', '--write', str(output / source)], check=True)
+            for source in sorted(output.glob('*.ts')):
+                subprocess.run(['npx', '--yes', 'prettier@3.6.2', '--no-config', '--no-editorconfig', '--write', str(source)], check=True)
         elif language == 'python':
             subprocess.run([sys.executable, '-m', 'ruff', 'format', '--isolated', '--target-version', 'py311', *map(str, sorted(output.rglob('*.py')))], check=True)
         lock = {'sourceRepository': 'agenthooksprotocol/agent-hooks-protocol', 'sourceCommit': source_commit, 'schemaRevision': 'draft', 'protocolVersion': 'draft', 'generatorVersion': '0.1.0', 'language': language, 'schemaManifestSha256': manifest_hash, 'documents': manifest['documents']}
