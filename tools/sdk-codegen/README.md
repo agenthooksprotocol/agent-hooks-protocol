@@ -165,6 +165,18 @@ is the documented canonical example, not a closed list of all paths.
 `Hooks` class implements `dispatch(event_name, input, **kwargs)` and inherits this
 mixin. Host input projections omit SDK-owned envelope fields.
 
+Named Python boundaries use independent overloads for input, result, and provenance
+codecs. A supplied codec fixes the corresponding `HookResult` type parameter;
+omitting it never permits a return-context annotation to infer an arbitrary type.
+Codec-free input and provenance are opaque `object` views. Codec-free results from
+`model.request.before`, `context.compact.before`, and `user.elicitation.request`
+are respectively `CanonicalMessages`, `TextParts`, and the complete canonical
+`McpElicitationElicitResult` (action and optional content, not just answers).
+Other codec-free results, including tool values, are opaque `object` views.
+`content.CanonicalMessages` and `content.TextParts` name the canonical containers.
+The facade smoke's `--typing` mode compiles generated files and checks all 256
+origin/codec combinations with mypy, including rejected codec-free typed casts.
+
 Capability grants are generated from the capabilities schema's effect vocabulary
 and nested target dimensions. For example,
 `capability.Declaration(modes=[capability.Mode.INTERCEPT], grants=[capability.Allow(),

@@ -229,6 +229,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
 
     if "--typing" not in sys.argv:
         return
+    subprocess.run([sys.executable, str(Path(__file__).with_name("python-boundary-typing-smoke.py")), str(directory)], check=True)
     with tempfile.TemporaryDirectory(prefix="ahp-python-typing-") as temporary:
         root = Path(temporary)
         (root / "consumer_sdk").symlink_to(directory, target_is_directory=True)
@@ -881,7 +882,12 @@ def main() -> None:
             hints = typing.get_type_hints(method)
             assert typing.get_origin(hints["return"]) is hook_result
             parameters = typing.get_args(hints["return"])
-            assert len(parameters) == 3
+            assert parameters == (typing.Any, typing.Any, typing.Any)
+            overloads = typing.get_overloads(method)
+            assert len(overloads) == 8
+            default = typing.get_type_hints(overloads[0])["return"]
+            result_type = {"model_request_before": models.CanonicalMessages, "context_compact_before": models.TextParts, "user_elicitation_request": models.McpElicitationElicitResult}.get(name, object)
+            assert typing.get_args(default) == (object, result_type, object)
             for option, parameter in zip(("input_codec", "result_codec", "provenance_codec"), parameters):
                 annotation = typing.get_args(hints[option])[0]
                 assert typing.get_args(annotation) == (parameter,), (name, option)
