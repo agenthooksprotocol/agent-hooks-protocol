@@ -42,10 +42,8 @@ mod model;
 mod ergonomics;
 #[path = "$repository/tools/sdk-codegen/src/capability_ergonomics.rs"]
 mod capability_ergonomics;
-#[path = "$repository/tools/sdk-codegen/src/langs/naming.rs"]
-mod naming;
-#[path = "$repository/tools/sdk-codegen/src/langs/rust.rs"]
-mod rust;
+#[path = "$repository/tools/sdk-codegen/src/langs/mod.rs"]
+mod langs;
 
 fn main() -> anyhow::Result<()> {
     let mut arguments = std::env::args_os().skip(1);
@@ -132,7 +130,7 @@ fn main() -> anyhow::Result<()> {
             model::Shape::Enum { values: vec![serde_json::json!("yes")], open_strings: false },
         ] },
     });
-    let generated = rust::emit(&recursive)?;
+    let generated = langs::rust::emit(&recursive)?;
     assert!(!generated.contains("Duplicate2"));
     std::fs::write(recursive_output, generated)?;
 
@@ -150,7 +148,7 @@ fn main() -> anyhow::Result<()> {
             shape: model::Shape::String,
         }).collect(),
     };
-    assert!(rust::emit(&collision).unwrap_err().to_string().contains("distinct canonical schema name"));
+    assert!(langs::rust::emit(&collision).unwrap_err().to_string().contains("distinct canonical schema name"));
     Ok(())
 }
 RS
@@ -507,4 +505,24 @@ if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Carg
   exit 1
 fi
 grep -q 'Sealed.*is not satisfied' "$temporary/blocked.log"
+# Invalid typed capability construction must fail at the Rust type boundary.
+for invalid in \
+  'c::tool_before().modify_output(c::Modify::Replace);' \
+  'let _ = c::HostCapabilities { tool_before: Some(c::tool_after().message()), ..Default::default() };' \
+  'let _ = c::HostCapabilities { tool_before: Some(c::tool_before()), ..Default::default() };' \
+  'c::tool_before().modify_input([]);' \
+  'c::tool_before().inject_context([]);' \
+  'c::tool_before().flow([]);' \
+  'let _ = c::ToolBefore::default();' \
+  'c::tool_before().flow(c::Flow::Continue {remaining_continuations: 1, continuation_count: 0, max_continuations: None});' \
+  'c::tool_after().flow(c::Flow::Continue {max_continuations: None});'; do
+  printf 'use agenthooksprotocol::capability as c; fn main() { %s }\n' "$invalid" \
+    > "$temporary/consumer/examples/blocked.rs"
+  if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Cargo.toml" \
+      --example blocked > "$temporary/blocked.log" 2>&1; then
+    echo "invalid capability construction compiled: $invalid" >&2
+    exit 1
+  fi
+  grep -Eq 'error\[E(0308|0599|0063)\]' "$temporary/blocked.log"
+done
 echo "generated Rust codec smoke tests passed"

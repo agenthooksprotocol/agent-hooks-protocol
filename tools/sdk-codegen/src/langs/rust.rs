@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+#[path = "rust/capabilities.rs"]
+pub(crate) mod capabilities;
 #[path = "rust/ergonomics.rs"]
 mod ergonomics;
 use std::fmt::Write;

@@ -385,7 +385,7 @@ mod tests {
         assert!(files["_models/tool.py"].contains("__all__ = ["));
         assert!(files["tool.py"].contains("import Call as Call"));
         assert!(files["tool.py"].contains("import Tool as Tool"));
-        assert!(files["capability.py"].contains("from ._grants import ModifyInput as ModifyInput"));
+        assert!(files["capability.py"].contains("from ._grants import Modify as Modify"));
         assert!(
             !files["capability.py"]
                 .contains("from ._models.capability import ModifyInput as ModifyInput")
@@ -427,10 +427,22 @@ mod tests {
             files["effect.py"]
                 .contains("def merge_input(value: dict[str, Any]) -> _models.ModifyInputEffect:")
         );
-        assert!(files["_grants.py"].contains("def intercept() -> Builder:"));
-        assert!(files["_grants.py"].contains("return Builder((Mode.INTERCEPT, Mode.OBSERVE),"));
-        assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
-        assert!(files["capability.py"].contains("from ._grants import intercept as intercept"));
+        assert!(files["_grants.py"].contains("class HostCapabilities:"));
+        assert!(files["_grants.py"].contains("class ToolBeforeIntercept:"));
+        assert!(files["_grants.py"].contains("modify_input: Modify | None"));
+        assert!(
+            files["capability.py"]
+                .contains("from ._grants import HostCapabilities as HostCapabilities")
+        );
+        for removed in [
+            "class Builder",
+            "class Declaration",
+            "def intercept(",
+            "def observe(",
+            "json.loads",
+        ] {
+            assert!(!files["_grants.py"].contains(removed));
+        }
         assert!(files["_boundaries.py"].contains("CONTENT_SOURCE_SLOTS:"));
         assert!(!models.contains("def bind_items_source"));
         assert!(!models.contains("def bind_items_parts_source"));
@@ -693,10 +705,47 @@ mod tests {
         ] {
             assert!(
                 files["_grants.py"]
-                    .contains(&format!("if type({counter}) is not int or {counter} < 0:"))
+                    .contains(&format!("_count(self.{counter}, '{counter}')"))
             );
         }
         assert!(!files["_grants.py"].contains("safe integers"));
+    }
+
+    #[test]
+    fn typed_capabilities_are_event_correlated_and_catalogue_driven() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let source = &files["_grants.py"];
+        assert!(source.contains("@dataclass(frozen=True, kw_only=True, slots=True)"));
+        for event in crate::capability_ergonomics::catalogue(&ir).unwrap() {
+            let ty = if event.intercept {
+                format!("{}Capabilities{}", event.name, if event.observe { " | Observe" } else { "" })
+            } else {
+                "Observe".into()
+            };
+            assert!(source.contains(&format!("{}: {ty} | None = None", snake_case(&event.name))));
+            assert!(source.contains(&format!("result[{:?}]", event.event)));
+            if event.intercept {
+                assert!(source.contains(&format!("class {}Intercept:", event.name)));
+            }
+        }
+        let tool_before = source
+            .split("class ToolBeforeIntercept:")
+            .nth(1)
+            .unwrap()
+            .split("class ToolBeforeCapabilities:")
+            .next()
+            .unwrap();
+        assert!(tool_before.contains("flow: FlowStop | None"));
+        assert!(!tool_before.contains("FlowContinue"));
+        assert!(tool_before.contains("modify_input: Modify | None"));
+        assert!(!tool_before.contains("modify_output:"));
+        assert!(files["_models/capability.py"].contains("ToolBeforeCapabilities"));
+        assert!(
+            !files["capability.py"]
+                .contains("from ._models.capability import ToolBeforeCapabilities")
+        );
+        assert!(source.contains("interception requires a real control grant"));
     }
 
     #[test]

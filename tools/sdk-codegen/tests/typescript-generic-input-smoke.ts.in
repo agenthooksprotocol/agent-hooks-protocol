@@ -26,7 +26,7 @@ type CompactHasNoArrayBranches = ExpectNever<Extract<CompactEvent, JsonValue[]>>
 declare const canonicalCompact: CompactEvent;
 const canonicalItems: ModelVisibleItem[] = canonicalCompact.items;
 const canonicalTrigger: string = canonicalCompact.trigger;
-const canonicalExtras: JsonValue = canonicalCompact.vendorExtra;
+const canonicalExtras: JsonValue | undefined = canonicalCompact.vendorExtra;
 const compactWithOpaqueExtras: ExecutionEventContextCompactBefore = {
  id: 'compact', type: 'context.compact.before', source: 'test', time: 'now',
  trigger: 'manual', items: [], vendorExtra: {nested: [true, null, 'opaque']},

@@ -81,22 +81,20 @@ def check(package_dir: Path, first: str) -> None:
         assert wire.parse_intercept_response(encoded)["value"] == raw
 
     capability = importlib.import_module(f"{package}.capability")
-    builder = capability.intercept()
     for field in ("continuation_count", "remaining_continuations", "max_continuations"):
         for invalid in (-1, True, False, 0.5, 1.0):
             try:
-                builder.flow(operations=["stop"], **{field: invalid})
+                capability.FlowContinue(**({"remaining_continuations": 0, "continuation_count": 0} | {field: invalid}))
             except ValueError:
                 pass
             else:
                 raise AssertionError((field, invalid))
     for value in (0, 2**53, 10**100):
-        grant = builder.flow(
-            operations=["continue"],
+        grant = capability.FlowContinue(
             continuation_count=value,
             remaining_continuations=value,
             max_continuations=value,
-        ).to_wire()["capabilities"]["flow"]
+        )._wire()
         assert grant["continuationCount"] == value
         assert grant["remainingContinuations"] == value
         assert grant["maxContinuations"] == value

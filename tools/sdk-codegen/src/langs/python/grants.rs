@@ -1,32 +1,56 @@
 use super::*;
 
-/// Compile every capability dimension and target into a canonical grant fragment.
+/// Event-specific immutable declarations, separate from the raw catalogue.
 pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
-    let ir = renderer.ir;
-    let shape = &ir
-        .types
+    let events = crate::capability_ergonomics::catalogue(renderer.ir)?;
+    let operations = events
         .iter()
-        .find(|n| n.name == "Capabilities")
-        .expect("capabilities root")
-        .shape;
-    let fields = properties(renderer, shape).expect("capabilities object");
-    let effects = fields
+        .flat_map(|e| e.modify.values().flatten())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let delivery = events
         .iter()
-        .find(|p| p.wire_name == "effects")
-        .expect("effect vocabulary");
-    let mut vocabulary = std::collections::BTreeSet::new();
-    strings(&effects.shape, &mut vocabulary);
-    let mut out = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import Any\nfrom enum import StrEnum\nfrom copy import deepcopy\nimport json\n_UNSET: Any = object()\n\n"
-    );
-    let mut builders = String::new();
+        .flat_map(|e| e.delivery.iter())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let elicitation = events
+        .iter()
+        .flat_map(|e| e.elicitation.iter())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let runtime = RUNTIME
+        .replace("# MODIFY_MEMBERS", &enum_subsets(&operations)?)
+        .replace(
+            "# DELIVERY_MEMBERS",
+            &delivery
+                .iter()
+                .map(|v| format!("    {} = {v:?}", snake_case(v).to_uppercase()))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
+        .replace("# ELICITATION_MEMBERS", &enum_subsets(&elicitation)?);
+    let mut out = format!("{HEADER}{runtime}");
     let mut exports = vec![
-        "Declaration".to_owned(),
-        "Mode".to_owned(),
-        "EffectName".to_owned(),
-    ];
-    out.push_str("class EffectName(StrEnum):\n    \"\"\"Schema effect-family identifiers; queries also accept custom strings.\"\"\"\n");
-    for effect in &vocabulary {
+        "HostCapabilities",
+        "Observe",
+        "WireDeclaration",
+        "Modify",
+        "Delivery",
+        "FlowStop",
+        "FlowContinue",
+        "InjectContext",
+        "Elicitation",
+        "EffectName",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect::<Vec<_>>();
+    out.push_str("class EffectName(StrEnum):\n");
+    let effects = events
+        .iter()
+        .flat_map(|e| e.effects.iter())
+        .collect::<std::collections::BTreeSet<_>>();
+    for effect in effects {
         writeln!(
             out,
             "    {} = {effect:?}",
@@ -34,281 +58,295 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
         )?;
     }
     out.push('\n');
-    let mut modes = std::collections::BTreeSet::new();
-    for named in &ir.types {
-        if named.name.ends_with("Subscription") {
-            if let Some(fields) = properties(renderer, &named.shape) {
-                if let Some(Value::String(mode)) = fields
-                    .iter()
-                    .find(|p| p.wire_name == "mode")
-                    .and_then(|p| literal(ir, &p.shape))
-                {
-                    modes.insert(mode);
-                }
-            }
-        }
-    }
-    out.push_str("class Mode(StrEnum):\n");
-    for mode in modes {
-        writeln!(out, "    {} = {mode:?}", snake_case(&mode).to_uppercase())?;
-    }
-    out.push('\n');
-    for effect in &vocabulary {
-        let name = pascal_fragment(effect);
-        let detail = fields
-            .iter()
-            .find(|p| p.wire_name == *effect)
-            .and_then(|p| properties(renderer, &p.shape));
-        if let Some(ref detail) = detail {
-            if detail
-                .iter()
-                .any(|p| properties(renderer, &p.shape).is_some())
-            {
-                continue;
-            }
-            grant(
-                &mut out,
-                &name,
-                Some(effect),
-                &[effect.clone()],
-                &detail,
-                ir,
-            )?;
-        } else {
-            grant(&mut out, &name, Some(effect), &[], &[], ir)?;
-        }
-        builder_method(&mut builders, &name, detail.as_deref().unwrap_or(&[]), ir)?;
-        exports.push(name);
-    }
-    for field in &fields {
-        let Some(targets) = properties(renderer, &field.shape) else {
+    for e in &events {
+        if !e.intercept {
             continue;
-        };
-        for target in targets {
-            let Some(mut detail) = properties(renderer, &target.shape) else {
-                continue;
-            };
-            for p in &mut detail {
-                if matches!(p.shape, Shape::Boolean) {
-                    p.constructor_default = Some(Value::Bool(false));
-                }
-            }
-            let name = format!(
-                "{}{}",
-                pascal_fragment(&field.wire_name),
-                pascal_fragment(&target.wire_name)
-            );
-            let effect = vocabulary
-                .contains(&field.wire_name)
-                .then_some(field.wire_name.as_str());
-            grant(
-                &mut out,
-                &name,
-                effect,
-                &[field.wire_name.clone(), target.wire_name],
-                &detail,
-                ir,
-            )?;
-            builder_method(&mut builders, &name, &detail, ir)?;
-            exports.push(name);
         }
+        let intercept = format!("{}Intercept", e.name);
+        let capability = format!("{}Capabilities", e.name);
+        exports.extend([intercept.clone(), capability.clone()]);
+        writeln!(
+            out,
+            "@dataclass(frozen=True, kw_only=True, slots=True)\nclass {intercept}:"
+        )?;
+        let simple = e
+            .effects
+            .iter()
+            .filter(|f| !matches!(f.as_str(), "modify" | "flow" | "inject"))
+            .collect::<Vec<_>>();
+        for f in &simple {
+            writeln!(out, "    {}: bool = False", control_name(f))?;
+        }
+        for target in e.modify.keys() {
+            writeln!(
+                out,
+                "    modify_{}: Modify | None = None",
+                snake_case(target)
+            )?;
+        }
+        if !e.flow.is_empty() {
+            let ty = if e.flow.iter().any(|v| v == "stop") && e.flow.iter().any(|v| v == "continue")
+            {
+                "FlowStop | FlowContinue"
+            } else if e.flow.iter().any(|v| v == "continue") {
+                "FlowContinue"
+            } else {
+                "FlowStop"
+            };
+            writeln!(out, "    flow: {ty} | None = None")?;
+        }
+        if !e.delivery.is_empty() {
+            out.push_str("    inject_context: InjectContext | None = None\n");
+        }
+        if !e.elicitation.is_empty() {
+            out.push_str("    elicitation: Elicitation | None = None\n");
+        }
+        out.push_str("\n    def __post_init__(self) -> None:\n        granted = False\n");
+        for f in &simple {
+            let field = control_name(f);
+            writeln!(
+                out,
+                "        _bool(self.{field}, {field:?})\n        granted = granted or self.{field}"
+            )?;
+        }
+        for (target, operations) in &e.modify {
+            let field = format!("modify_{}", snake_case(target));
+            writeln!(
+                out,
+                "        if self.{field} is not None:\n            _exact(self.{field}, (Modify,), {field:?})\n            if not set(self.{field}.value).issubset({operations:?}):\n                raise ValueError('unsupported modification operation')\n            granted = True"
+            )?;
+        }
+        if !e.flow.is_empty() {
+            let classes =
+                if e.flow.iter().any(|v| v == "stop") && e.flow.iter().any(|v| v == "continue") {
+                    "FlowStop, FlowContinue"
+                } else if e.flow.iter().any(|v| v == "continue") {
+                    "FlowContinue,"
+                } else {
+                    "FlowStop,"
+                };
+            writeln!(
+                out,
+                "        if self.flow is not None:\n            _exact(self.flow, ({classes}), 'flow')\n            if not set(self.flow._wire()['operations']).issubset({:?}):\n                raise ValueError('unsupported flow operation')\n            granted = True",
+                e.flow
+            )?;
+        }
+        if !e.delivery.is_empty() {
+            writeln!(
+                out,
+                "        if self.inject_context is not None:\n            _exact(self.inject_context, (InjectContext,), 'inject_context')\n            if not set(v.value for v in self.inject_context.deliver_at).issubset({:?}):\n                raise ValueError('unsupported delivery')\n            granted = True",
+                e.delivery
+            )?;
+        }
+        if !e.elicitation.is_empty() {
+            writeln!(
+                out,
+                "        if self.elicitation is not None:\n            _exact(self.elicitation, (Elicitation,), 'elicitation')\n            if not set(self.elicitation.value).issubset({:?}):\n                raise ValueError('unsupported elicitation mode')\n            granted = True",
+                e.elicitation
+            )?;
+        }
+        out.push_str("        if not granted:\n            raise ValueError('interception requires a real control grant')\n\n    def _wire(self) -> dict[str, Any]:\n        effects: list[str] = []\n        result: dict[str, Any] = {'effects': effects}\n");
+        for f in &simple {
+            writeln!(
+                out,
+                "        if self.{}:\n            effects.append({f:?})",
+                control_name(f)
+            )?;
+        }
+        if !e.modify.is_empty() {
+            out.push_str("        modify: dict[str, Any] = {}\n");
+            for (target, operations) in &e.modify {
+                writeln!(
+                    out,
+                    "        if self.modify_{} is not None:\n            modify[{target:?}] = {{op: op in self.modify_{}.value for op in {operations:?}}}",
+                    snake_case(target),
+                    snake_case(target)
+                )?;
+            }
+            out.push_str("        if modify:\n            effects.append('modify')\n            result['modify'] = modify\n");
+        }
+        if !e.flow.is_empty() {
+            out.push_str("        if self.flow is not None:\n            effects.append('flow')\n            result['flow'] = self.flow._wire()\n");
+        }
+        if !e.delivery.is_empty() {
+            out.push_str("        if self.inject_context is not None:\n            effects.append('inject')\n            result['inject'] = {'context': {'append': True, 'deliverAt': [v.value for v in self.inject_context.deliver_at]}}\n");
+        }
+        if !e.elicitation.is_empty() {
+            out.push_str("        if self.elicitation is not None:\n            result['elicitation'] = {v: {} for v in self.elicitation.value}\n");
+        }
+        out.push_str("        effects.sort()\n        return result\n\n");
+        let observation_check = if e.observe {
+            ""
+        } else {
+            "        if self.observe:\n            raise ValueError('observation unsupported for this event')\n"
+        };
+        writeln!(
+            out,
+            "@dataclass(frozen=True, kw_only=True, slots=True)\nclass {capability}:\n    intercept: {intercept} | None = None\n    observe: bool = False\n\n    def __post_init__(self) -> None:\n        _bool(self.observe, 'observe')\n{observation_check}        if self.intercept is not None:\n            _exact(self.intercept, ({intercept},), 'intercept')\n        elif not self.observe:\n            raise ValueError('declaration requires interception or observation')\n\n    def _wire(self) -> WireDeclaration:\n        result: WireDeclaration = {{'modes': []}}\n        if self.intercept is not None:\n            result['modes'].append('intercept')\n            result['capabilities'] = self.intercept._wire()\n        if self.observe:\n            result['modes'].append('observe')\n        return result\n"
+        )?;
     }
-    out.push_str(r#"
-def _merge(left: dict[str, Any], right: dict[str, Any]) -> None:
-    for key, value in right.items():
-        if key not in left:
-            left[key] = deepcopy(value)
-        elif isinstance(left[key], dict) and isinstance(value, dict):
-            _merge(left[key], value)
-        elif isinstance(left[key], list) and isinstance(value, list):
-            left[key].extend(deepcopy(item) for item in value if item not in left[key])
-        elif isinstance(left[key], bool) and isinstance(value, bool):
-            left[key] = left[key] or value
-        elif left[key] != value:
-            raise ValueError(f"Conflicting capability grant: {key}")
-
-class Declaration(dict[str, Any]):
-    """Explicit delivery modes plus typed or canonical grant fragments.
-
-    No mode, effect, form, or URL authority is inferred from another dimension.
-    The canonical dictionary form remains accepted by Hooks without this helper.
-    """
-    def __init__(self, *, modes: list[Mode | str], grants: list[dict[str, Any]], **extra: Any) -> None:
-        capabilities: dict[str, Any] = {"effects": []}
-        for grant in grants:
-            _merge(capabilities, grant)
-        super().__init__(extra)
-        self["modes"] = list(modes)
-        self["capabilities"] = capabilities
-"#);
-    out.push_str(
-        r#"
-class Builder:
-    """Immutable declaration; intercept deliberately supports observation too.
-
-    Grants describe host support, not evidence that the host enacted effects.
-    Raw Declaration remains available without convenience inference.
-    """
-    __slots__ = ("_modes", "_capabilities")
-
-    def __init__(self, modes: tuple[Mode, ...], capabilities: dict[str, Any]) -> None:
-        object.__setattr__(self, "_modes", modes)
-        object.__setattr__(self, "_capabilities", json.dumps(capabilities))
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        raise AttributeError("Capability builders are immutable")
-
-    def to_wire(self) -> dict[str, Any]:
-        capabilities = json.loads(self._capabilities)
-        if Mode.INTERCEPT in self._modes and capabilities == {"effects": []}:
-            raise ValueError("Intercept declarations require an explicit grant")
-        return {"modes": list(self._modes), "capabilities": capabilities}
-
-    def _add(self, grant: dict[str, Any]) -> Builder:
-        if grant.get("effects") and Mode.INTERCEPT not in self._modes:
-            raise ValueError("Observation-only declarations cannot grant effects")
-        capabilities = json.loads(self._capabilities)
-        _merge(capabilities, grant)
-        return Builder(self._modes, capabilities)
-
-"#,
-    );
-    out.push_str(&builders);
-    out.push_str(
-        r#"
-def intercept() -> Builder:
-    """Advertise both intercept and observe delivery, with explicit grants."""
-    return Builder((Mode.INTERCEPT, Mode.OBSERVE), {"effects": []})
-
-def observe() -> Builder:
-    """Advertise observation only; no effect authority is inferred."""
-    return Builder((Mode.OBSERVE,), {"effects": []})
-"#,
-    );
-    exports.extend(["Builder", "intercept", "observe"].map(str::to_owned));
-    writeln!(out, "\n__all__ = {}", serde_json::to_string(&exports)?)?;
+    out.push_str("@dataclass(frozen=True, kw_only=True, slots=True)\nclass HostCapabilities:\n");
+    for e in &events {
+        let ty = if e.intercept {
+            format!(
+                "{}Capabilities{}",
+                e.name,
+                if e.observe { " | Observe" } else { "" }
+            )
+        } else {
+            "Observe".into()
+        };
+        writeln!(out, "    {}: {ty} | None = None", snake_case(&e.name))?;
+    }
+    out.push_str("\n    def __post_init__(self) -> None:\n");
+    for e in &events {
+        let ty = if e.intercept {
+            format!(
+                "{}Capabilities{}",
+                e.name,
+                if e.observe { ", Observe" } else { "" }
+            )
+        } else {
+            "Observe".into()
+        };
+        let field = snake_case(&e.name);
+        writeln!(
+            out,
+            "        if self.{field} is not None:\n            _exact(self.{field}, ({ty},), {field:?})"
+        )?;
+    }
+    out.push_str("\n    def to_wire(self) -> dict[str, WireDeclaration]:\n        result: dict[str, WireDeclaration] = {}\n");
+    for e in &events {
+        let field = snake_case(&e.name);
+        writeln!(
+            out,
+            "        if self.{field} is not None:\n            result[{:?}] = self.{field}._wire()",
+            e.event
+        )?;
+    }
+    out.push_str("        return result\n");
     Ok((out, exports))
 }
-
-fn strings(shape: &Shape, values: &mut std::collections::BTreeSet<String>) {
-    match shape {
-        Shape::Enum { values: items, .. } => {
-            values.extend(items.iter().filter_map(Value::as_str).map(str::to_owned))
+fn enum_subsets(values: &std::collections::BTreeSet<String>) -> Result<String> {
+    let mut values = values.iter().collect::<Vec<_>>();
+    values.sort_by_key(|v| {
+        if v.as_str() == "replace" {
+            String::new()
+        } else {
+            (*v).clone()
         }
-        Shape::Union { variants, .. } => {
-            for variant in variants {
-                strings(variant, values);
-            }
-        }
-        Shape::Array { items } => strings(items, values),
-        _ => {}
+    });
+    let mut out = String::new();
+    for mask in 1usize..(1usize << values.len()) {
+        let selected = values
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| mask & (1 << i) != 0)
+            .map(|(_, v)| *v)
+            .collect::<Vec<_>>();
+        let name = selected
+            .iter()
+            .map(|v| snake_case(v).to_uppercase())
+            .collect::<Vec<_>>()
+            .join("_AND_");
+        let tuple = selected
+            .iter()
+            .map(|v| format!("{v:?},"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        writeln!(out, "    {name} = ({tuple})")?;
     }
+    if out.is_empty() {
+        out.push_str("    pass\n");
+    }
+    Ok(out)
 }
-
-fn grant(
-    out: &mut String,
-    name: &str,
-    effect: Option<&str>,
-    path: &[String],
-    fields: &[Property],
-    ir: &Ir,
-) -> Result<()> {
-    constructor(out, name, fields, ir, false)?;
-    out.pop();
-    out.push_str("        details = dict(self)\n        self.clear()\n");
-    let effects = effect.into_iter().collect::<Vec<_>>();
-    writeln!(
-        out,
-        "        self['effects'] = {}",
-        serde_json::to_string(&effects)?
-    )?;
-    if let Some((first, rest)) = path.split_first() {
-        let mut value = "details".to_owned();
-        for key in rest.iter().rev() {
-            value = format!("{{{key:?}: {value}}}");
-        }
-        writeln!(out, "        self[{first:?}] = {value}")?;
+fn control_name(effect: &str) -> String {
+    if effect == "return" {
+        "return_result".into()
     } else {
-        out.push_str("        self.update(details)\n");
+        snake_case(effect)
     }
-    out.push('\n');
-    Ok(())
 }
 
-fn builder_method(out: &mut String, name: &str, fields: &[Property], ir: &Ir) -> Result<()> {
-    let method = public_identifier(&snake_case(name), "grant", &mut reserved_identifiers())?;
-    write!(out, "    def {method}(self")?;
-    if !fields.is_empty() {
-        out.push_str(", *");
-    }
-    for field in fields {
-        let optional = !field.required
-            || field.constructor_default.is_some()
-            || literal(ir, &field.shape).is_some();
-        write!(
-            out,
-            ", {}: {}{}",
-            snake_case(&field.wire_name),
-            annotation(ir, &field.shape, &field_hint(name, &field.wire_name)?, "")?,
-            if optional { " = _UNSET" } else { "" }
-        )?;
-    }
-    out.push_str(") -> Builder:\n        arguments: dict[str, Any] = {}\n");
-    let mut bools = Vec::new();
-    for field in fields {
-        let param = snake_case(&field.wire_name);
-        writeln!(
-            out,
-            "        if {param} is not _UNSET:\n            arguments[{param:?}] = {param}"
-        )?;
-        if name == "Flow" && matches!(field.shape, Shape::Integer | Shape::BoundedInteger { .. }) {
-            writeln!(
-                out,
-                "            if type({param}) is not int or {param} < {min}:\n                raise ValueError(\"continuation counts must be nonnegative integers\")",
-                min = crate::ergonomics::MIN_CONTINUATION_COUNT
-            )?;
-        }
-        if matches!(field.shape, Shape::Boolean) {
-            bools.push(param.clone());
-            writeln!(
-                out,
-                "            if not isinstance({param}, bool):\n                raise ValueError({:?})",
-                format!("{param} must be boolean")
-            )?;
-        }
-        let mut vocabulary = std::collections::BTreeSet::new();
-        strings(&field.shape, &mut vocabulary);
-        if !vocabulary.is_empty() && matches!(field.shape, Shape::Array { .. }) {
-            writeln!(
-                out,
-                "            if not {param} or any(value not in {} for value in {param}):\n                raise ValueError({:?})",
-                serde_json::to_string(&vocabulary)?,
-                format!("{param} requires known, nonempty values")
-            )?;
-        }
-        if let Some(Value::Bool(expected)) = literal(ir, &field.shape) {
-            writeln!(
-                out,
-                "            if {param} is not {}:\n                raise ValueError({:?})",
-                if expected { "True" } else { "False" },
-                format!("{param} must be {expected}")
-            )?;
-        }
-    }
-    if !bools.is_empty() {
-        writeln!(
-            out,
-            "        if not ({}):\n            raise ValueError(\"Select at least one operation\")",
-            bools
-                .iter()
-                .map(|param| format!("{param} is True"))
-                .collect::<Vec<_>>()
-                .join(" or ")
-        )?;
-    }
-    if name == "Flow" {
-        out.push_str("        if 'continue' in operations and (remaining_continuations is _UNSET or continuation_count is _UNSET):\n            raise ValueError(\"continue requires remaining_continuations and continuation_count\")\n");
-    }
-    writeln!(out, "        return self._add({name}(**arguments))\n")?;
-    Ok(())
-}
+const RUNTIME: &str = r#"from __future__ import annotations
+from dataclasses import dataclass
+from enum import Enum, StrEnum
+from typing import Any, Literal, NotRequired, TypedDict
+
+class WireDeclaration(TypedDict):
+    modes: list[Literal['intercept', 'observe']]
+    capabilities: NotRequired[dict[str, Any]]
+
+def _exact(value: object, types: tuple[type, ...], name: str) -> None:
+    if type(value) not in types:
+        raise TypeError(f'{name} has an incorrect type')
+
+def _bool(value: bool, name: str) -> None:
+    if type(value) is not bool:
+        raise TypeError(f'{name} must be bool')
+
+def _count(value: int, name: str) -> None:
+    if type(value) is not int or value < 0:
+        raise ValueError(f'{name} must be a nonnegative integer')
+
+class Modify(Enum):
+# MODIFY_MEMBERS
+
+class Delivery(StrEnum):
+# DELIVERY_MEMBERS
+
+class Elicitation(Enum):
+# ELICITATION_MEMBERS
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class Observe:
+    def _wire(self) -> WireDeclaration:
+        return {'modes': ['observe']}
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class FlowStop:
+    max_continuations: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.max_continuations is not None:
+            _count(self.max_continuations, 'max_continuations')
+
+    def _wire(self) -> dict[str, Any]:
+        result: dict[str, Any] = {'operations': ['stop']}
+        if self.max_continuations is not None:
+            result['maxContinuations'] = self.max_continuations
+        return result
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class FlowContinue:
+    remaining_continuations: int
+    continuation_count: int
+    max_continuations: int | None = None
+    include_stop: bool = False
+
+    def __post_init__(self) -> None:
+        _count(self.remaining_continuations, 'remaining_continuations')
+        _count(self.continuation_count, 'continuation_count')
+        if self.max_continuations is not None:
+            _count(self.max_continuations, 'max_continuations')
+        _bool(self.include_stop, 'include_stop')
+
+    def _wire(self) -> dict[str, Any]:
+        result: dict[str, Any] = {'operations': ['continue', 'stop'] if self.include_stop else ['continue'], 'remainingContinuations': self.remaining_continuations, 'continuationCount': self.continuation_count}
+        if self.max_continuations is not None:
+            result['maxContinuations'] = self.max_continuations
+        return result
+
+@dataclass(frozen=True, kw_only=True, slots=True)
+class InjectContext:
+    deliver_at: tuple[Delivery, ...]
+
+    def __post_init__(self) -> None:
+        _exact(self.deliver_at, (tuple,), 'deliver_at')
+        if not self.deliver_at or len(set(self.deliver_at)) != len(self.deliver_at):
+            raise ValueError('delivery must be nonempty and unique')
+        for value in self.deliver_at:
+            _exact(value, (Delivery,), 'delivery')
+
+"#;

@@ -610,7 +610,8 @@ def main() -> None:
     assert len(family_models) >= 21 and payload_models
     assert all(hasattr(cls, "supports") for cls in family_models)
     assert all(not hasattr(cls, "supports") for cls in payload_models)
-    capability_models = {value for value in vars(capability).values()
+    raw_capability = importlib.import_module("facade_contract._models.capability")
+    capability_models = {value for value in vars(raw_capability).values()
                          if isinstance(value, type) and issubclass(value, dict) and hasattr(value, "effects")}
     assert len(capability_models) >= 20
     for cls in capability_models:
@@ -619,10 +620,10 @@ def main() -> None:
             assert value.supports("vendor.custom"), cls
             assert not value.supports(capability.EffectName.MODIFY), cls
         assert not cls(effects=[]).supports(capability.EffectName.DENY), cls
-    assert capability.ToolBeforeCapabilities(effects=["deny"]).supports(capability.EffectName.DENY)
-    assert isinstance(capability.Capabilities(effects=["modify"], modify=models.CapabilitiesModify()).modify, models.CapabilitiesModify)
+    assert raw_capability.ToolBeforeCapabilities(effects=["deny"]).supports(capability.EffectName.DENY)
+    assert isinstance(raw_capability.Capabilities(effects=["modify"], modify=models.CapabilitiesModify()).modify, models.CapabilitiesModify)
     assert effect.EffectName is capability.EffectName
-    for cls in (capability.Capabilities, models.InterceptRequestParamsCapabilities):
+    for cls in (raw_capability.Capabilities, models.InterceptRequestParamsCapabilities):
         value = cls.from_dict({"effects": ["deny", "vendor.custom"], "modify": {"input": {"replace": True, "merge": False}}})
         assert value.supports(capability.EffectName.DENY)
         assert value.supports("vendor.custom")
@@ -757,48 +758,12 @@ def main() -> None:
     else:
         raise AssertionError("A present candidate must supply its value, even when null")
     assert diagnostics.Code.REMOTE_RPC == "remote_rpc"
-    base = capability.intercept()
-    composed = base.deny().modify_input(replace=True).elicitation_form()
-    assert base.allow().to_wire() == {"modes": ["intercept", "observe"], "capabilities": {"effects": ["allow"]}}
-    assert base.elicitation_form().to_wire()["capabilities"] == {"effects": [], "elicitation": {"form": {}}}
-    assert base.elicitation_url().to_wire()["capabilities"] == {"effects": [], "elicitation": {"url": {}}}
-    composed_wire = composed.to_wire()
-    assert composed_wire["capabilities"]["effects"] == ["deny", "modify"]
-    assert composed_wire["capabilities"]["elicitation"] == {"form": {}}
-    assert wire.parse_capabilities(composed_wire["capabilities"])["ok"]
-    composed_wire["capabilities"]["effects"].clear()
-    assert composed.to_wire()["capabilities"]["effects"] == ["deny", "modify"]
-    assert capability.observe().to_wire()["modes"] == ["observe"]
-    for invalid in [lambda: base.to_wire(), lambda: base.modify_input(), lambda: base.modify_input(replace="true"), lambda: capability.observe().deny(), lambda: base.flow(operations=[]), lambda: base.flow(operations=["unknown"])]:
-        try:
-            invalid()
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Invalid ergonomic grant accepted")
-    invalid_counts = [
-        dict(remaining_continuations=-1, continuation_count=0),
-        dict(remaining_continuations=0, continuation_count=-1),
-        dict(remaining_continuations=True, continuation_count=0),
-        dict(remaining_continuations=0.5, continuation_count=0),
-        dict(remaining_continuations=0, continuation_count=0, max_continuations=-1),
-        {},
-    ]
-    for counts in invalid_counts:
-        try:
-            base.flow(operations=["continue"], **counts)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Invalid continuation counts accepted")
-    for count in [0, 2**53 - 1, 2**53, 10**100]:
-        assert base.flow(operations=["continue"], remaining_continuations=count, continuation_count=count).to_wire()["capabilities"]["flow"]["remainingContinuations"] == count
-    try:
-        base._modes = ()
-    except AttributeError:
-        pass
-    else:
-        raise AssertionError("Mutable capability builder")
+    typed_smoke = Path(__file__).with_name("python-typed-capability-smoke.py")
+    import runpy
+    typed_checks = runpy.run_path(str(typed_smoke))
+    typed_checks["check"]("facade_contract")
+    if "--typing" in sys.argv:
+        typed_checks["check_typing"](directory)
     assert "id" not in input and "type" not in input
     assert effect.Deny(reason="blocked") == {"type": "deny", "reason": "blocked"}
     for alias in ["modify_summary", "modify_instructions", "flow_continue", "inject_context_append", "modify_request", "modify_response", "modify_content", "modify", "return_", "flow_stop", "modify_output", "modify_prompt", "deny", "continue_flow"]:
@@ -827,18 +792,24 @@ def main() -> None:
     assert parsed["ok"], parsed
     assert value == json.loads(wire.encode_registration(value))
 
-    declaration = capability.Declaration(
-        modes=[capability.Mode.INTERCEPT],
-        grants=[capability.Allow(), capability.ModifyInput(replace=True), capability.ModifyInput(merge=True)],
-    )
-    assert declaration == {
-        "modes": ["intercept"],
-        "capabilities": {
-            "effects": ["allow", "modify"],
-            "modify": {"input": {"replace": True, "merge": True}},
-        },
-    }
+    declaration = capability.HostCapabilities(tool_before=capability.ToolBeforeCapabilities(
+        intercept=capability.ToolBeforeIntercept(allow=True, modify_input=capability.Modify.REPLACE_AND_MERGE)
+    )).to_wire()["tool.before"]
+    assert declaration == {"modes": ["intercept"], "capabilities": {
+        "effects": ["allow", "modify"], "modify": {"input": {"replace": True, "merge": True}}}}
     assert wire.parse_capabilities(declaration["capabilities"])["ok"]
+
+    facility = capability.HostCapabilities(
+        user_elicitation_request=capability.UserElicitationRequestCapabilities(
+            intercept=capability.UserElicitationRequestIntercept(elicitation=capability.Elicitation.FORM)
+        )
+    ).to_wire()["user.elicitation.request"]
+    assert facility == {"modes": ["intercept"], "capabilities": {
+        "effects": [], "elicitation": {"form": {}}}}
+    # parse_capabilities validates against the canonical capabilities schema root.
+    parsed_facility = wire.parse_capabilities(facility["capabilities"])
+    assert parsed_facility["ok"], parsed_facility
+
     # Exercise the real constructed payload, including nested StrEnum values;
     # comparing enum values to strings alone misses parser preflight rejection.
     occurrence = event.ToolBefore(
@@ -868,12 +839,6 @@ def main() -> None:
         validator.validators["tool-before.schema.json"].validate(occurrence)
         validator.validate("capabilities", declaration["capabilities"])
         validator.validate("capabilities-response", response)
-
-    explicit_form = capability.Declaration(modes=["observe"], grants=[capability.ElicitationForm()])
-    assert explicit_form == {"modes": ["observe"], "capabilities": {"effects": [], "elicitation": {"form": {}}}}
-    assert "url" not in explicit_form["capabilities"]["elicitation"]
-    assert capability.Declaration(modes=[], grants=[]) == {"modes": [], "capabilities": {"effects": []}}
-    assert capability.Allow() == {"effects": ["allow"]}
 
     class Hooks(boundaries.BoundaryMixin):
         async def dispatch(self, event_name, input, **kwargs):

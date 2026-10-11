@@ -1,31 +1,46 @@
-//! Immutable convenience declarations. Raw manifests and boundary admission remain unchanged.
+//! Catalogue-derived typed capability declarations. Raw configuration parsing stays independent.
 use crate::{
     ergonomics::object_fields,
     model::{Ir, Property, Shape},
 };
 use anyhow::{Context, Result, ensure};
-use std::{collections::BTreeSet, fmt::Write};
+use std::collections::{BTreeMap, BTreeSet};
 
-fn vocabulary(ir: &Ir, shape: &Shape) -> Vec<String> {
-    fn visit(ir: &Ir, shape: &Shape, out: &mut BTreeSet<String>, seen: &mut BTreeSet<String>) {
+/// A concrete catalogue event's installable delivery modes and known authority.
+/// Extension effects remain supported by explicit raw configuration codecs only.
+#[derive(Debug, Clone)]
+pub(crate) struct EventCapabilities {
+    pub event: String,
+    pub name: String,
+    pub intercept: bool,
+    pub observe: bool,
+    pub effects: Vec<String>,
+    pub modify: BTreeMap<String, Vec<String>>,
+    pub flow: Vec<String>,
+    pub delivery: Vec<String>,
+    pub elicitation: Vec<String>,
+}
+
+pub(crate) fn vocabulary(ir: &Ir, shape: &Shape) -> Vec<String> {
+    fn visit(ir: &Ir, shape: &Shape, seen: &mut BTreeSet<String>, out: &mut BTreeSet<String>) {
         match shape {
             Shape::Enum { values, .. } => {
                 out.extend(values.iter().filter_map(|v| v.as_str().map(str::to_owned)))
             }
             Shape::Literal { value } => {
-                if let Some(s) = value.as_str() {
-                    out.insert(s.into());
+                if let Some(value) = value.as_str() {
+                    out.insert(value.into());
                 }
             }
-            Shape::Array { items } => visit(ir, items, out, seen),
+            Shape::Array { items } => visit(ir, items, seen, out),
             Shape::Union { variants, .. } | Shape::Intersection { variants } => {
-                for s in variants {
-                    visit(ir, s, out, seen);
+                for variant in variants {
+                    visit(ir, variant, seen, out);
                 }
             }
             Shape::Ref { name } if seen.insert(name.clone()) => {
-                if let Some(n) = ir.types.iter().find(|n| n.name == *name) {
-                    visit(ir, &n.shape, out, seen);
+                if let Some(named) = ir.types.iter().find(|n| n.name == *name) {
+                    visit(ir, &named.shape, seen, out);
                 }
                 seen.remove(name);
             }
@@ -33,398 +48,347 @@ fn vocabulary(ir: &Ir, shape: &Shape) -> Vec<String> {
         }
     }
     let mut out = BTreeSet::new();
-    visit(ir, shape, &mut out, &mut BTreeSet::new());
+    visit(ir, shape, &mut BTreeSet::new(), &mut out);
     out.into_iter().collect()
 }
-fn field<'a>(fields: &'a [Property], name: &str) -> Result<&'a Property> {
-    fields
-        .iter()
-        .find(|p| p.wire_name == name)
-        .with_context(|| format!("missing capability metadata {name}"))
+
+fn field<'a>(fields: &'a [Property], name: &str) -> Option<&'a Property> {
+    fields.iter().find(|field| field.wire_name == name)
 }
-fn children(ir: &Ir, fields: &[Property], name: &str) -> Result<Vec<Property>> {
-    object_fields(ir, &field(fields, name)?.shape)
-        .with_context(|| format!("capability {name} is not an object"))
+fn tag_values(
+    ir: &Ir,
+    shape: &Shape,
+    path: &[&str],
+    seen: &mut BTreeSet<String>,
+    out: &mut BTreeSet<String>,
+) {
+    if let Shape::Intersection { variants } = shape {
+        if variants
+            .iter()
+            .any(|variant| matches!(variant, Shape::Never))
+        {
+            return;
+        }
+        if shape.constrained_reference().is_some() {
+            tag_values(ir, &variants[1], path, seen, out);
+        } else {
+            for variant in variants {
+                tag_values(ir, variant, path, seen, out);
+            }
+        }
+        return;
+    }
+    if let Shape::Ref { name } = shape {
+        if seen.insert(name.clone()) {
+            if let Some(named) = ir.types.iter().find(|n| n.name == *name) {
+                tag_values(ir, &named.shape, path, seen, out);
+            }
+            seen.remove(name);
+        }
+        return;
+    }
+    if let Shape::Union { variants, .. } = shape {
+        for variant in variants {
+            tag_values(ir, variant, path, seen, out);
+        }
+        return;
+    }
+    if path.is_empty() {
+        if let Shape::Literal { value } = shape {
+            if let Some(value) = value.as_str() {
+                out.insert(value.into());
+            }
+        }
+    } else if let Some(fields) = object_fields(ir, shape) {
+        if let Some(member) = field(&fields, path[0]) {
+            tag_values(ir, &member.shape, &path[1..], seen, out);
+        }
+    }
 }
-fn pascal(s: &str) -> String {
-    s.split(['_', '-'])
-        .map(|s| {
-            let mut c = s.chars();
-            c.next()
-                .map(|h| h.to_uppercase().to_string() + c.as_str())
+fn effect_objects(
+    ir: &Ir,
+    shape: &Shape,
+    seen: &mut BTreeSet<String>,
+    out: &mut Vec<Vec<Property>>,
+) {
+    match shape {
+        Shape::Ref { name } if seen.insert(name.clone()) => {
+            if let Some(named) = ir.types.iter().find(|n| n.name == *name) {
+                effect_objects(ir, &named.shape, seen, out);
+            }
+            seen.remove(name);
+        }
+        Shape::Union { variants, .. } => {
+            for variant in variants {
+                effect_objects(ir, variant, seen, out);
+            }
+        }
+        _ => {
+            if let Some(fields) = object_fields(ir, shape) {
+                out.push(fields);
+            }
+        }
+    }
+}
+fn member_values(ir: &Ir, fields: &[Property], name: &str) -> Vec<String> {
+    field(fields, name)
+        .map(|member| vocabulary(ir, &member.shape))
+        .unwrap_or_default()
+}
+fn pascal(event: &str) -> String {
+    event
+        .split(['.', '_', '-'])
+        .map(|word| {
+            let mut chars = word.chars();
+            chars
+                .next()
+                .map(|first| first.to_uppercase().to_string() + chars.as_str())
                 .unwrap_or_default()
         })
         .collect()
 }
-fn snake(s: &str) -> String {
-    let mut out = String::new();
-    for c in s.chars() {
-        if c.is_uppercase() {
-            out.push('_');
-            out.extend(c.to_lowercase());
-        } else {
-            out.push(c);
+
+/// Permissions come from both capability constraints and contextual effects.
+/// The IR does not retain JSON Schema propertyNames, so contextual modify targets
+/// supply the equivalent schema-owned target restriction instead of a copied list.
+pub(crate) fn catalogue(ir: &Ir) -> Result<Vec<EventCapabilities>> {
+    let Some(base) = ir.types.iter().find(|named| named.name == "Capabilities") else {
+        return Ok(Vec::new());
+    };
+    let base_fields = object_fields(ir, &base.shape).context("Capabilities must be an object")?;
+    let elicitation = field(&base_fields, "elicitation")
+        .and_then(|f| object_fields(ir, &f.shape))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|f| f.wire_name)
+        .collect::<Vec<_>>();
+    let mut modes = BTreeMap::<String, BTreeSet<&str>>::new();
+    for (name, mode) in [
+        ("InterceptRequest", "intercept"),
+        ("ObserveNotification", "observe"),
+    ] {
+        if let Some(named) = ir.types.iter().find(|n| n.name == name) {
+            let mut events = BTreeSet::new();
+            tag_values(
+                ir,
+                &named.shape,
+                &["params", "event", "type"],
+                &mut BTreeSet::new(),
+                &mut events,
+            );
+            for event in events {
+                modes.entry(event).or_default().insert(mode);
+            }
         }
     }
-    out
-}
-struct Metadata {
-    effects: Vec<String>,
-    targets: Vec<String>,
-    operations: Vec<String>,
-    flow: Vec<String>,
-    delivery: Vec<String>,
-    elicitation: Vec<String>,
-}
-fn metadata(ir: &Ir) -> Result<Option<Metadata>> {
-    let Some(root) = ir.types.iter().find(|n| n.name == "Capabilities") else {
-        return Ok(None);
-    };
-    let fields = object_fields(ir, &root.shape).context("Capabilities object")?;
-    let effects = vocabulary(ir, &field(&fields, "effects")?.shape);
-    let modify = children(ir, &fields, "modify")?;
-    let mut operations = None;
-    for target in &modify {
-        // anyOf true-grant constraints are sibling intersections, not new members.
-        let ops = object_fields(ir, &target.shape)
-            .or_else(|| {
-                if let Shape::Intersection { variants } = &target.shape {
-                    variants.iter().find_map(|s| object_fields(ir, s))
-                } else {
-                    None
+    let mut out = Vec::new();
+    for (event, modes) in modes {
+        let name = pascal(&event);
+        let intercept = modes.contains("intercept");
+        let mut entry = EventCapabilities {
+            event: event.clone(),
+            name: name.clone(),
+            intercept,
+            observe: modes.contains("observe"),
+            effects: Vec::new(),
+            modify: BTreeMap::new(),
+            flow: Vec::new(),
+            delivery: Vec::new(),
+            elicitation: if intercept {
+                elicitation.clone()
+            } else {
+                Vec::new()
+            },
+        };
+        if intercept {
+            let source = format!("capabilities.schema.json#/$defs/{event}");
+            let capability = ir
+                .types
+                .iter()
+                .find(|n| n.source.ends_with(&source))
+                .with_context(|| format!("missing event capability constraint {event}"))?;
+            let fields = object_fields(ir, &capability.shape)
+                .with_context(|| format!("invalid capability object {event}"))?;
+            let allowed = member_values(ir, &fields, "effects");
+            let effect = ir
+                .types
+                .iter()
+                .find(|n| n.name == format!("{name}Effect"))
+                .with_context(|| format!("missing contextual effects {event}"))?;
+            let mut objects = Vec::new();
+            effect_objects(ir, &effect.shape, &mut BTreeSet::new(), &mut objects);
+            let mut families = BTreeSet::new();
+            let mut flow = BTreeSet::new();
+            let mut delivery = BTreeSet::new();
+            for fields in objects {
+                let types = member_values(ir, &fields, "type");
+                // Open extension discriminants do not grant known-family authority.
+                for family in types.into_iter().filter(|family| allowed.contains(family)) {
+                    families.insert(family.clone());
+                    match family.as_str() {
+                        "modify" => {
+                            for target in member_values(ir, &fields, "target") {
+                                let operations = member_values(ir, &fields, "operation");
+                                let old = entry.modify.entry(target).or_default();
+                                old.extend(operations);
+                                old.sort();
+                                old.dedup();
+                            }
+                        }
+                        "flow" => flow.extend(member_values(ir, &fields, "operation")),
+                        "inject" => delivery.extend(member_values(ir, &fields, "deliverAt")),
+                        _ => {}
+                    }
                 }
-            })
-            .context("modify operations")?;
-        let names = ops.iter().map(|p| p.wire_name.clone()).collect::<Vec<_>>();
-        ensure!(
-            ops.iter().all(|p| matches!(p.shape, Shape::Boolean)),
-            "unsupported modify operation shape"
-        );
-        if let Some(old) = &operations {
+            }
+            entry.effects = families.into_iter().collect();
+            entry.flow = flow.into_iter().collect();
+            entry.delivery = delivery.into_iter().collect();
             ensure!(
-                old == &names,
-                "modify targets have different operation vocabularies"
+                !entry.effects.is_empty(),
+                "interception event has no known controls: {event}"
+            );
+            ensure!(
+                !entry.effects.contains(&"modify".into()) || !entry.modify.is_empty(),
+                "missing modify targets {event}"
+            );
+            ensure!(
+                !entry.effects.contains(&"flow".into()) || !entry.flow.is_empty(),
+                "missing flow operations {event}"
+            );
+            ensure!(
+                !entry.effects.contains(&"inject".into()) || !entry.delivery.is_empty(),
+                "missing injection delivery {event}"
             );
         }
-        operations = Some(names);
+        out.push(entry);
     }
-    let flow = children(ir, &fields, "flow")?;
-    let inject = children(ir, &fields, "inject")?;
-    let context = children(ir, &inject, "context")?;
-    Ok(Some(Metadata {
-        effects,
-        targets: modify.iter().map(|p| p.wire_name.clone()).collect(),
-        operations: operations.context("empty modify metadata")?,
-        flow: vocabulary(ir, &field(&flow, "operations")?.shape),
-        delivery: vocabulary(ir, &field(&context, "deliverAt")?.shape),
-        elicitation: children(ir, &fields, "elicitation")?
-            .iter()
-            .map(|p| p.wire_name.clone())
-            .collect(),
-    }))
-}
-
-pub fn typescript(ir: &Ir) -> Result<String> {
-    let Some(m) = metadata(ir)? else {
-        return Ok(String::new());
-    };
-    let mut out = String::from(TS_PRELUDE);
-    writeln!(
-        out,
-        "export type CapabilityModifyOperations = {{ {} }};",
-        m.operations
-            .iter()
-            .map(|o| format!("{o}?: boolean"))
-            .collect::<Vec<_>>()
-            .join("; ")
-    )?;
-    writeln!(
-        out,
-        "export type CapabilityFlowOperation = {};",
-        m.flow
-            .iter()
-            .map(|s| format!("{s:?}"))
-            .collect::<Vec<_>>()
-            .join(" | ")
-    )?;
-    writeln!(
-        out,
-        "export type CapabilityDelivery = {};",
-        m.delivery
-            .iter()
-            .map(|s| format!("{s:?}"))
-            .collect::<Vec<_>>()
-            .join(" | ")
-    )?;
-    out.push_str(TS_BUILDER);
-    for effect in &m.effects {
-        if ["modify", "flow", "inject"].contains(&effect.as_str()) {
-            continue;
-        }
-        writeln!(
-            out,
-            "  {effect}(): CapabilityBuilder {{ return this.add({effect:?}); }}"
-        )?;
-    }
-    for target in &m.targets {
-        writeln!(
-            out,
-            "  modify{}(operations: CapabilityModifyOperations): CapabilityBuilder {{\n    const allowed = {} as readonly string[];\n    if (operations === null || typeof operations !== 'object' || Object.entries(operations).some(([k,v]) => !allowed.includes(k) || typeof v !== 'boolean') || !Object.values(operations).some(v => v === true)) throw new TypeError('nonempty modify operations required');\n    const grant = Object.fromEntries(allowed.map(k => [k, (operations as Record<string, boolean>)[k] === true]));\n    return this.add('modify', {{modify: {{{target}: grant}}}});\n  }}",
-            pascal(target),
-            serde_json::to_string(&m.operations)?
-        )?;
-    }
-    for mode in &m.elicitation {
-        writeln!(
-            out,
-            "  elicitation{}(): CapabilityBuilder {{ return this.add(undefined, {{elicitation: {{{mode}: {{}}}}}}); }}",
-            pascal(mode)
-        )?;
-    }
-    writeln!(
-        out,
-        "  flow(operations: readonly CapabilityFlowOperation[], counts: {{remainingContinuations?: number; continuationCount?: number; maxContinuations?: number}} = {{}}): CapabilityBuilder {{\n    capabilityNonempty(operations, {});\n    if (Object.entries(counts).some(([k,v]) => !['remainingContinuations','continuationCount','maxContinuations'].includes(k) || !Number.isSafeInteger(v) || v! < 0)) throw new TypeError('invalid continuation count');\n    if (operations.includes('continue') && (counts.remainingContinuations === undefined || counts.continuationCount === undefined)) throw new TypeError('continue requires counts');\n    return this.add('flow', {{flow: {{operations: [...new Set(operations)], ...counts}}}});\n  }}",
-        serde_json::to_string(&m.flow)?
-    )?;
-    writeln!(
-        out,
-        "  injectContext(deliverAt: readonly CapabilityDelivery[]): CapabilityBuilder {{ capabilityNonempty(deliverAt, {}); return this.add('inject', {{inject: {{context: {{append: true, deliverAt: [...new Set(deliverAt)]}}}}}}); }}",
-        serde_json::to_string(&m.delivery)?
-    )?;
-    out.push_str("}\n/** intercept includes observe; declarations do not prove host execution. */\nexport const capabilities = Object.freeze({intercept: () => CapabilityBuilder.intercept(), observe: (): CapabilityObservation => ({modes: ['observe']})});\n");
     Ok(out)
 }
-const TS_PRELUDE: &str = r#"
-/** Declaration convenience only. Event admission and per-call narrowing are runtime-owned. */
-export type CapabilityDeclaration = {modes: ('intercept' | 'observe')[]; capabilities: Capabilities};
-export type CapabilityObservation = {modes: ['observe']};
-function capabilityNonempty(values: readonly string[], allowed: readonly string[]): void {
-  if (!Array.isArray(values) || !values.length || values.some(v => !allowed.includes(v))) throw new TypeError('nonempty valid operations required');
-}
-function capabilityMerge(a: any, b: any): any {
-  const result = {...a};
-  for (const [k,v] of Object.entries(b)) {
-    if (Array.isArray(v)) result[k] = [...new Set([...(a[k] ?? []), ...v])];
-    else if (typeof v === 'object' && v !== null) result[k] = capabilityMerge(a[k] ?? {}, v);
-    else result[k] = typeof v === 'boolean' ? a[k] === true || v : v;
-  }
-  return result;
-}
-"#;
-const TS_BUILDER: &str = r#"
-export class CapabilityBuilder {
-  readonly #value: Capabilities;
-  private constructor(value: Capabilities) { this.#value = value; Object.freeze(this); }
-  static intercept(): CapabilityBuilder { return new CapabilityBuilder({effects: []}); }
-  private add(effect?: string, grant: object = {}): CapabilityBuilder {
-    return new CapabilityBuilder(capabilityMerge(this.#value, {...grant, effects: effect ? [effect] : []}));
-  }
-  build(): CapabilityDeclaration {
-    if (this.#value.effects.length === 0 && !Object.keys((this.#value as any).elicitation ?? {}).length) throw new TypeError('empty interception declaration');
-    return {modes: ['intercept', 'observe'], capabilities: JSON.parse(JSON.stringify(this.#value))};
-  }
-  get modes(): ('intercept' | 'observe')[] { return ['intercept', 'observe']; }
-  get capabilities(): Capabilities { return this.build().capabilities; }
-  toJSON(): CapabilityDeclaration { return this.build(); }
-"#;
 
-pub fn rust(ir: &Ir) -> Result<String> {
-    let Some(m) = metadata(ir)? else {
-        return Ok(String::new());
-    };
-    let mut out = String::from(RUST_PRELUDE);
-    out.push_str("pub use super::EventType as Event;\npub use super::EffectId as EffectType;\n");
-    for (name, values) in [("ModifyTarget", &m.targets)] {
-        writeln!(
-            out,
-            "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)] pub enum {name} {{"
-        )?;
-        for value in values {
-            writeln!(out, "#[serde(rename = {value:?})] {},", pascal(value))?;
-        }
-        writeln!(
-            out,
-            "}}\nimpl {name} {{ pub fn as_str(self) -> &'static str {{ match self {{"
-        )?;
-        for value in values {
-            writeln!(out, "Self::{} => {value:?},", pascal(value))?;
-        }
-        out.push_str("} } }\n");
-    }
-
-    for (name, values) in [
-        ("ModifyOperation", &m.operations),
-        ("FlowOperation", &m.flow),
-        ("Delivery", &m.delivery),
-    ] {
-        writeln!(
-            out,
-            "#[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum {name} {{ {} }}",
-            values
-                .iter()
-                .map(|s| pascal(s))
-                .collect::<Vec<_>>()
-                .join(",")
-        )?;
-        writeln!(
-            out,
-            "impl {name} {{ fn wire(self) -> &'static str {{ match self {{ {} }} }} }}",
-            values
-                .iter()
-                .map(|s| format!("Self::{} => {s:?}", pascal(s)))
-                .collect::<Vec<_>>()
-                .join(",")
-        )?;
-    }
-    out.push_str("impl Builder {\n");
-    for effect in &m.effects {
-        if ["modify", "flow", "inject"].contains(&effect.as_str()) {
-            continue;
-        }
-        let name = if effect == "return" {
-            "r#return".to_owned()
-        } else {
-            snake(effect)
-        };
-        writeln!(
-            out,
-            "pub fn {name}(&self) -> Self {{ self.add(Some({effect:?}), serde_json::json!({{}})) }}"
-        )?;
-    }
-    for target in &m.targets {
-        writeln!(
-            out,
-            "pub fn modify_{}(&self, operations: impl IntoIterator<Item=ModifyOperation>) -> Result<Self, Error> {{\nlet mut grant = serde_json::json!({{ {} }}); let mut any = false;\nfor operation in operations {{ grant[operation.wire()] = serde_json::json!(true); any = true; }}\nif !any {{ return Err(Error(\"nonempty modify operations required\".into())); }}\nOk(self.add(Some(\"modify\"), serde_json::json!({{\"modify\": {{{target:?}: grant}}}})))\n}}",
-            snake(target),
-            m.operations
-                .iter()
-                .map(|s| format!("{s:?}: false"))
-                .collect::<Vec<_>>()
-                .join(",")
-        )?;
-    }
-    for mode in &m.elicitation {
-        writeln!(
-            out,
-            "pub fn elicitation_{}(&self) -> Self {{ self.add(None, serde_json::json!({{\"elicitation\": {{{mode:?}: {{}}}}}})) }}",
-            snake(mode)
-        )?;
-    }
-    out.push_str(RUST_METHODS);
-    out.push_str("}\n");
-    Ok(out)
+pub(crate) fn typescript(ir: &Ir) -> Result<String> {
+    crate::langs::typescript::capabilities::emit(ir)
 }
-const RUST_PRELUDE: &str = r#"
-/// Immutable declarations only; boundary admission and per-call narrowing are runtime-owned.
-pub mod capability {
-use super::Capabilities;
-use serde::Serialize;
-use serde_json::{Value, json};
-#[derive(Debug, Clone, PartialEq, Eq)] pub struct Error(pub String);
-impl std::fmt::Display for Error { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { f.write_str(&self.0) } }
-impl std::error::Error for Error {}
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all="lowercase")] pub enum Mode { Intercept, Observe }
-#[derive(Debug, Clone, Serialize)]
-pub struct Declaration { pub modes: Vec<Mode>, #[serde(skip_serializing_if="Option::is_none")] pub capabilities: Option<Capabilities> }
-#[derive(Debug, Clone)] pub struct Builder { value: Value }
-/// Deliberately advertises BOTH intercept and observe, unlike raw manifests.
-pub fn intercept() -> Builder { Builder { value: json!({"effects": []}) } }
-pub fn observe() -> Declaration { Declaration { modes: vec![Mode::Observe], capabilities: None } }
-fn merge(a: &mut Value, b: Value) {
-    match (a, b) {
-        (Value::Object(a), Value::Object(b)) => for (k,v) in b { merge(a.entry(k).or_insert(Value::Null), v); },
-        (Value::Array(a), Value::Array(b)) => for v in b { if !a.contains(&v) { a.push(v); } },
-        (Value::Bool(a), Value::Bool(b)) => *a |= b,
-        (a,b) => *a = b,
-    }
+pub(crate) fn rust(ir: &Ir) -> Result<String> {
+    crate::langs::rust::capabilities::emit(ir)
 }
-impl Serialize for Builder {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok,S::Error> {
-        self.build().map_err(serde::ser::Error::custom)?.serialize(serializer)
-    }
-}
-"#;
-const RUST_METHODS: &str = r#"
-fn add(&self, effect: Option<&str>, grant: Value) -> Self {
-    let mut next = self.clone(); merge(&mut next.value, grant);
-    if let Some(effect) = effect { merge(&mut next.value, json!({"effects": [effect]})); }
-    next
-}
-pub fn build(&self) -> Result<Declaration, Error> {
-    let effects = self.value.get("effects").and_then(Value::as_array).map_or(0, Vec::len);
-    let modes = self.value.get("elicitation").and_then(Value::as_object).map_or(0, |v| v.len());
-    if effects == 0 && modes == 0 { return Err(Error("empty interception declaration".into())); }
-    let capabilities = serde_json::from_value(self.value.clone()).map_err(|e| Error(format!("invalid capability declaration: {e}")))?;
-    Ok(Declaration { modes: vec![Mode::Intercept, Mode::Observe], capabilities: Some(capabilities) })
-}
-pub fn flow(&self, operations: impl IntoIterator<Item=FlowOperation>, counts: ContinuationCounts) -> Result<Self, Error> {
-    let operations: Vec<_> = operations.into_iter().map(FlowOperation::wire).collect();
-    if operations.is_empty() { return Err(Error("nonempty flow operations required".into())); }
-    if operations.contains(&"continue") && (counts.remaining_continuations.is_none() || counts.continuation_count.is_none()) { return Err(Error("continue requires counts".into())); }
-    let mut flow = json!({"operations": []});
-    for operation in operations { merge(&mut flow, json!({"operations": [operation]})); }
-    for (key,value) in [("remainingContinuations", counts.remaining_continuations), ("continuationCount", counts.continuation_count), ("maxContinuations", counts.max_continuations)] {
-        if let Some(value) = value {
-            if value > 9_007_199_254_740_991 { return Err(Error("continuation count exceeds safe integer range".into())); }
-            flow[key] = json!(value);
-        }
-    }
-    Ok(self.add(Some("flow"), json!({"flow":flow})))
-}
-pub fn inject_context(&self, deliver_at: impl IntoIterator<Item=Delivery>) -> Result<Self, Error> {
-    let mut values = Vec::new();
-    for value in deliver_at { let value = value.wire(); if !values.contains(&value) { values.push(value); } }
-    if values.is_empty() { return Err(Error("nonempty delivery operations required".into())); }
-    Ok(self.add(Some("inject"), json!({"inject":{"context":{"append":true,"deliverAt":values}}})))
-}
-}
-#[derive(Debug, Clone, Copy, Default)]
-pub struct ContinuationCounts { pub remaining_continuations: Option<u64>, pub continuation_count: Option<u64>, pub max_continuations: Option<u64> }
-"#;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    fn draft() -> Ir {
+        crate::compiler::compile(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),
+            "draft",
+        )
+        .unwrap()
+    }
     #[test]
-    fn effect_helpers_follow_the_ir_vocabulary() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut ir = crate::compiler::compile(&root, "draft").unwrap();
-        let root = ir
-            .types
-            .iter_mut()
-            .find(|n| n.name == "Capabilities")
+    fn typed_catalogue_covers_each_delivery_mode_and_contextual_target() {
+        let entries = catalogue(&draft()).unwrap();
+        assert_eq!(entries.len(), 32);
+        let tool = entries
+            .iter()
+            .find(|entry| entry.event == "tool.before")
             .unwrap();
-        let Shape::Object { properties, .. } = &mut root.shape else {
-            panic!("capabilities object")
-        };
-        properties
-            .iter_mut()
-            .find(|p| p.wire_name == "effects")
+        assert!(tool.intercept && tool.observe);
+        assert_eq!(tool.modify.keys().cloned().collect::<Vec<_>>(), ["input"]);
+        assert_eq!(tool.modify["input"], ["merge", "replace"]);
+        assert_eq!(tool.flow, ["stop"]);
+        let compact = entries
+            .iter()
+            .find(|entry| entry.event == "context.compact.before")
+            .unwrap();
+        assert_eq!(
+            compact.modify.keys().cloned().collect::<Vec<_>>(),
+            ["instructions"]
+        );
+        assert!(!compact.effects.contains(&"allow".into()));
+        for entry in entries.iter().filter(|entry| !entry.intercept) {
+            assert!(entry.observe);
+            assert!(entry.effects.is_empty());
+            assert!(entry.modify.is_empty());
+        }
+    }
+    #[test]
+    fn contextual_permissions_match_canonical_capability_constraints() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let schema: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("schema/draft/capabilities.schema.json")).unwrap(),
+        )
+        .unwrap();
+        for entry in catalogue(&draft())
             .unwrap()
-            .shape = Shape::Array {
-            items: Box::new(Shape::Enum {
-                values: vec![serde_json::json!("testEffect")],
-                open_strings: false,
-            }),
-        };
-        assert!(typescript(&ir).unwrap().contains("testEffect():"));
-        assert!(rust(&ir).unwrap().contains("test_effect(&self)"));
-        assert!(!typescript(&ir).unwrap().contains("deny():"));
-        assert!(!rust(&ir).unwrap().contains("deny(&self)"));
+            .into_iter()
+            .filter(|entry| entry.intercept)
+        {
+            let properties = &schema["$defs"][&entry.event]["allOf"][1]["properties"];
+            let strings = |value: &serde_json::Value| {
+                value
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|value| value.as_str().unwrap().to_owned())
+                    .collect::<BTreeSet<_>>()
+            };
+            assert_eq!(
+                entry.effects.iter().cloned().collect::<BTreeSet<_>>(),
+                strings(&properties["effects"]["items"]["enum"]),
+                "effect authority {}",
+                entry.event
+            );
+            if let Some(targets) = properties["modify"]["propertyNames"].get("enum") {
+                assert_eq!(
+                    entry.modify.keys().cloned().collect::<BTreeSet<_>>(),
+                    strings(targets),
+                    "modify targets {}",
+                    entry.event
+                );
+            }
+            if let Some(operations) =
+                properties["flow"]["properties"]["operations"]["items"].get("enum")
+            {
+                assert_eq!(
+                    entry.flow.iter().cloned().collect::<BTreeSet<_>>(),
+                    strings(operations),
+                    "flow operations {}",
+                    entry.event
+                );
+            }
+        }
     }
 
     #[test]
-    fn all_schema_modification_targets_have_both_native_helpers() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let ir = crate::compiler::compile(&root, "draft").unwrap();
-        let metadata = metadata(&ir).unwrap().unwrap();
-        let ts = typescript(&ir).unwrap();
-        let rs = rust(&ir).unwrap();
-        for target in metadata.targets {
-            assert!(ts.contains(&format!("modify{}(", pascal(&target))));
-            assert!(rs.contains(&format!("modify_{}(&self", snake(&target))));
-        }
+    fn effect_authority_is_event_specific_not_the_global_vocabulary() {
+        let mut ir = draft();
+        let named = ir
+            .types
+            .iter_mut()
+            .find(|n| n.name == "ToolBeforeCapabilities")
+            .unwrap();
+        let Shape::Intersection { variants } = &mut named.shape else {
+            panic!("event capability intersection")
+        };
+        let Shape::Object { properties, .. } = variants.last_mut().unwrap() else {
+            panic!("event override")
+        };
+        field_mut(properties, "effects").shape = Shape::Array {
+            items: Box::new(Shape::Enum {
+                values: vec![serde_json::json!("deny")],
+                open_strings: false,
+            }),
+        };
+        let entries = catalogue(&ir).unwrap();
+        let tool = entries
+            .iter()
+            .find(|entry| entry.event == "tool.before")
+            .unwrap();
+        assert_eq!(tool.effects, ["deny"]);
+        assert!(tool.modify.is_empty());
+        assert!(tool.flow.is_empty());
+        assert!(tool.delivery.is_empty());
+    }
+    fn field_mut<'a>(fields: &'a mut [Property], name: &str) -> &'a mut Property {
+        fields.iter_mut().find(|f| f.wire_name == name).unwrap()
     }
 }

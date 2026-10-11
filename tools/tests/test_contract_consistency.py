@@ -22,6 +22,16 @@ class ContractConsistencyTests(unittest.TestCase):
             schema = schema['$defs'][definition]
         return self.validator.validate(value, schema, path)
 
+    def test_effect_free_elicitation_facility_is_canonical_interception_support(self):
+        # Shared golden body used by each language's typed rendering smoke.
+        for facility in ["form", "url"]:
+            declaration = {"effects": [], "elicitation": {facility: {}}}
+            self.assertFalse(self.errors(declaration, "capabilities"))
+            self.assertFalse(self.errors(declaration, "capabilities", "user.elicitation.request"))
+        # Elicitation is independent of effect-family membership, but the effects
+        # member remains present even when its selected set is empty.
+        self.assertTrue(self.errors({"elicitation": {"form": {}}}, "capabilities"))
+
     def test_registration_uses_shared_flat_selection(self):
         for mode in ['intercept', 'observe']:
             subscription = {'events': ['tool.before'], 'mode': mode,

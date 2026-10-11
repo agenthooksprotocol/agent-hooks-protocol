@@ -140,6 +140,11 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             }
             let role = if name.starts_with("Effect") && name != "Effect" {
                 Some(("effect", name.trim_start_matches("Effect").to_owned()))
+            } else if name.ends_with("Capabilities") || name == "StaticCapabilityManifest" {
+                Some((
+                    "capability",
+                    name.trim_end_matches("Capabilities").to_owned(),
+                ))
             } else {
                 crate::langs::go::facade::role(name)
             };
@@ -463,7 +468,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         {
             let mut public = HEADER.to_owned();
             for alias in exports.keys() {
-                if namespace == "capability" && grant_exports.contains(alias) {
+                if namespace == "capability" && alias != "Event" {
                     continue;
                 }
                 writeln!(

@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+pub(crate) mod capabilities;
 mod ergonomics;
 pub mod facade;
 
