@@ -108,7 +108,12 @@ def check(package_dir: Path, first: str) -> None:
         hints = typing.get_type_hints(method)  # No caller-supplied globals or locals.
         assert typing.get_origin(hints["return"]) is hooks.HookResult, name
         parameters = typing.get_args(hints["return"])
-        assert [p.__name__ for p in parameters] == ["InputT", "ResultT", "ProvenanceT"]
+        assert parameters == (typing.Any, typing.Any, typing.Any)
+        overloads = typing.get_overloads(method)
+        assert len(overloads) == 8
+        default = typing.get_type_hints(overloads[0])["return"]
+        result_type = {"model_request_before": models.CanonicalMessages, "context_compact_before": models.TextParts, "user_elicitation_request": models.McpElicitationElicitResult}.get(name, object)
+        assert typing.get_args(default) == (object, result_type, object)
         for codec_name, parameter in zip(
             ("input_codec", "result_codec", "provenance_codec"), parameters
         ):
@@ -120,7 +125,7 @@ def check(package_dir: Path, first: str) -> None:
         for key, parameter in signature.parameters.items():
             assert parameter.kind == dispatch.parameters[key].kind, (name, key)
             assert parameter.default == dispatch.parameters[key].default, (name, key)
-    print(f"Python public API: {len(methods)} resolvable generic boundaries ({first} first)")
+    print(f"Python public API: {len(methods)} resolvable codec-correlated boundaries ({first} first)")
 
 
 def main() -> None:

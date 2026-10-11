@@ -8,6 +8,52 @@ include!("facade_tests.rs");
 #[path = "grants.rs"]
 mod grants;
 
+/// Omitted codecs fix their parameters; supplied codecs independently bind
+/// them. All eight combinations prevent contextual inference inventing decoders.
+fn emit_boundary(output: &mut String, short: &str, input_name: &str, tag: &str) -> Result<()> {
+    let result_default = match tag {
+        "model.request.before" => "models.CanonicalMessages",
+        "context.compact.before" => "models.TextParts",
+        "user.elicitation.request" => "models.McpElicitationElicitResult",
+        _ => "object",
+    };
+    let common = format!(
+        "self: BoundaryMixin, input: models.{input_name} | dict[str, Any], *, initial_state: dict[str, Any] | None = None, capabilities: dict[str, Any] | None = None, event_id: str | None = None, content: ContentContext | None = None, sources: ContentSources | None = None, original_request: dict[str, Any] | None = None, uploads: dict[str, Any] | None = None"
+    );
+    let method = snake_case(short);
+    for mask in 0..8 {
+        let mut codecs = String::new();
+        let mut types = Vec::new();
+        for (index, (name, parameter, default)) in [
+            ("input", "InputT", "object"),
+            ("result", "ResultT", result_default),
+            ("provenance", "ProvenanceT", "object"),
+        ]
+        .iter()
+        .enumerate()
+        {
+            if mask & (1 << index) != 0 {
+                write!(codecs, ", {name}_codec: Codec[{parameter}]")?;
+                types.push(*parameter);
+            } else {
+                write!(codecs, ", {name}_codec: None = None")?;
+                types.push(*default);
+            }
+        }
+        writeln!(
+            output,
+            "\n    @overload\n    async def {method}({common}{codecs}, event_codecs: Mapping[tuple[str, ...], Codec[Any]] | None = None) -> _hooks.HookResult[{}]: ...",
+            types.join(", ")
+        )?;
+    }
+    // Only overloads are the static contract; dispatch keeps its runtime API.
+    writeln!(
+        output,
+        "\n    async def {method}({common}, input_codec: Codec[Any] | None = None, result_codec: Codec[Any] | None = None, provenance_codec: Codec[Any] | None = None, event_codecs: Mapping[tuple[str, ...], Codec[Any]] | None = None) -> _hooks.HookResult[Any, Any, Any]:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, initial_state=initial_state, capabilities=capabilities, event_id=event_id, content=content, sources=sources, original_request=original_request, uploads=uploads, input_codec=input_codec, result_codec=result_codec, provenance_codec=provenance_codec, event_codecs=event_codecs)"
+    )?;
+    Ok(())
+}
+
 pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     let identifiers = IdentifierMap::new(ir)?;
     let renderer = Renderer {
@@ -67,7 +113,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     )?;
     let mut modules: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     let mut boundaries = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, Mapping, TypeVar, cast\nfrom .codec import Codec\nfrom ._content import ContentContext, ContentSources\nfrom . import _models as models\nfrom importlib import import_module as _import_module\n\nInputT = TypeVar(\"InputT\")\nResultT = TypeVar(\"ResultT\")\nProvenanceT = TypeVar(\"ProvenanceT\")\n\nif TYPE_CHECKING:\n    from ._hooks import Hooks\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any, Mapping, TypeVar, cast, overload\nfrom .codec import Codec\nfrom ._content import ContentContext, ContentSources\nfrom . import _models as models\nfrom importlib import import_module as _import_module\n\nInputT = TypeVar(\"InputT\")\nResultT = TypeVar(\"ResultT\")\nProvenanceT = TypeVar(\"ProvenanceT\")\n\nif TYPE_CHECKING:\n    from . import _hooks\n    from ._hooks import Hooks\n\nclass BoundaryMixin:\n    \"\"\"Schema-derived named boundaries; implemented by Hooks.dispatch.\"\"\"\n"
     );
     let mut content_slots_source =
         String::from("\nCONTENT_SOURCE_SLOTS: dict[str, tuple[str, tuple[str, ...]]] = {\n");
@@ -213,11 +259,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                         )?;
                     }
                     export(exports, input_name.clone(), input_name.clone())?;
-                    writeln!(
-                        boundaries,
-                        "\n    async def {}(self, input: models.{input_name} | dict[str, Any], *, initial_state: dict[str, Any] | None = None, capabilities: dict[str, Any] | None = None, event_id: str | None = None, content: ContentContext | None = None, sources: ContentSources | None = None, original_request: dict[str, Any] | None = None, uploads: dict[str, Any] | None = None, input_codec: Codec[InputT] | None = None, result_codec: Codec[ResultT] | None = None, provenance_codec: Codec[ProvenanceT] | None = None, event_codecs: Mapping[tuple[str, ...], Codec[Any]] | None = None) -> _hooks.HookResult[InputT, ResultT, ProvenanceT]:\n        return await cast(\"Hooks\", self).dispatch({tag:?}, input, initial_state=initial_state, capabilities=capabilities, event_id=event_id, content=content, sources=sources, original_request=original_request, uploads=uploads, input_codec=input_codec, result_codec=result_codec, provenance_codec=provenance_codec, event_codecs=event_codecs)",
-                        snake_case(short)
-                    )?;
+                    emit_boundary(&mut boundaries, short, &input_name, &tag)?;
                     count += 1;
                 }
             }
@@ -279,6 +321,21 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         "_ADDITIONAL_TYPES = json.loads({})",
         python_string(&serde_json::to_string(&additional_types)?)?
     )?;
+    // Canonical container names for origin-correlated boundary views.
+    for name in ["CanonicalMessages", "TextParts"] {
+        if let Some(named) = ir.types.iter().find(|named| named.name == name) {
+            writeln!(
+                aliases,
+                "{name} = {}",
+                annotation(ir, &named.shape, name, "")?
+            )?;
+            export(
+                modules.entry("content".into()).or_default(),
+                name.into(),
+                name.into(),
+            )?;
+        }
+    }
     body.push_str(&aliases);
     body.push('\n');
     if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
@@ -299,7 +356,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     content_slots_source.push_str("}\n");
     boundaries.push_str(&content_slots_source);
     // Import the module only after BoundaryMixin exists, avoiding either import order cycle.
-    boundaries.push_str("\n_hooks = _import_module(\"._hooks\", __package__)\n");
+    boundaries.push_str(
+        "\nif not TYPE_CHECKING:\n    _hooks = _import_module(\"._hooks\", __package__)\n",
+    );
     // Stable semantic aliases use the same resolved schema names as Go/Rust.
     for (alias, model) in [
         ("Input", "ExecutionEventTool"),
@@ -361,6 +420,12 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
+    public.extend(
+        ["CanonicalMessages", "TextParts"]
+            .into_iter()
+            .filter(|name| ir.types.iter().any(|named| named.name == *name))
+            .map(str::to_owned),
+    );
     modules
         .entry("content".into())
         .or_default()

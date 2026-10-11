@@ -352,7 +352,7 @@ mod tests {
                 );
             }
         }
-        assert_eq!(files["_boundaries.py"].matches("async def ").count(), 32);
+        assert_eq!(files["_boundaries.py"].matches("async def ").count(), 32 * 9);
         assert_eq!(
             files["_boundaries.py"]
                 .matches("return await cast(\"Hooks\", self).dispatch(")
@@ -374,7 +374,7 @@ mod tests {
         assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
         assert_eq!(
             files["_boundaries.py"]
-                .matches("-> _hooks.HookResult[InputT, ResultT, ProvenanceT]:")
+                .matches("-> _hooks.HookResult[InputT, ResultT, ProvenanceT]: ...")
                 .count(),
             32
         );
@@ -645,9 +645,9 @@ mod tests {
         assert!(contract.contains("result[\"_meta\"] = self.meta"));
         assert!(contract.contains("dict(self.additional_properties)"));
         assert!(files["_boundaries.py"].contains("\nfrom . import _models as models\n"));
-        assert!(files["_boundaries.py"].contains("result_codec: Codec[ResultT] | None = None"));
+        assert!(files["_boundaries.py"].contains("result_codec: Codec[ResultT]"));
         assert!(
-            files["_boundaries.py"].contains("provenance_codec: Codec[ProvenanceT] | None = None")
+            files["_boundaries.py"].contains("provenance_codec: Codec[ProvenanceT]")
         );
         assert!(
             files["_boundaries.py"].contains("_hooks = _import_module(\"._hooks\", __package__)")
