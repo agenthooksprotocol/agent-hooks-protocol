@@ -21,6 +21,17 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             constructor(&g, body, name, &short, fields)?;
         }
     }
+    for event in ir.types.iter().filter(|t| t.name.ends_with("Event")) {
+        let boundary = event.name.trim_end_matches("Event");
+        let response = format!("{boundary}InterceptResponse");
+        if ir.types.iter().any(|t| t.name == response) {
+            writeln!(
+                packages.entry("event".into()).or_default(),
+                "// ResponseFor{boundary} correlates at compile time only; it does not validate the response.\nfunc ResponseFor{boundary}(_ *ahp.{}, response *ahp.{response}) *ahp.{response} {{ return response }}",
+                event.name
+            )?;
+        }
+    }
     capability_options(&g, packages.entry("capability".into()).or_default())?;
     if ir.types.iter().any(|named| named.name == "Event") {
         packages
@@ -40,7 +51,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     // than unstable VariantN allocation names.
     if let Some(arms) = g.unions.get("Effect") {
         for (_, ty) in arms {
-            if ty.starts_with('*') {
+            if ty.starts_with('*') || g.ir.types.iter().any(|n| g.named_name(&n.name) == *ty) {
                 continue;
             }
             if let Some(fields) = g.objects.get(ty) {
@@ -105,13 +116,28 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         events.push_str(OWNED_CONTENT_INPUTS);
     }
     let mut methods = String::new();
+    let mut sources = String::from(INPUT_SOURCE_EXTRACTOR);
+    let mut source_cases = String::new();
     for (name, fields) in &g.objects {
         if !name.ends_with("Event") || !fields.iter().any(|f| f.wire_name == "source") {
             continue;
         }
         let short = name.trim_end_matches("Event");
         let generic = short == "ToolBefore";
-        input_projection(&g, &mut events, &format!("{short}Input"), fields, generic)?;
+        input_projection(
+            &g,
+            &mut events,
+            &mut sources,
+            &format!("{short}Input"),
+            fields,
+            generic,
+        )?;
+        if !generic {
+            writeln!(
+                source_cases,
+                "case event.{short}Input: extract{short}Input(v, sources)\ncase *event.{short}Input: if v != nil {{ extract{short}Input(*v, sources) }}"
+            )?;
+        }
         let tag = fields
             .iter()
             .find(|f| f.wire_name == "type")
@@ -121,7 +147,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             if generic {
                 writeln!(
                     methods,
-                    "func (c *Hooks) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return decodeToolBefore[T](c.intercept(ctx, {tag:?}, input, opts...)) }}"
+                    "func (c *Hooks) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return decodeToolBefore[T](c.intercept(ctx, {tag:?}, inputsources.PrepareToolBefore(input), opts...)) }}"
                 )?;
             } else if intercepts.contains(&tag) {
                 writeln!(
@@ -138,17 +164,15 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     }
     packages.insert("event".into(), events);
     let mut tool = String::new();
-    projection(
-        &mut tool,
-        "Input",
-        &g.objects["ExecutionEventTool"],
-        true,
-        true,
-    )?;
+    let mut tool_fields = g.objects["ExecutionEventTool"].clone();
+    for field in &mut tool_fields {
+        field.field_name = field.field_name.replace("Mcp", "MCP");
+    }
+    projection(&mut tool, "Input", &tool_fields, true, true)?;
     projection_constructor(
         &mut tool,
         "Input",
-        &g.objects["ExecutionEventTool"],
+        &tool_fields,
         "input",
         &["name", "origin", "input"],
     )?;
@@ -170,7 +194,132 @@ func Milliseconds(value time.Duration) (json.Number, error) {
     return json.Number(strconv.FormatInt(int64(value / time.Millisecond), 10)), nil
 }
 "#;
+    writeln!(
+        sources,
+        "// Extract accepts only generated nominal inputs, never external source-provider interfaces.\nfunc Extract(input any) map[string]*content.Source {{ sources := map[string]*content.Source{{}}; switch v := input.(type) {{\ncase toolBeforeEnvelope: for path, source := range v.sources {{ sources[path] = source }}; return sources\ncase event.ToolBeforeInput[any]: return ExtractToolBefore(v)\ncase *event.ToolBeforeInput[any]: if v != nil {{ return ExtractToolBefore(*v) }}\n{source_cases}\n}}; return sources }}"
+    )?;
+    packages.insert("internal/inputsources".into(), sources);
     let mut files = BTreeMap::new();
+    let responses = crate::ergonomics::contextual_responses(ir);
+    let mut correlated = String::from(
+        "// Code generated by ahp-codegen. DO NOT EDIT.\npackage ahp\n\n// ContextualResponse is admitted by the response schema for a known request event.\ntype ContextualResponse interface { contextualResponse() }\n",
+    );
+    for (_, _, response) in &responses {
+        writeln!(
+            correlated,
+            "func (*{response}) contextualResponse() {{}}\nfunc Parse{response}(input []byte) ParseResult[{response}] {{ return parseRoot[{response}]({response:?}, input) }}"
+        )?;
+    }
+    correlated.push_str("// ResponseForRequest validates without publishing state. Unknown events never grant authority.\nfunc ResponseForRequest(eventType string, input []byte) ParseResult[ContextualResponse] {\nswitch eventType {\n");
+    for (event, _, response) in &responses {
+        writeln!(
+            correlated,
+            "case {event:?}: r := Parse{response}(input); result := ParseResult[ContextualResponse]{{OK:r.OK,Raw:r.Raw,Diagnostics:r.Diagnostics}}; if r.OK {{ result.Value = &r.Value }}; return result"
+        )?;
+    }
+    correlated.push_str("default: return ParseResult[ContextualResponse]{Diagnostics:[]ParseDiagnostic{{Code:DiagnosticUnknownVariant,Severity:SeverityError,Message:\"Unknown request event: \"+eventType}}}\n}\n}\n// StageResponseForRequest runs application validation before a runtime may publish state.\nfunc StageResponseForRequest(eventType string, input []byte, validate func(ContextualResponse) error) ParseResult[ContextualResponse] { r := ResponseForRequest(eventType,input); if r.OK && validate != nil { if err := validate(r.Value); err != nil { r.OK=false; r.Value=nil; r.Diagnostics=append(r.Diagnostics,ParseDiagnostic{Code:DiagnosticInvalidKnownVariant,Severity:SeverityError,Message:err.Error()}) } }; return r }\n");
+    files.insert("contextual_responses_generated.go".into(), correlated);
+    let mut generic_source = String::from(
+        "// Code generated by ahp-codegen. DO NOT EDIT.\npackage ahp\nimport \"encoding/json\"\nimport \"fmt\"\n",
+    );
+    for (source, public, parameters, arguments) in [
+        ("ToolCandidate", "Candidate", "T, P any", "T, P"),
+        ("McpElicitationElicitResult", "ElicitResult", "T any", "T"),
+    ] {
+        let Some(named) = ir.types.iter().find(|t| t.name == source) else {
+            continue;
+        };
+        let Some(properties) = crate::ergonomics::object_fields(ir, &named.shape) else {
+            continue;
+        };
+        let Some(emitted) = g.objects.get(source) else {
+            continue;
+        };
+        writeln!(
+            generic_source,
+            "// {public} projects {source}; unknown members are retained.\ntype {public}[{parameters}] struct {{"
+        )?;
+        for p in &properties {
+            let field = emitted.iter().find(|f| f.wire_name == p.wire_name).unwrap();
+            let substitution = match p.wire_name.as_str() {
+                "value" | "content" => Some("T"),
+                "provenance" if public == "Candidate" => Some("P"),
+                _ => None,
+            };
+            let ty = if let Some(generic) = substitution {
+                if p.required {
+                    generic.into()
+                } else {
+                    format!("Optional[{generic}]")
+                }
+            } else if p.required {
+                field.field_type.clone()
+            } else {
+                format!("Optional[{}]", field.field_type)
+            };
+            writeln!(
+                generic_source,
+                "{} {ty} `json:{:?}`",
+                field.field_name, p.wire_name
+            )?;
+        }
+        generic_source
+            .push_str("AdditionalProperties map[string]json.RawMessage `json:\"-\"`\n}\n");
+        writeln!(
+            generic_source,
+            "func (value {public}[{arguments}]) MarshalJSON() ([]byte,error) {{ fields := make(map[string]json.RawMessage,len(value.AdditionalProperties)+{}); for k,v := range value.AdditionalProperties {{ fields[k]=v }}",
+            properties.len()
+        )?;
+        for p in &properties {
+            let field = &emitted
+                .iter()
+                .find(|f| f.wire_name == p.wire_name)
+                .unwrap()
+                .field_name;
+            if p.required {
+                writeln!(
+                    generic_source,
+                    "{{ raw,err:=json.Marshal(value.{field}); if err!=nil {{return nil,err}}; fields[{:?}]=raw }}",
+                    p.wire_name
+                )?;
+            } else {
+                writeln!(
+                    generic_source,
+                    "if value.{field}.Present {{ raw,err:=json.Marshal(value.{field}.Value); if err!=nil {{return nil,err}}; fields[{:?}]=raw }} else {{delete(fields,{:?})}}",
+                    p.wire_name, p.wire_name
+                )?;
+            }
+        }
+        generic_source.push_str("return json.Marshal(fields)\n}\n");
+        writeln!(
+            generic_source,
+            "func (value *{public}[{arguments}]) UnmarshalJSON(data []byte) error {{ var fields map[string]json.RawMessage; if err:=json.Unmarshal(data,&fields); err!=nil {{return err}}; var decoded {public}[{arguments}]"
+        )?;
+        for p in &properties {
+            let field = &emitted
+                .iter()
+                .find(|f| f.wire_name == p.wire_name)
+                .unwrap()
+                .field_name;
+            if p.required {
+                writeln!(
+                    generic_source,
+                    "if raw,ok:=fields[{:?}]; ok {{if err:=json.Unmarshal(raw,&decoded.{field});err!=nil {{return err}};delete(fields,{:?})}} else {{return fmt.Errorf(\"missing required property: %s\",{:?})}}",
+                    p.wire_name, p.wire_name, p.wire_name
+                )?;
+            } else {
+                writeln!(
+                    generic_source,
+                    "if raw,ok:=fields[{:?}]; ok {{decoded.{field}.Present=true; if err:=json.Unmarshal(raw,&decoded.{field}.Value);err!=nil {{return err}};delete(fields,{:?})}}",
+                    p.wire_name, p.wire_name
+                )?;
+            }
+        }
+        generic_source
+            .push_str("decoded.AdditionalProperties=fields; *value=decoded; return nil\n}\n");
+    }
+    files.insert("contract_projections_generated.go".into(), generic_source);
+
     for (package, mut body) in packages {
         if body.contains("time.Duration") {
             body.push_str(duration_helper);
@@ -212,9 +361,13 @@ func Milliseconds(value time.Duration) (json.Number, error) {
         if body.contains("tool.Input") {
             writeln!(imports, "import \"{MODULE}/tool\"")?;
         }
-        files.insert(format!("{package}/generated.go"), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage {package}\n{imports}\n{body}"));
+        let package_name = package.rsplit('/').next().unwrap();
+        if body.contains("event.") {
+            writeln!(imports, "import \"{MODULE}/event\"")?;
+        }
+        files.insert(format!("{package}/generated.go"), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage {package_name}\n{imports}\n{body}"));
     }
-    files.insert("client/boundaries_generated.go".into(), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage client\nimport \"context\"\nimport \"{MODULE}/event\"\n{methods}"));
+    files.insert("client/boundaries_generated.go".into(), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage client\nimport \"context\"\nimport \"{MODULE}/event\"\nimport \"{MODULE}/internal/inputsources\"\n{methods}"));
     files.insert(
         "facade_generated_test.go".into(),
         include_str!("../../../tests/go-facade_test.go").into(),
@@ -675,8 +828,33 @@ func WithCandidate(value ahp.Nullable[ahp.$OBJECT_TYPE]) Option { return func(v 
     Ok(())
 }
 
+fn selector_value(g: &Generator<'_>, field: &RenderedField, value: &str) -> Result<String> {
+    let ty = field.field_type.trim_start_matches('*');
+    if let Some(arms) = g.unions.get(ty) {
+        let label = go_identifier(value);
+        let (arm, arm_type) = arms
+            .iter()
+            .find(|(arm, _)| *arm == label)
+            .ok_or_else(|| anyhow::anyhow!("missing selector arm {ty}.{label}"))?;
+        Ok(format!(
+            "{}{}{{{arm}: ahp.Some({}({value:?}))}}",
+            if field.field_type.starts_with('*') {
+                "&"
+            } else {
+                ""
+            },
+            qualify(ty),
+            qualify(arm_type)
+        ))
+    } else {
+        Ok(format!("{}({value:?})", qualify(&field.field_type)))
+    }
+}
+
 fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
     for (arm, ty) in &g.unions["Effect"] {
+        let pointer = if ty.starts_with('*') { "&" } else { "" };
+        let ty = ty.trim_start_matches('*');
         let Some(fields) = g.objects.get(ty) else {
             continue;
         };
@@ -688,13 +866,23 @@ fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
         else {
             continue;
         };
-        if tag == "return" {
+        if tag == "return" && (ty == "EffectReturn" || ty == "ReturnToolEffect") {
+            let short = if ty == "ReturnToolEffect" {
+                "ReturnTool"
+            } else {
+                "Return"
+            };
             writeln!(
                 out,
-                "func Return[T any](value T, opts ...ReturnOption) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; return NewReturn(raw, opts...), nil }}"
+                "func Return[T any](value T, opts ...{short}Option) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; return New{short}(raw, opts...), nil }}"
             )?;
         }
         if tag == "inject" {
+            let short = if ty == "InjectEffect" {
+                "Inject"
+            } else {
+                "InjectAppend"
+            };
             let deliver = fields.iter().find(|f| f.wire_name == "deliverAt").unwrap();
             writeln!(out, "type DeliverAt = {}", qualify(&deliver.field_type))?;
             for value in enum_strings(g, &deliver.shape) {
@@ -709,7 +897,7 @@ fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
             );
             writeln!(
                 out,
-                "func InjectContextAppend[T any](deliverAt DeliverAt, value T, opts ...InjectAppendOption) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; var canonical {value_type}; if err := json.Unmarshal(raw, &canonical); err != nil {{ return nil, err }}; return NewInjectAppend(deliverAt, canonical, opts...), nil }}"
+                "func InjectContextAppend[T any](deliverAt DeliverAt, value T, opts ...{short}Option) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; var canonical {value_type}; if err := json.Unmarshal(raw, &canonical); err != nil {{ return nil, err }}; return New{short}(deliverAt, canonical, opts...), nil }}"
             )?;
         }
         if tag != "modify" {
@@ -717,16 +905,34 @@ fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
         }
         let target = fields.iter().find(|f| f.wire_name == "target").unwrap();
         let operation = fields.iter().find(|f| f.wire_name == "operation").unwrap();
+        let value = fields.iter().find(|f| f.wire_name == "value").unwrap();
+        let value_type = qualify(&value.field_type);
         for target_value in enum_strings(g, &target.shape) {
+            let helper = crate::ergonomics::modify_helper_target(&target_value, &value.shape);
             for operation_value in enum_strings(g, &operation.shape) {
                 let name = format!(
                     "Modify{}{}",
-                    go_identifier(&target_value),
+                    go_identifier(&helper),
                     go_identifier(&operation_value)
                 );
+                let target_value_expression = selector_value(g, target, &target_value)?;
+                let operation_value_expression = selector_value(g, operation, &operation_value)?;
+                if target_value == "input" {
+                    // Host tool payloads remain generic. Decode into the schema-owned
+                    // object value, then validate its complete canonical effect model.
+                    writeln!(
+                        out,
+                        "func {name}[T any](value T) (*ahp.Effect, error) {{ raw,err:=json.Marshal(value); if err!=nil {{return nil,err}}; var canonical {value_type}; if err:=json.Unmarshal(raw,&canonical);err!=nil {{return nil,err}}; encoded,err:=json.Marshal({name}Value(canonical));if err!=nil {{return nil,err}}; var validated ahp.{ty}; if err:=json.Unmarshal(encoded,&validated);err!=nil {{return nil,err}}; return &ahp.Effect{{{arm}:ahp.Some({pointer}validated)}},nil }}"
+                    )?;
+                } else {
+                    writeln!(
+                        out,
+                        "func {name}(value {value_type}) (*ahp.Effect, error) {{ return &ahp.Effect{{{arm}: ahp.Some({pointer}ahp.{ty}{{Type: {tag:?}, Target: {target_value_expression}, Operation: {operation_value_expression}, Value: value}})}}, nil }}"
+                    )?;
+                }
                 writeln!(
                     out,
-                    "func {name}[T any](value T) (*ahp.Effect, error) {{ raw, err := json.Marshal(value); if err != nil {{ return nil, err }}; return &ahp.Effect{{{arm}: ahp.Some(ahp.{ty}{{Type: {tag:?}, Target: {target_value:?}, Operation: {operation_value:?}, Value: raw}})}}, nil }}"
+                    "func {name}Value(value {value_type}) *ahp.{ty} {{ return &ahp.{ty}{{Type: {tag:?}, Target: {target_value_expression}, Operation: {operation_value_expression}, Value: value}} }}"
                 )?;
             }
         }
@@ -734,8 +940,31 @@ fn effect_operations(g: &Generator<'_>, out: &mut String) -> Result<()> {
     Ok(())
 }
 
+fn projection_name(wire: &str) -> String {
+    match wire {
+        "FileChangedEventChangesItem" => "FileChangeInput".into(),
+        "ExecutionEventFilechange" => "ToolFileChangeInput".into(),
+        "UserMessageInboundEventMessage" => "InboundMessageInput".into(),
+        "UserMessageInboundEventMessageMessagesItem" => "InboundMessageItemInput".into(),
+        "UserMessageOutboundEventMessage" => "OutboundMessageInput".into(),
+        "UserMessageOutboundEventMessageMessagesItem" => "OutboundMessageItemInput".into(),
+        _ => format!("{wire}Input"),
+    }
+}
+
+const INPUT_SOURCE_EXTRACTOR: &str = r#"
+// toolBeforeEnvelope is internal: host-defined types cannot provide owned sources.
+type toolBeforeEnvelope struct { input any; sources map[string]*content.Source }
+func (v toolBeforeEnvelope) MarshalJSON() ([]byte, error) { return json.Marshal(v.input) }
+// PrepareToolBefore keeps generic host arguments intact for serialization.
+func PrepareToolBefore[T any](v event.ToolBeforeInput[T]) any { return toolBeforeEnvelope{input:v, sources:ExtractToolBefore(v)} }
+func extractContentPartInput(v *event.ContentPartInput, path string, sources map[string]*content.Source) {
+    if v.Wire == nil && v.Text == nil && v.Attachment != nil && v.Attachment.Body != nil { sources[path] = v.Attachment.Body }
+}
+"#;
+
 fn input_identifier(name: &str) -> String {
-    let name = go_identifier(name);
+    let name = go_identifier(name).replace("Mcp", "MCP");
     if let Some(prefix) = name.strip_suffix("Id") {
         format!("{prefix}ID")
     } else {
@@ -748,6 +977,7 @@ fn input_identifier(name: &str) -> String {
 fn host_projection(
     g: &Generator<'_>,
     out: &mut String,
+    sources: &mut String,
     ty: &str,
     paths: &[Vec<String>],
 ) -> Result<String> {
@@ -757,13 +987,16 @@ fn host_projection(
             .filter(|p| p.first().map(String::as_str) == Some("*"))
             .map(|p| p[1..].to_vec())
             .collect::<Vec<_>>();
-        return Ok(format!("[]{}", host_projection(g, out, item, &paths)?));
+        return Ok(format!(
+            "[]{}",
+            host_projection(g, out, sources, item, &paths)?
+        ));
     }
     let wire = ty.trim_start_matches('*');
     if wire == "ContentItem" {
         return Ok("*ContentPartInput".into());
     }
-    let host = format!("{wire}Input");
+    let host = projection_name(wire);
     if !out.contains(&format!("type {host} struct {{")) {
         let fields = g
             .objects
@@ -779,7 +1012,7 @@ fn host_projection(
             if tails.is_empty() {
                 continue;
             }
-            let child = host_projection(g, out, &field.field_type, &tails)?;
+            let child = host_projection(g, out, sources, &field.field_type, &tails)?;
             children.push((field, child));
         }
         writeln!(
@@ -842,29 +1075,30 @@ fn host_projection(
         }
         writeln!(
             out,
-            "projected, err := json.Marshal(fields); if err != nil {{ return nil, err }}; var canonical ahp.{wire}; if err := json.Unmarshal(projected, &canonical); err != nil {{ return nil, fmt.Errorf(\"invalid host {host}: %w\", err) }}; return projected, nil\n}}\nfunc (v *{host}) ahpContentSources(path string, sources map[string]*content.Source) {{"
+            "projected, err := json.Marshal(fields); if err != nil {{ return nil, err }}; var canonical ahp.{wire}; if err := json.Unmarshal(projected, &canonical); err != nil {{ return nil, fmt.Errorf(\"invalid host {host}: %w\", err) }}; return projected, nil\n}}"
         )?;
-        if fields.iter().any(|f| f.wire_name == "id") {
-            writeln!(out, "_ = ensureContentIdentity(&v.ID, &v.Synthesized)")?;
-        }
+        writeln!(
+            sources,
+            "func extract{host}(v *event.{host}, path string, sources map[string]*content.Source) {{"
+        )?;
         for (field, child) in &children {
             if !field.required {
-                writeln!(out, "if v.{}.Present {{", field.field_name)?;
+                writeln!(sources, "if v.{}.Present {{", field.field_name)?;
             }
             let access = if field.required { "" } else { ".Value" };
             let segment = field.wire_name.replace('~', "~0").replace('/', "~1");
             emit_host_sources(
-                out,
+                sources,
                 child,
                 &format!("v.{}{access}", field.field_name),
                 &format!("path + {:?}", format!("/{segment}")),
                 0,
             )?;
             if !field.required {
-                writeln!(out, "}}")?;
+                writeln!(sources, "}}")?;
             }
         }
-        writeln!(out, "}}")?;
+        writeln!(sources, "}}")?;
     }
     Ok(format!(
         "{}{host}",
@@ -980,7 +1214,13 @@ fn emit_host_sources(
         if ty.starts_with('*') {
             writeln!(out, "if {value} != nil {{")?;
         }
-        writeln!(out, "{value}.ahpContentSources({path}, sources)")?;
+        let name = ty.trim_start_matches('*');
+        let value = if ty.starts_with('*') {
+            value.to_owned()
+        } else {
+            format!("&({value})")
+        };
+        writeln!(out, "extract{name}({value}, {path}, sources)")?;
         if ty.starts_with('*') {
             writeln!(out, "}}")?;
         }
@@ -998,7 +1238,7 @@ type ContentPartInput struct {
 }
 // AttachmentBodyInput embeds wire metadata, but Body is an owned host handle.
 // Descriptor is optional; without one, encoding emits a pending descriptor.
-// The runtime must replace pending descriptors via AHPContentSources before validation/send.
+// The runtime replaces pending descriptors using internal/inputsources before validation/send.
 // Encoding and extraction never read, close, or upload Body.
 type AttachmentBodyInput struct {
     ahp.AttachmentBodyPart
@@ -1069,19 +1309,12 @@ func (v ContentPartInput) MarshalJSON() ([]byte, error) {
     } else if v.Attachment.Descriptor != nil { part.Body = v.Attachment.Descriptor }
     return marshalHostContentPart(part, false)
 }
-func (v ContentPartInput) ahpContentSources(path string, sources map[string]*content.Source) {
-    if v.Wire != nil { return }
-    if v.Text != nil && v.Attachment == nil { _ = ensureContentIdentity(&v.Text.ID, &v.Text.Synthesized); return }
-    if v.Text == nil && v.Attachment != nil {
-        _ = ensureContentIdentity(&v.Attachment.ID, &v.Attachment.Synthesized)
-        if v.Attachment.Body != nil { sources[path] = v.Attachment.Body }
-    }
-}
 "#;
 
 fn input_projection(
     g: &Generator<'_>,
     out: &mut String,
+    sources: &mut String,
     name: &str,
     fields: &[RenderedField],
     generic: bool,
@@ -1124,7 +1357,7 @@ fn input_projection(
                 .map(Vec::as_slice)
                 .unwrap_or(&[]);
         }
-        let ty = host_projection(g, out, &resolved.unwrap().field_type, &paths)?;
+        let ty = host_projection(g, out, sources, &resolved.unwrap().field_type, &paths)?;
         host_fields.insert(field.property.wire_name.clone(), ty);
     }
     let params = if generic { "[T any]" } else { "" };
@@ -1160,89 +1393,45 @@ fn input_projection(
     for (field, ty) in &host_fields {
         writeln!(
             out,
-            "// {}Host overrides the wire field when non-nil; embeds owned sources without reading them.",
+            "// {}Input overrides the wire field when non-nil; embeds owned sources without reading them.",
             input_identifier(field)
         )?;
-        writeln!(out, "{}Host *{ty} `json:\"-\"`", input_identifier(field))?;
+        writeln!(out, "{}Input *{ty} `json:\"-\"`", input_identifier(field))?;
     }
-    for slot in slots
-        .iter()
-        .filter(|slot| crate::ergonomics::legacy_source_binding(slot))
-    {
-        let suffix = if slot.many { "Sources" } else { "Source" };
-        let ty = format!(
-            "{}*content.Source",
-            "[]".repeat(slot.path.iter().filter(|p| p.as_str() == "*").count())
-        );
+    writeln!(out, "}}")?;
+    if generic {
         writeln!(
-            out,
-            "{}{} {ty} `json:\"-\"`",
-            input_identifier(&slot.name),
-            suffix
+            sources,
+            "// ExtractToolBefore preserves typed host payloads while extracting only declared content slots.\nfunc ExtractToolBefore[T any](v event.{name}{use_params}) map[string]*content.Source {{ sources := map[string]*content.Source{{}}"
         )?;
-    }
-    writeln!(
-        out,
-        "}}\n// AHPContentSources returns owned sources out of band; descriptors stay in canonical JSON.\nfunc (v {name}{use_params}) AHPContentSources() map[string]*content.Source {{ sources := map[string]*content.Source{{}}"
-    )?;
-    for slot in slots
-        .iter()
-        .filter(|slot| crate::ergonomics::legacy_source_binding(slot))
-    {
-        let field = input_identifier(&slot.name);
-        let mut depth = 0;
-        let mut path = vec!["\"\"".to_owned()];
-        let mut collection = format!("v.{field}Sources");
-        for segment in &slot.path {
-            if segment == "*" {
-                let index = format!("index{depth}");
-                let value = format!("source{depth}");
-                writeln!(out, "for {index}, {value} := range {collection} {{")?;
-                path.push(format!("\"/\" + strconv.Itoa({index})"));
-                collection = value;
-                depth += 1;
-            } else {
-                let escaped = segment.replace('~', "~0").replace('/', "~1");
-                path.push(format!("{:?}", format!("/{escaped}")));
-            }
-        }
-        let source = if depth == 0 {
-            format!("v.{field}Source")
-        } else {
-            collection
-        };
+    } else {
         writeln!(
-            out,
-            "if {source} != nil {{ sources[{}] = {source} }}",
-            path.join(" + ")
+            sources,
+            "func extract{name}(v event.{name}, sources map[string]*content.Source) {{"
         )?;
-        for _ in 0..depth {
-            writeln!(out, "}}")?;
-        }
     }
     for field in &projected {
         if let Some(ty) = host_fields.get(&field.property.wire_name) {
             let field_name = input_identifier(&field.property.wire_name);
             let path = format!("/{}", field.path.join("/"));
-            writeln!(out, "if v.{field_name}Host != nil {{")?;
-            writeln!(
-                out,
-                "for path := range sources {{ if path == {path:?} || strings.HasPrefix(path, {prefix:?}) {{ delete(sources, path) }} }}",
-                prefix = format!("{path}/")
-            )?;
+            writeln!(sources, "if v.{field_name}Input != nil {{")?;
             emit_host_sources(
-                out,
+                sources,
                 ty,
-                &format!("(*v.{field_name}Host)"),
+                &format!("(*v.{field_name}Input)"),
                 &format!("{path:?}"),
                 0,
             )?;
-            writeln!(out, "}}")?;
+            writeln!(sources, "}}")?;
         }
     }
+    if generic {
+        writeln!(sources, "return sources")?;
+    }
+    writeln!(sources, "}}")?;
     writeln!(
         out,
-        "return sources\n}}\nfunc (v {name}{use_params}) MarshalJSON() ([]byte, error) {{ fields := map[string]any{{}}"
+        "func (v {name}{use_params}) MarshalJSON() ([]byte, error) {{ fields := map[string]any{{}}"
     )?;
     for field in &projected {
         let name = input_identifier(&field.property.wire_name);
@@ -1273,12 +1462,12 @@ fn input_projection(
             writeln!(out, "}}")?;
         }
         if host_fields.contains_key(&field.property.wire_name) {
-            writeln!(out, "if v.{name}Host != nil {{")?;
+            writeln!(out, "if v.{name}Input != nil {{")?;
             emit_host_placement(
                 g,
                 out,
                 &host_fields[&field.property.wire_name],
-                &format!("(*v.{name}Host)"),
+                &format!("(*v.{name}Input)"),
                 &field.property.shape,
                 0,
             )?;
@@ -1293,7 +1482,7 @@ fn input_projection(
             }
             writeln!(
                 out,
-                "{parent}[{:?}] = v.{name}Host",
+                "{parent}[{:?}] = v.{name}Input",
                 field.path.last().unwrap()
             )?;
             writeln!(out, "}}")?;
@@ -1326,7 +1515,8 @@ fn constructor(
         writeln!(
             out,
             "func With{short}{}(value {ty}) {option} {{ return func(v *ahp.{name}) {{ v.{} = {value} }} }}",
-            f.field_name, f.field_name
+            f.field_name.replace("Mcp", "MCP"),
+            f.field_name
         )?;
     }
     // Required collections with a positional first element also expose an
@@ -1532,7 +1722,9 @@ fn constructor_default(field: &RenderedField) -> Result<String> {
     let scalar = match &field.shape {
         Shape::Boolean if default.is_boolean() => default.to_string(),
         Shape::String if default.is_string() => go_string(default.as_str().unwrap())?,
-        Shape::Integer if default.as_i64().is_some() || default.as_u64().is_some() => {
+        Shape::Integer | Shape::BoundedInteger { .. }
+            if default.as_i64().is_some() || default.as_u64().is_some() =>
+        {
             go_string(&default.to_string())?
         }
         Shape::Number if default.is_number() => go_string(&default.to_string())?,
@@ -1620,7 +1812,8 @@ fn projection_constructor(
         writeln!(
             out,
             "func With{name}{}(value {ty}) {name}Option {{ return func(v *{config}) {{ v.{} = {value} }} }}",
-            f.field_name, f.field_name
+            f.field_name.replace("Mcp", "MCP"),
+            f.field_name
         )?;
     }
     let mut ordered = fields
@@ -1736,6 +1929,10 @@ fn enum_strings_visited(
     visited: &BTreeSet<String>,
 ) -> BTreeSet<String> {
     match shape {
+        Shape::Literal { value } => value
+            .as_str()
+            .map(|v| BTreeSet::from([v.to_owned()]))
+            .unwrap_or_default(),
         Shape::Enum { values, .. } => values
             .iter()
             .filter_map(|v| v.as_str().map(str::to_owned))
@@ -1807,7 +2004,7 @@ fn projection_type(g: &Generator<'_>, shape: &Shape) -> String {
         Shape::Array { items } => format!("[]{}", projection_type(g, items)),
         Shape::String | Shape::Enum { .. } | Shape::Literal { .. } => "string".into(),
         Shape::Boolean => "bool".into(),
-        Shape::Integer | Shape::Number => "json.Number".into(),
+        Shape::Integer | Shape::BoundedInteger { .. } | Shape::Number => "json.Number".into(),
         _ => "json.RawMessage".into(),
     }
 }
@@ -1906,13 +2103,36 @@ mod tests {
         let ir = draft();
         let files = emit(&ir).unwrap();
         let events = &files["event/generated.go"];
-        assert_eq!(events.matches("AHPContentSources()").count(), 32);
+        assert!(!events.contains("AHPContentSources"));
+        let extractor = &files["internal/inputsources/generated.go"];
+        assert_eq!(extractor.matches("case event.").count(), 32);
+        assert!(extractor.contains("func ExtractToolBefore[T any]"));
+        assert!(extractor.contains("case event.FileChangedInput:"));
+        assert!(!extractor.contains("interface {"));
         assert!(events.contains("CallID string"));
         assert!(events.contains("Input T"));
-        assert!(events.contains("ItemsSources []*content.Source `json:\"-\"`"));
+        assert!(!events.contains("ItemsSources"));
         assert!(!events.contains("ItemsPartsSources"));
-        assert!(events.contains("ItemsHost *[]*ModelVisibleItemInput"));
-        assert!(events.contains("MessageHost *UserMessageInboundEventMessageInput"));
+        assert!(events.contains("ItemsInput *[]*ModelVisibleItemInput"));
+        assert!(events.contains("MessageInput *InboundMessageInput"));
+        for (wire, facade) in [
+            ("FileChangedEventChangesItem", "FileChangeInput"),
+            ("ExecutionEventFilechange", "ToolFileChangeInput"),
+            ("UserMessageInboundEventMessage", "InboundMessageInput"),
+            (
+                "UserMessageInboundEventMessageMessagesItem",
+                "InboundMessageItemInput",
+            ),
+            ("UserMessageOutboundEventMessage", "OutboundMessageInput"),
+            (
+                "UserMessageOutboundEventMessageMessagesItem",
+                "OutboundMessageItemInput",
+            ),
+        ] {
+            assert!(events.contains(&format!("type {facade} struct {{ ahp.{wire}")));
+            assert!(!events.contains(&format!("type {wire}Input struct")));
+        }
+        assert!(!events.contains("Host *"));
         assert!(events.contains("Body *content.Source"));
         assert!(events.contains("synthesizeContentID()"));
         assert!(!events.contains("InstructionsSource"));
@@ -1921,8 +2141,11 @@ mod tests {
             assert!(files["diagnostic/generated.go"].contains(&format!("= {code:?}")));
         }
         assert!(files["state/generated.go"].contains("func Candidate[T any]"));
-        assert!(files["effect/generated.go"].contains("func ModifyInputReplace[T any]"));
-        assert!(files["effect/generated.go"].contains("func ModifyWorkspaceMerge[T any]"));
+        assert!(files["effect/generated.go"].contains("func ModifyInputReplace[T any](value T)"));
+        assert!(
+            files["effect/generated.go"]
+                .contains("func ModifyWorkspaceMerge(value *ahp.WorkspaceChange)")
+        );
         assert!(
             files["capability/generated.go"]
                 .contains("func Intercept(grants ...Grant) (Event, error)")
@@ -2246,7 +2469,7 @@ mod tests {
         let source = &files["tool/generated.go"];
         assert!(source.contains("func NewInput[T any](argName string, argOrigin ahp.ExecutionEventToolOrigin, argInput T, opts ...InputOption) Input[T]"));
         assert!(source.contains("func WithInputKind(value string) InputOption"));
-        assert!(source.contains("func WithInputMcp(value *ahp.ExecutionEventMcp) InputOption"));
+        assert!(source.contains("func WithInputMCP(value *ahp.ExecutionEventMcp) InputOption"));
         assert!(!source.contains("InputOption[T"));
         // A renamed optional schema property must flow through the config,
         // setter and constructor assignment without editing helper templates.
@@ -2300,7 +2523,10 @@ mod tests {
                 "event",
             ] {
                 // Host inputs refer to the leaf source package, never to client runtime.
-                if path == "event/generated.go" && dependency == "content" {
+                if (path == "event/generated.go" && dependency == "content")
+                    || (path == "internal/inputsources/generated.go"
+                        && ["event", "content"].contains(&dependency))
+                {
                     continue;
                 }
                 assert!(

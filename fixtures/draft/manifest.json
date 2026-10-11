@@ -1882,8 +1882,8 @@
       "path": "fixtures/draft/http/contextual-elicitation-content-nested.invalid.json",
       "binding": "http-json",
       "schema": "schema/draft/intercept-response.schema.json",
-      "expectedValid": true,
-      "aggregateExpectedValid": true,
+      "expectedValid": false,
+      "aggregateExpectedValid": false,
       "contextualExpectedValid": false,
       "editContext": {
         "event": "user.elicitation.result",

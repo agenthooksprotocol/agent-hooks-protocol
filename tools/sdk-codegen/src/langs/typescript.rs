@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 mod ergonomics;
+pub mod facade;
 
 use anyhow::Result;
 
@@ -46,14 +47,14 @@ pub fn emit(ir: &Ir) -> Result<String> {
         .map(|named| {
             (
                 named.name.clone(),
-                serde_json::to_value(&named.shape).expect("shape serializes"),
+                effect_descriptors(serde_json::to_value(&named.shape).expect("shape serializes")),
             )
         })
         .collect::<serde_json::Map<_, _>>();
     writeln!(
         output,
-        "const SCHEMAS: Record<string, SchemaNode> = {} as unknown as Record<string, SchemaNode>;",
-        serde_json::to_string_pretty(&descriptors)?
+        "const SCHEMAS = parseJsonLossless({}) as unknown as Record<string, SchemaNode>;",
+        serde_json::to_string(&serde_json::to_string(&descriptors)?)?
     )?;
     output.push_str(RUNTIME);
 
@@ -80,6 +81,47 @@ pub fn emit(ir: &Ir) -> Result<String> {
     Ok(output)
 }
 
+fn is_effect_union(variants: &[Shape]) -> bool {
+    !variants.is_empty()
+        && variants
+            .iter()
+            .all(|variant| matches!(variant, Shape::Ref { name } if name.ends_with("Effect")))
+}
+
+// Effect admission is closed even though unknown fields on admitted effects are preserved.
+fn effect_descriptors(mut value: serde_json::Value) -> serde_json::Value {
+    match &mut value {
+        serde_json::Value::Object(fields) => {
+            if fields.get("kind").and_then(serde_json::Value::as_str) == Some("union") {
+                if let Some(variants) = fields.get("variants").and_then(serde_json::Value::as_array)
+                {
+                    if !variants.is_empty()
+                        && variants.iter().all(|arm| {
+                            arm.get("kind").and_then(serde_json::Value::as_str) == Some("ref")
+                                && arm
+                                    .get("name")
+                                    .and_then(serde_json::Value::as_str)
+                                    .is_some_and(|name| name.ends_with("Effect"))
+                        })
+                    {
+                        fields.insert("closed_discriminator".into(), true.into());
+                    }
+                }
+            }
+            for child in fields.values_mut() {
+                *child = effect_descriptors(child.take());
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                *child = effect_descriptors(child.take());
+            }
+        }
+        _ => {}
+    }
+    value
+}
+
 fn render(shape: &Shape, depth: usize) -> Result<String> {
     if let Some(reference) = shape.constrained_reference() {
         return render(reference, depth);
@@ -89,7 +131,8 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
         Shape::Never => "never".into(),
         Shape::Null => "null".into(),
         Shape::Boolean => "boolean".into(),
-        Shape::Integer | Shape::Number => "number".into(),
+        Shape::Integer | Shape::BoundedInteger { .. } => "number | bigint".into(),
+        Shape::Number => "number | bigint".into(),
         Shape::String => "string".into(),
         Shape::Literal { value } => serde_json::to_string(value)?,
         Shape::Enum {
@@ -113,11 +156,19 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
             .iter()
             .map(|variant| {
                 let member = render(variant, depth)?;
-                Ok(if matches!(variant, Shape::Union { .. }) {
-                    format!("({member})")
-                } else {
-                    member
-                })
+                Ok(
+                    if matches!(
+                        variant,
+                        Shape::Union { .. }
+                            | Shape::Integer
+                            | Shape::BoundedInteger { .. }
+                            | Shape::Number
+                    ) {
+                        format!("({member})")
+                    } else {
+                        member
+                    },
+                )
             })
             .collect::<Result<Vec<_>>>()?
             .join(" & "),
@@ -130,7 +181,10 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
                 .iter()
                 .map(|variant| render(variant, depth))
                 .collect::<Result<Vec<_>>>()?;
-            if let Some(property) = discriminator {
+            if let Some(property) = discriminator
+                .as_ref()
+                .filter(|_| !is_effect_union(variants))
+            {
                 rendered.push(format!("UnknownVariant<{:?}>", property));
             }
             rendered.join(" | ")
@@ -140,6 +194,11 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
             additional,
             ..
         } => {
+            if let AdditionalProperties::Typed { shape } = additional {
+                if properties.is_empty() {
+                    return Ok(format!("Record<string, {}>", render(shape, depth)?));
+                }
+            }
             let indent = "  ".repeat(depth);
             let child_indent = "  ".repeat(depth + 1);
             let mut value = String::from("{\n");
@@ -154,6 +213,14 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
             }
             write!(value, "{indent}}}")?;
             match additional {
+                AdditionalProperties::Typed { shape } => {
+                    // Named optional members and absent dictionary keys retain presence.
+                    write!(
+                        value,
+                        " & Partial<Record<string, {}>>",
+                        render(shape, depth)?
+                    )?;
+                }
                 AdditionalProperties::Allowed | AdditionalProperties::Forbidden => {
                     // Even canonically closed objects retain unknown input for lossless parsing.
                     value.push_str(" & AdditionalProperties");
@@ -172,7 +239,7 @@ fn lower_camel(value: &str) -> String {
     }
 }
 
-const PRELUDE: &str = r#"export type JsonPrimitive = null | boolean | number | string;
+const PRELUDE: &str = r#"export type JsonPrimitive = null | boolean | number | bigint | string;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type AdditionalProperties = { [key: string]: JsonValue };
 export type OpenString<Known extends string> = Known | (string & {});
@@ -191,20 +258,95 @@ export type ParseResult<T> =
 
 type SchemaNode =
   | { kind: "any" | "never" | "null" | "boolean" | "integer" | "number" | "string" }
+  | { kind: "boundedInteger"; minimum?: number | bigint; maximum?: number | bigint }
   | { kind: "literal"; value: JsonValue }
   | { kind: "enum"; values: JsonValue[]; open_strings: boolean }
   | { kind: "array"; items: SchemaNode }
-  | { kind: "object"; properties: Array<{ wire_name: string; required: boolean; shape: SchemaNode }>; forbidden_property_sets: string[][]; additional: unknown }
-  | { kind: "union"; mode: "anyOf" | "oneOf"; variants: SchemaNode[]; discriminator?: string }
+  | { kind: "object"; properties: Array<{ wire_name: string; required: boolean; shape: SchemaNode }>; forbidden_property_sets: string[][]; additional: { kind: "allowed" | "forbidden" } | { kind: "typed"; shape: SchemaNode } }
+  | { kind: "union"; mode: "anyOf" | "oneOf"; variants: SchemaNode[]; discriminator?: string; closed_discriminator?: boolean }
   | { kind: "intersection"; variants: SchemaNode[] }
   | { kind: "ref"; name: string };
 
 "#;
 
-const RUNTIME: &str = r#"function parseRoot(name: string, input: string | unknown): ParseResult<unknown> {
+const RUNTIME: &str = r#"function parseJsonLossless(source: string): JsonValue {
+  let cursor = 0;
+  function whitespace(): void { while (cursor < source.length && /[ \t\r\n]/.test(source[cursor]!)) cursor++; }
+  function string(): string {
+    const start = cursor++;
+    while (cursor < source.length) {
+      const character = source[cursor++]!;
+      if (character === '"') return JSON.parse(source.slice(start, cursor)) as string;
+      if (character === "\\") cursor++;
+    }
+    throw new SyntaxError("Unterminated JSON string");
+  }
+  function number(token: string): number | bigint {
+    const parts = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token)!;
+    const fraction = parts[3] ?? "";
+    const exponent = Number(parts[4] ?? "0");
+    const digits = parts[2]! + fraction;
+    const scale = exponent - fraction.length;
+    // Integral exponent/decimal spellings also retain their exact mathematical value.
+    if (Number.isSafeInteger(scale)) {
+      let integer: string | undefined;
+      if (/^0+$/.test(digits)) integer = "0";
+      else if (scale >= 0) integer = digits + "0".repeat(scale);
+      else if (digits.slice(Math.max(0, digits.length + scale)).split("").every(digit => digit === "0")) integer = digits.slice(0, Math.max(0, digits.length + scale)) || "0";
+      if (integer !== undefined) {
+        const exact = BigInt(parts[1]! + integer);
+        return exact >= BigInt(Number.MIN_SAFE_INTEGER) && exact <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(exact) : exact;
+      }
+    }
+    const value = Number(token);
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) throw new TypeError("JSON number cannot be represented without integer rounding");
+    return value;
+  }
+  function value(): JsonValue {
+    whitespace();
+    const character = source[cursor];
+    if (character === '"') return string();
+    if (character === "[") {
+      cursor++; whitespace();
+      const result: JsonValue[] = [];
+      if (source[cursor] === "]") { cursor++; return result; }
+      for (;;) {
+        result.push(value()); whitespace();
+        if (source[cursor] === "]") { cursor++; return result; }
+        if (source[cursor++] !== ",") throw new SyntaxError("Expected array separator");
+      }
+    }
+    if (character === "{") {
+      cursor++; whitespace();
+      const result = Object.create(null) as Record<string, JsonValue>;
+      if (source[cursor] === "}") { cursor++; return result; }
+      for (;;) {
+        whitespace();
+        if (source[cursor] !== '"') throw new SyntaxError("Expected object key");
+        const key = string(); whitespace();
+        if (source[cursor++] !== ":") throw new SyntaxError("Expected object colon");
+        result[key] = value(); whitespace();
+        if (source[cursor] === "}") { cursor++; return result; }
+        if (source[cursor++] !== ",") throw new SyntaxError("Expected object separator");
+      }
+    }
+    for (const [token, parsed] of [["true", true], ["false", false], ["null", null]] as const) {
+      if (source.startsWith(token, cursor)) { cursor += token.length; return parsed; }
+    }
+    const token = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/.exec(source.slice(cursor))?.[0];
+    if (token === undefined) throw new SyntaxError("Expected JSON value");
+    cursor += token.length;
+    return number(token);
+  }
+  const parsed = value(); whitespace();
+  if (cursor !== source.length) throw new SyntaxError("Unexpected trailing JSON input");
+  return parsed;
+}
+
+function parseRoot(name: string, input: string | unknown): ParseResult<unknown> {
   let raw: JsonValue;
   try {
-    raw = toSafeJson(typeof input === "string" ? JSON.parse(input) : input);
+    raw = toSafeJson(typeof input === "string" ? parseJsonLossless(input) : input);
   } catch (error) {
     return { ok: false, diagnostics: [{ path: "", code: "invalid_json", severity: "error", message: error instanceof Error ? error.message : "Invalid JSON" }] };
   }
@@ -220,10 +362,14 @@ function checkNode(schema: SchemaNode, value: JsonValue, path: string, diagnosti
     case "never": return error(diagnostics, path, "invalid_type", "Value is forbidden");
     case "null": if (value !== null) error(diagnostics, path, "invalid_type", "Expected null"); return;
     case "boolean": if (typeof value !== "boolean") error(diagnostics, path, "invalid_type", "Expected boolean"); return;
-    case "integer": if (typeof value !== "number" || !Number.isSafeInteger(value)) error(diagnostics, path, "invalid_type", "Expected safely representable integer"); return;
-    case "number": if (typeof value !== "number" || !Number.isFinite(value)) error(diagnostics, path, "invalid_type", "Expected finite number"); return;
+    case "integer": if (!isInteger(value)) error(diagnostics, path, "invalid_type", "Expected integer"); return;
+    case "boundedInteger":
+      if (!isInteger(value)) return error(diagnostics, path, "invalid_type", "Expected integer");
+      if ((schema.minimum !== undefined && value < schema.minimum) || (schema.maximum !== undefined && value > schema.maximum)) error(diagnostics, path, "invalid_type", "Integer is outside its declared bounds");
+      return;
+    case "number": if (typeof value !== "bigint" && (typeof value !== "number" || !Number.isFinite(value))) error(diagnostics, path, "invalid_type", "Expected finite number"); return;
     case "string": if (typeof value !== "string") error(diagnostics, path, "invalid_type", "Expected string"); return;
-    case "literal": if (!sameJson(value, schema.value)) error(diagnostics, path, "literal_mismatch", `Expected ${JSON.stringify(schema.value)}`); return;
+    case "literal": if (!sameJson(value, schema.value)) error(diagnostics, path, "literal_mismatch", `Expected ${encodeJson(schema.value)}`); return;
     case "enum": {
       if (schema.values.some((candidate) => sameJson(candidate, value))) return;
       if (schema.open_strings && typeof value === "string") {
@@ -247,6 +393,12 @@ function checkNode(schema: SchemaNode, value: JsonValue, path: string, diagnosti
           if (property.required) error(diagnostics, joinPath(path, property.wire_name), "missing_required", "Required property is absent");
         } else checkNode(property.shape, value[property.wire_name]!, joinPath(path, property.wire_name), diagnostics);
       }
+      if (schema.additional.kind === "typed") {
+        const known = new Set(schema.properties.map(property => property.wire_name));
+        for (const key of Object.keys(value)) {
+          if (!known.has(key)) checkNode(schema.additional.shape, value[key]!, joinPath(path, key), diagnostics);
+        }
+      }
       return;
     case "intersection": schema.variants.forEach((variant) => checkNode(variant, value, path, diagnostics)); return;
     case "ref": checkNode(SCHEMAS[schema.name]!, value, path, diagnostics); return;
@@ -260,6 +412,7 @@ function checkUnion(schema: Extract<SchemaNode, { kind: "union" }>, value: JsonV
     const actual = value[schema.discriminator] as string;
     const branch = schema.variants.find((variant) => discriminatorValue(variant, schema.discriminator as string) === actual);
     if (!branch) {
+      if (schema.closed_discriminator) return error(diagnostics, joinPath(path, schema.discriminator), "unknown_variant", "Unknown effect type is not admitted");
       diagnostics.push({ path, code: "unknown_variant", severity: "warning", message: `Unknown ${schema.discriminator} variant ${JSON.stringify(actual)} was preserved` });
       return;
     }
@@ -291,7 +444,11 @@ function discriminatorValue(schema: SchemaNode, property: string): string | unde
 
 function toSafeJson(value: unknown, ancestors = new Set<object>()): JsonValue {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (Number.isInteger(value) && !Number.isSafeInteger(value)) throw new TypeError("Unsafe numeric input may already be rounded; pass JSON text or bigint");
+    return value;
+  }
   if (typeof value !== "object" || value === null || ancestors.has(value)) throw new TypeError("Input is not an acyclic JSON value");
   const prototype: unknown = Object.getPrototypeOf(value);
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) throw new TypeError("Expected a plain JSON object");
@@ -315,10 +472,21 @@ function toSafeJson(value: unknown, ancestors = new Set<object>()): JsonValue {
   } finally { ancestors.delete(value); }
 }
 
-function encodeJson(value: JsonValue): string { return JSON.stringify(value); }
+function encodeJson(value: JsonValue): string {
+  const safe = toSafeJson(value);
+  function encode(child: JsonValue): string {
+    if (typeof child === "bigint") return child.toString();
+    if (Array.isArray(child)) return `[${child.map(encode).join(",")}]`;
+    if (isObject(child)) return `{${Object.keys(child).map(key => `${JSON.stringify(key)}:${encode(child[key]!)}`).join(",")}}`;
+    return JSON.stringify(child);
+  }
+  return encode(safe);
+}
+function isInteger(value: JsonValue): value is number | bigint { return typeof value === "bigint" || (typeof value === "number" && Number.isSafeInteger(value)); }
 function isObject(value: JsonValue): value is Record<string, JsonValue> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function sameJson(left: JsonValue, right: JsonValue): boolean {
   if (left === right) return true;
+  if (isInteger(left) && isInteger(right)) return BigInt(left) === BigInt(right);
   if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((value, index) => sameJson(value, right[index]!));
   if (isObject(left) && isObject(right)) return Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => Object.prototype.hasOwnProperty.call(right, key) && sameJson(left[key]!, right[key]!));
   return false;
@@ -376,10 +544,7 @@ mod tests {
             names
         };
         assert_eq!(members(&first), members(&reversed));
-        assert_eq!(
-            members(&first),
-            members("ToolInputEffect | ResponseEffect | UnknownVariant<\"type\">")
-        );
+        assert_eq!(members(&first), members("ToolInputEffect | ResponseEffect"));
         let open = render(
             &union(vec![
                 Shape::Enum {
@@ -483,8 +648,39 @@ mod tests {
                 },
             ),
             ("Anything", Shape::Any),
+            (
+                "Counters",
+                Shape::Object {
+                    properties: vec![crate::model::Property {
+                        wire_name: "turns".into(),
+                        required: false,
+                        constructor_default: None,
+                        shape: Shape::BoundedInteger {
+                            minimum: Some(serde_json::json!(0)),
+                            maximum: None,
+                        },
+                    }],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Typed {
+                        shape: Box::new(Shape::BoundedInteger {
+                            minimum: Some(serde_json::json!(0)),
+                            maximum: None,
+                        }),
+                    },
+                },
+            ),
+            (
+                "Dictionary",
+                Shape::Object {
+                    properties: vec![],
+                    forbidden_property_sets: vec![],
+                    additional: AdditionalProperties::Typed {
+                        shape: Box::new(Shape::String),
+                    },
+                },
+            ),
         ];
-        let ir = Ir {
+        let synthetic = Ir {
             schema_revision: "test".into(),
             protocol_version: "1".into(),
             roots: shapes
@@ -503,10 +699,32 @@ mod tests {
                 })
                 .collect(),
         };
+        // Include the canonical contextual catalogue: an empty catalogue has no
+        // callable response overload, and real bounded counters must use schema bounds.
+        let repository = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut ir = crate::compiler::compile(&repository, "draft").unwrap();
+        ir.types.extend(synthetic.types);
+        ir.roots.extend(synthetic.roots);
+        for name in ["SessionCounters", "Effect"] {
+            if !ir.roots.iter().any(|root| root.name == name) {
+                ir.roots.push(PublicRoot {
+                    name: name.into(),
+                    schema: "test.json".into(),
+                });
+            }
+        }
         let directory =
             std::env::temp_dir().join(format!("ahp-ts-descriptors-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join("generated.ts"), emit(&ir).unwrap()).unwrap();
+        let mut source = emit(&ir).unwrap();
+        source.push_str(r#"
+// @ts-expect-error Known effect tags cannot fall through to an unknown-variant bag.
+const malformedKnownEffect: Effect = {type: "modify"};
+// @ts-expect-error Schema-defined effect unions do not admit unknown effect types.
+const unknownEffect: Effect = {type: "future.effect"};
+const exactCounterInput: SessionCounters = {turns: 1208925819614629174706176n, futureCounter: 1267650600228229401496703205376n};
+"#);
+        std::fs::write(directory.join("generated.ts"), source).unwrap();
         let compiled = std::process::Command::new("tsc")
             .args([
                 "--strict",
@@ -522,7 +740,11 @@ mod tests {
         assert!(
             compiled.status.success(),
             "{}",
-            String::from_utf8_lossy(&compiled.stdout)
+            format!(
+                "{} ({})",
+                String::from_utf8_lossy(&compiled.stdout),
+                directory.display()
+            )
         );
         let tested = std::process::Command::new("node")
             .args([
@@ -539,9 +761,41 @@ assert.equal(sdk.parseClosed('"no"').ok, false);
 assert.equal(sdk.parseClosed('"yes"').ok, true);
 assert.equal(sdk.parseLiteral('{"b":2,"a":1}').ok, true);
 assert.equal(sdk.parseLiteral('{"a":1}').ok, false);
-assert.equal(sdk.parseAnything('9007199254740993').value, 9007199254740992);
-assert.equal(sdk.parseAnything('1e400').ok, false);
+assert.equal(sdk.parseAnything('9007199254740993').value, 9007199254740993n);
+assert.equal(sdk.parseAnything('1e400').value, 10n ** 400n);
+assert.equal(sdk.parseCounters('{"futureCounter":1e10001}').value.futureCounter, 10n ** 10001n);
 assert.equal(sdk.parseAnything('{"x":null}').ok, true);
+assert.equal(sdk.parseDictionary('{"a/b~c":"yes"}').ok, true);
+const badMap = sdk.parseDictionary('{"a/b~c":1}');
+assert.equal(badMap.ok, false);
+assert.equal(badMap.diagnostics[0].path, '/a~1b~0c');
+assert.equal(sdk.parseDictionary('{}').ok, true);
+for (const input of ['{}', '{"turns":0}', '{"extra":0}', '{"turns":2,"extra":3}']) assert.equal(sdk.parseCounters(input).ok, true);
+for (const input of ['{"turns":null}', '{"extra":null}', '{"extra":"3"}']) assert.equal(sdk.parseCounters(input).ok, false);
+assert.equal(sdk.parseCounters('{"future/counter":false}').diagnostics[0].path, '/future~1counter');
+for (const input of ['{"turns":-1}', '{"futureCounter":-1}']) assert.equal(sdk.parseCounters(input).ok, false);
+const exactCounters = '{"turns":1208925819614629174706176,"futureCounter":1267650600228229401496703205376}';
+const exact = sdk.parseCounters(exactCounters);
+assert.equal(exact.ok, true);
+assert.equal(exact.value.turns, 1208925819614629174706176n);
+assert.equal(exact.value.futureCounter, 1267650600228229401496703205376n);
+assert.equal(sdk.encodeCounters(exact.value), exactCounters);
+const canonicalCounters = sdk.parseSessionCounters(exactCounters);
+assert.equal(canonicalCounters.ok, true);
+assert.equal(sdk.encodeSessionCounters(canonicalCounters.value), exactCounters);
+assert.equal(sdk.parseSessionCounters('{"turns":-1}').ok, false);
+assert.equal(sdk.parseSessionCounters('{"futureCounter":-1}').ok, false);
+assert.equal(sdk.parseEffect('{"type":"future.effect"}').ok, false);
+assert.equal(sdk.parseEffect('{"type":"allow","future":9007199254740993}').ok, true);
+
+assert.equal(sdk.parseCounters({turns: Number(1208925819614629174706176n)}).ok, false);
+assert.throws(() => sdk.encodeCounters({futureCounter: Number(1267650600228229401496703205376n)}), /rounded/);
+assert.equal(sdk.parseAnything('1.208925819614629174706176e24').value, 1208925819614629174706176n);
+for (const malformed of ['[01]', '[1,]', '{"x":1,}', 'true false', '"unterminated', 'NaN', '1.']) assert.equal(sdk.parseAnything(malformed).ok, false);
+const protectedKey = sdk.parseAnything('{"__proto__":9007199254740993}');
+assert.equal(protectedKey.value.__proto__, 9007199254740993n);
+assert.equal(sdk.encodeAnything(protectedKey.value), '{"__proto__":9007199254740993}');
+
 "#,
             ])
             .current_dir(&directory)
@@ -553,6 +807,35 @@ assert.equal(sdk.parseAnything('{"x":null}').ok, true);
             String::from_utf8_lossy(&tested.stderr)
         );
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn typed_additional_properties_emit_maps() {
+        let shape = Shape::Object {
+            properties: vec![],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Typed {
+                shape: Box::new(Shape::Array {
+                    items: Box::new(Shape::String),
+                }),
+            },
+        };
+        assert_eq!(render(&shape, 0).unwrap(), "Record<string, Array<string>>");
+        let known = Shape::Object {
+            properties: vec![crate::model::Property {
+                wire_name: "count".into(),
+                required: true,
+                constructor_default: None,
+                shape: Shape::Integer,
+            }],
+            forbidden_property_sets: vec![],
+            additional: AdditionalProperties::Typed {
+                shape: Box::new(Shape::String),
+            },
+        };
+        let rendered = render(&known, 0).unwrap();
+        assert!(rendered.contains("\"count\": number | bigint"));
+        assert!(rendered.contains("& Partial<Record<string, string>>"));
     }
 
     #[test]

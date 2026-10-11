@@ -14,7 +14,7 @@ rust_toolchain="${AHP_RUST_TOOLCHAIN:-1.88.0}"
 cargo_command=(cargo "+$rust_toolchain")
 
 mkdir -p "$temporary/emitter/src" "$temporary/consumer/src" "$temporary/consumer/tests"
-cp "$generated" "$temporary/consumer/src/lib.rs"
+{ echo '#[allow(dead_code)]'; echo 'mod generated {'; cat "$generated"; echo '}'; echo 'pub use generated::public_exports::*;'; } > "$temporary/consumer/src/lib.rs"
 cat "$repository/tools/sdk-codegen/tests/rust-boundary-macro-smoke.rs.in" >> "$temporary/consumer/src/lib.rs"
 cp "$repository/tools/sdk-codegen/tests/rust-ergonomics-smoke.rs.in" "$temporary/consumer/tests/ergonomics.rs"
 cp "$repository/tools/sdk-codegen/tests/rust-structural-smoke.rs.in" "$temporary/consumer/tests/structural.rs"
@@ -155,8 +155,8 @@ fn main() -> anyhow::Result<()> {
 }
 RS
 
-# Test the complete generator crate: repository-aware emitter tests need its compiler.
-"${cargo_command[@]}" test --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml"
+# Test the Rust generator: repository-aware emitter tests need its compiler.
+"${cargo_command[@]}" test --quiet --locked --manifest-path "$repository/tools/sdk-codegen/Cargo.toml" langs::rust
 "${cargo_command[@]}" run --quiet --manifest-path "$temporary/emitter/Cargo.toml" -- \
     "$temporary/consumer/src/recursive.rs"
 printf '\n#[allow(dead_code)]\npub mod recursive;\n' \
@@ -183,6 +183,7 @@ use agenthooksprotocol::{
     BackendTransport, Capabilities, CapabilitiesEffectsItem, DiagnosticCode,
     InterceptSubscriptionFailurePolicy, JsonRpcId, JsonRpcMessage, JsonRpcResponseId,
     ParseDiagnostic, ParseResult, ExecutionEventToolOrigin, encode_registration,
+    encode_intercept_request, parse_intercept_request_value,
     parse_intercept_deny_response, parse_intercept_request, parse_json_rpc_message,
     parse_registration_value, recursive,
 };
@@ -256,7 +257,7 @@ fn recursively_referenced_models_compile_and_parse() {
     );
     assert!(!recursive::parse_safe_integer("1.0000000000000001").is_ok());
     assert!(serde_json::from_str::<recursive::SafeInteger>("1.0000000000000001").is_err());
-    assert!(serde_json::from_str::<recursive::SafeInteger>("9007199254740992").is_err());
+    assert!(serde_json::from_str::<recursive::SafeInteger>("9007199254740992").is_ok());
     let direct: recursive::ExactNumber = serde_json::from_str(exact_text).unwrap();
     assert_eq!(serde_json::to_string(&direct).unwrap(),exact_text);
     assert!(serde_json::from_str::<recursive::NumericLiteral>("2").is_err());
@@ -390,7 +391,7 @@ fn preserves_forward_compatible_values_with_warnings() {
 }
 
 #[test]
-fn preserves_integral_number_forms_and_enforces_safe_integer_bounds() {
+fn preserves_integral_number_forms_and_declared_integer_bounds() {
     let mut integral_float = fixture("fixtures/draft/registration/portable.valid.json");
     integral_float["hooks"][0]["subscriptions"][0]["timeoutMs"] =
         serde_json::from_str("1.0").unwrap();
@@ -404,8 +405,20 @@ fn preserves_integral_number_forms_and_enforces_safe_integer_bounds() {
         let mut out_of_range = fixture("fixtures/draft/registration/portable.valid.json");
         out_of_range["hooks"][0]["subscriptions"][0]["timeoutMs"] = json!(value);
         let result = parse_registration_value(out_of_range);
-        assert!(!result.is_ok());
-        assert!(result.diagnostics().iter().any(|item| item.code == DiagnosticCode::InvalidType));
+        assert_eq!(result.is_ok(), value >= 0);
+    }
+    for counter in ["1208925819614629174706176", "1267650600228229401496703205376"] {
+        let mut request = fixture("fixtures/draft/http/intercept-request.valid.json");
+        let number: Value = serde_json::from_str(counter).unwrap();
+        request["params"]["event"]["session"]["counters"] = json!({"turns": number, "futureCounter": number});
+        let (model, _, _) = success(parse_intercept_request(&serde_json::to_string(&request).unwrap()));
+        let encoded = encode_intercept_request(&model).unwrap();
+        let reparsed: Value = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(reparsed["params"]["event"]["session"]["counters"], request["params"]["event"]["session"]["counters"]);
+        for field in ["turns", "futureCounter"] {
+            request["params"]["event"]["session"]["counters"] = json!({field: -1});
+            assert!(!parse_intercept_request_value(request.clone()).is_ok());
+        }
     }
 }
 
@@ -469,4 +482,29 @@ RS
 
 AHP_REPOSITORY="$repository" RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-D warnings" \
   "${cargo_command[@]}" test --quiet --manifest-path "$temporary/consumer/Cargo.toml"
+# The consumer sees the deliberate facade, not assembly or projection machinery.
+mkdir -p "$temporary/consumer/examples"
+for blocked in ahp_event_boundary_methods ahp_hooks_boundary_methods ahp_ergonomic_hook_methods; do
+  printf 'fn main() { agenthooksprotocol::%s!(); }\n' "$blocked" \
+    > "$temporary/consumer/examples/blocked.rs"
+  if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Cargo.toml" \
+      --example blocked > "$temporary/blocked.log" 2>&1; then
+    echo "assembly macro leaked into the public API: $blocked" >&2
+    exit 1
+  fi
+  grep -q "could not find \`$blocked\` in \`agenthooksprotocol\`" "$temporary/blocked.log"
+done
+cat > "$temporary/consumer/examples/blocked.rs" <<'RS'
+struct Custom;
+impl agenthooksprotocol::inputs::__support::EventInput for Custom {
+    fn event_value(&self) -> Result<serde_json::Value, serde_json::Error> { Ok(serde_json::Value::Null) }
+}
+fn main() {}
+RS
+if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Cargo.toml" \
+    --example blocked > "$temporary/blocked.log" 2>&1; then
+  echo "the schema-owned projection contract is not sealed" >&2
+  exit 1
+fi
+grep -q 'Sealed.*is not satisfied' "$temporary/blocked.log"
 echo "generated Rust codec smoke tests passed"

@@ -363,42 +363,10 @@
               ]
             },
             "change": {
-              "type": "object",
-              "minProperties": 1,
-              "properties": {
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "workspaceRoots": {
-                  "type": "array",
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "additionalProperties": false
+              "$ref": "#/$defs/WorkspaceChange"
             },
             "prior": {
-              "type": "object",
-              "minProperties": 1,
-              "properties": {
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "workspaceRoots": {
-                  "type": "array",
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "additionalProperties": false
+              "$ref": "#/$defs/WorkspaceChange"
             },
             "reason": {
               "type": "string"
@@ -509,42 +477,10 @@
               ]
             },
             "change": {
-              "type": "object",
-              "minProperties": 1,
-              "properties": {
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "workspaceRoots": {
-                  "type": "array",
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "additionalProperties": false
+              "$ref": "#/$defs/WorkspaceChange"
             },
             "prior": {
-              "type": "object",
-              "minProperties": 1,
-              "properties": {
-                "cwd": {
-                  "type": "string",
-                  "minLength": 1
-                },
-                "workspaceRoots": {
-                  "type": "array",
-                  "uniqueItems": true,
-                  "items": {
-                    "type": "string",
-                    "minLength": 1
-                  }
-                }
-              },
-              "additionalProperties": false
+              "$ref": "#/$defs/WorkspaceChange"
             },
             "reason": {
               "type": "string"
@@ -683,6 +619,25 @@
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
+    },
+    "WorkspaceChange": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "cwd": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceRoots": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

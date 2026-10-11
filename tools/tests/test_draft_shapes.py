@@ -74,6 +74,71 @@ class DraftShapeTests(unittest.TestCase):
         value['params']['session'] = {'id': 'invented'}
         self.assertTrue(self.errors(value))
 
+    def test_neutral_response_omits_or_empties_effects(self):
+        for name in ('intercept-response', 'intercept-no-effect-response'):
+            for result in ({'protocolVersion': 'draft'},
+                           {'protocolVersion': 'draft', 'effects': []}):
+                with self.subTest(schema=name, result=result):
+                    value = {'jsonrpc': '2.0', 'id': 'event', 'result': result}
+                    self.assertFalse(self.errors(value, name))
+                    invalid = copy.deepcopy(value)
+                    invalid['result']['effects'] = None
+                    self.assertTrue(self.errors(invalid, name))
+            value = {'jsonrpc': '2.0', 'id': 'event', 'result': {
+                'protocolVersion': 'draft', 'effects': [{'type': 'unknown'}]}}
+            self.assertTrue(self.errors(value, name))
+
+    def test_candidates_follow_contextual_event_types(self):
+        cases = [
+            ('model-request-inline-prompt.valid.json', [{'id': 'message', 'role': 'user',
+                'parts': [{'id': 'part', 'kind': 'text', 'mediaType': 'text/plain',
+                           'selection': 'body', 'text': 'prompt'}]}], [None, 'text', {}]),
+            ('catalogue-context.compact.before.valid.json', [{'id': 'summary', 'kind': 'text',
+                'mediaType': 'text/plain', 'selection': 'body', 'text': 'summary'}],
+             [None, 'text', {}, [{'role': 'user', 'parts': []}]]),
+            ('catalogue-user.elicitation.request.valid.json', {'action': 'cancel'},
+             [None, 'text', [], {'action': 'unknown'}]),
+            ('intercept-request.valid.json', None, []),
+        ]
+        for fixture, valid, invalid in cases:
+            wire = json.loads((ROOT / 'fixtures/draft/http' / fixture).read_text())
+            request = self.request()
+            request['params']['event'] = wire['params']['event']
+            request['id'] = request['params']['event']['id']
+            request['params']['capabilities'] = {'effects': []}
+            # Required candidate presence is unchanged when state is supplied.
+            request['params']['state'] = {'permission': 'none'}
+            self.assertTrue(self.errors(request, 'intercept-request'))
+            # A null candidate means no supplied result; an object containing
+            # value:null is a supplied result and must pass the contextual type.
+            for state in ({'permission': 'none', 'candidate': None},
+                          {'permission': 'none', 'candidate': {'value': valid}}):
+                request['params']['state'] = state
+                with self.subTest(event=request['params']['event']['type'], state=state):
+                    self.assertFalse(self.errors(request, 'intercept-request'))
+            for value in invalid:
+                request['params']['state'] = {'permission': 'none', 'candidate': {'value': value}}
+                with self.subTest(event=request['params']['event']['type'], value=value):
+                    self.assertTrue(self.errors(request, 'intercept-request'))
+
+    def test_state_injections_are_complete_inject_effects(self):
+        request = self.request()
+        inject = {'type': 'inject', 'target': 'context', 'operation': 'append',
+                  'deliverAt': 'now', 'value': []}
+        request['params']['state'] = {'permission': 'none', 'candidate': None,
+                                      'injections': [inject]}
+        self.assertFalse(self.errors(request, 'intercept-request'))
+        invalid = [{}, {'type': 'allow'}, {**inject, 'type': 'unknown'},
+                   {**inject, 'deliverAt': 'unknown'}, {**inject, 'value': 'text'}]
+        for field in inject:
+            broken = dict(inject)
+            del broken[field]
+            invalid.append(broken)
+        for effect in invalid:
+            request['params']['state']['injections'] = [effect]
+            with self.subTest(effect=effect):
+                self.assertTrue(self.errors(request, 'intercept-request'))
+
     def test_invalid_member_rejects_complete_response(self):
         value = {'jsonrpc': '2.0', 'id': 'event', 'result': {'protocolVersion': 'draft',
                  'effects': [{'type': 'deny', 'reason': 'policy'}, {'type': 'flow', 'operation': 'retry'}]}}

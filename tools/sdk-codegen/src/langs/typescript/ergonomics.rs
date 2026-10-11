@@ -119,6 +119,19 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
         writeln!(out, "}},")?;
     }
     out.push_str("};\n/** Project host facts only. The runtime supplies source, IDs, time, and manifest and validates the assembled request. */\nexport function toEventInput<K extends keyof EventInputs>(type: K, input: EventInputs[K]): Record<string, JsonValue> {\n const result: Record<string, JsonValue> = {type};\n for (const [field, path] of Object.entries(INPUT_PATHS[type])) {\n  const value = (input as unknown as Record<string, JsonValue | undefined>)[field];\n  if (value === undefined) continue;\n  let target = result;\n  for (const key of path.slice(0, -1)) {\n   if (target[key] === undefined) target[key] = {};\n   target = target[key] as Record<string, JsonValue>;\n  }\n  const leaf = path[path.length - 1];\n  if (leaf === undefined) throw new TypeError('empty generated input path');\n  target[leaf] = value;\n }\n return result;\n}\n");
+    out.push_str("\nexport interface EventResponses {\n");
+    for (event, input, _) in &inventory {
+        let response = format!("{}InterceptResponse", input.trim_end_matches("Input"));
+        if ir.types.iter().any(|t| t.name == response) {
+            writeln!(out, "{event:?}: {response};")?;
+        }
+    }
+    out.push_str("}\nexport type ResponseFor<K extends keyof EventResponses> = EventResponses[K];\n/** Identity helper: ties a response to its request event at compile time; no runtime validation. */\nexport function responseForEvent<K extends keyof EventResponses>(event: {readonly type: K}, response: NoInfer<ResponseFor<K>>): ResponseFor<K> { void event; return response; }\n");
+    out.push_str("\nconst CONTEXTUAL_RESPONSE_SCHEMAS: Record<keyof EventResponses, string> = {\n");
+    for (event, _, response) in crate::ergonomics::contextual_responses(ir) {
+        writeln!(out, "{event:?}: {response:?},")?;
+    }
+    out.push_str("};\n/** Validate without publishing; unknown events are never authority. */\nexport function responseForRequest<K extends keyof EventResponses>(eventType: K, input: string | unknown, validate?: (response: ResponseFor<K>) => readonly ParseDiagnostic[]): ParseResult<ResponseFor<K>>;\nexport function responseForRequest(eventType: string, input: string | unknown, validate?: (response: EventResponses[keyof EventResponses]) => readonly ParseDiagnostic[]): ParseResult<EventResponses[keyof EventResponses]>;\nexport function responseForRequest(eventType: string, input: string | unknown, validate?: (response: never) => readonly ParseDiagnostic[]): ParseResult<any> {\n if (!Object.prototype.hasOwnProperty.call(CONTEXTUAL_RESPONSE_SCHEMAS, eventType)) return {ok:false, diagnostics:[{path:'', code:'unknown_variant', severity:'error', message:'Unknown request event: ' + eventType}]};\n const result = parseRoot(CONTEXTUAL_RESPONSE_SCHEMAS[eventType as keyof EventResponses], input) as ParseResult<EventResponses[keyof EventResponses]>;\n if (!result.ok || validate === undefined) return result;\n const diagnostics = [...result.diagnostics, ...validate(result.value as never)];\n if (diagnostics.some(d => d.severity === 'error')) return {ok:false, raw:result.raw, diagnostics};\n return {...result, diagnostics};\n}\n");
     out.push_str("\nexport type EventType = keyof EventInputs;\nexport const events = {\n");
     for (event, name, _) in &inventory {
         let short = name.trim_end_matches("Input");
@@ -208,16 +221,24 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
             }
             out.push_str("}\n");
         }
-        out.push_str("\nexport type InitialState = NonNullable<InterceptRequest['params']['state']>;\nexport type StateCandidate = NonNullable<InitialState['candidate']>;\nexport const state = {\n candidate(value: JsonValue, provenance?: Record<string, JsonValue>): StateCandidate { return provenance === undefined ? {value} : {value, provenance}; },\n initial(permission: Permission, options: Partial<InitialState> = {}): InitialState { return {...options, candidate: options.candidate ?? null, permission}; }\n} as const;\n");
+        out.push_str("\nexport type InitialState = NonNullable<InterceptRequest['params']['state']>;\nexport type StateCandidate = NonNullable<InitialState['candidate']>;\nexport type Candidate<T = StateCandidate['value'], P = NonNullable<StateCandidate['provenance']>> = Omit<StateCandidate, 'value' | 'provenance'> & { [K in keyof Pick<StateCandidate, 'value'>]: T } & { [K in keyof Pick<StateCandidate, 'provenance'>]: P };\nexport const state = {\n candidate<T, P = NonNullable<StateCandidate['provenance']>>(value: T, provenance?: P): Candidate<T, P> { return (provenance === undefined ? {value} : {value, provenance}) as Candidate<T, P>; },\n initial(permission: Permission, options: Partial<InitialState> = {}): InitialState { return {...options, candidate: options.candidate ?? null, permission}; }\n} as const;\n");
+    }
+    if ir
+        .types
+        .iter()
+        .any(|t| t.name == "McpElicitationElicitResult")
+    {
+        out.push_str("\nexport type ElicitResult<T = FormAnswers> = Omit<McpElicitationElicitResult, 'content'> & { [K in keyof Pick<McpElicitationElicitResult, 'content'>]: T };\n");
     }
     if let Some(named) = ir.types.iter().find(|t| t.name == "Effect") {
-        if let Shape::Union { variants, .. } = &named.shape {
+        if let Shape::Union { .. } = &named.shape {
+            let variants = crate::ergonomics::effect_variants(ir);
             out.push_str("\n/** Canonical effect constructors; grants and admission remain runtime checks. */\nexport const effects = {\n");
-            for variant in variants {
+            for variant in &variants {
                 let Some(properties) = fields(ir, variant) else {
                     continue;
                 };
-                let Some(tag) = properties
+                let Some(_tag) = properties
                     .iter()
                     .find(|p| p.wire_name == "type")
                     .and_then(|p| {
@@ -230,21 +251,18 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
                 else {
                     continue;
                 };
-                let op = properties
-                    .iter()
-                    .find(|p| p.wire_name == "operation")
-                    .and_then(|p| {
-                        if let Shape::Literal { value } = &p.shape {
-                            value.as_str()
-                        } else {
-                            None
-                        }
-                    });
-                let method = format!(
-                    "{}{}",
-                    tag,
-                    op.map(|s| format!("_{}", s)).unwrap_or_default()
+                let mut method = crate::ergonomics::snake_builder_name(
+                    &crate::ergonomics::effect_builder_name(ir, variant),
                 );
+                if properties.iter().any(|p| {
+                    p.wire_name == "target"
+                        && crate::ergonomics::string_values(ir, &p.shape)
+                            .iter()
+                            .any(|target| method == format!("modify_{target}"))
+                }) {
+                    method.push_str("_effect");
+                }
+                let return_type = render(variant, 1)?;
                 let mut args = Vec::new();
                 let mut values = Vec::new();
                 for p in &properties {
@@ -257,12 +275,12 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
                 }
                 writeln!(
                     out,
-                    " {method}({}): Effect {{ return {{ {} }}; }},",
+                    " {method}({}): {return_type} {{ return {{ {} }}; }},",
                     args.join(", "),
                     values.join(", ")
                 )?;
             }
-            for variant in variants {
+            for variant in &variants {
                 let Some(properties) = fields(ir, variant) else {
                     continue;
                 };
@@ -276,34 +294,62 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
                 if tag != "modify" {
                     continue;
                 }
-                let Some(Shape::Enum {
-                    values: targets, ..
-                }) = properties
-                    .iter()
-                    .find(|p| p.wire_name == "target")
-                    .map(|p| &p.shape)
+                let Some(target_property) = properties.iter().find(|p| p.wire_name == "target")
                 else {
                     continue;
                 };
-                let Some(Shape::Enum {
-                    values: operations, ..
-                }) = properties
-                    .iter()
-                    .find(|p| p.wire_name == "operation")
-                    .map(|p| &p.shape)
+                let Some(operation_property) =
+                    properties.iter().find(|p| p.wire_name == "operation")
                 else {
                     continue;
                 };
-                for target in targets.iter().filter_map(|v| v.as_str()) {
-                    writeln!(out, " modify_{target}: {{")?;
-                    for operation in operations.iter().filter_map(|v| v.as_str()) {
+                let Some(value_property) = properties.iter().find(|p| p.wire_name == "value")
+                else {
+                    continue;
+                };
+                let value_type = render(&value_property.shape, 1)?;
+                let return_type = render(variant, 1)?;
+                for target in crate::ergonomics::string_values(ir, &target_property.shape) {
+                    let helper =
+                        crate::ergonomics::modify_helper_target(&target, &value_property.shape);
+                    writeln!(out, " modify_{helper}: {{")?;
+                    for operation in crate::ergonomics::string_values(ir, &operation_property.shape)
+                    {
                         writeln!(
                             out,
-                            " {operation}(value: JsonValue): Effect {{ return {{type: 'modify', target: {target:?}, operation: {operation:?}, value}}; }},"
+                            " {operation}(value: {value_type}): {return_type} & {{target: {target:?}; operation: {operation:?}}} {{ return {{type: 'modify', target: {target:?}, operation: {operation:?}, value}}; }},"
                         )?;
                     }
                     out.push_str(" },\n");
                 }
+            }
+            for named in ir.types.iter().filter(|t| {
+                t.name.starts_with("Return")
+                    && t.name.ends_with("Effect")
+                    && t.name != "ReturnToolEffect"
+            }) {
+                let Some(properties) = fields(ir, &named.shape) else {
+                    continue;
+                };
+                let method =
+                    crate::ergonomics::snake_builder_name(named.name.trim_end_matches("Effect"));
+                let mut args = Vec::new();
+                let mut values = Vec::new();
+                for p in &properties {
+                    if let Shape::Literal { value } = &p.shape {
+                        values.push(format!("{}: {}", p.wire_name, value));
+                    } else if p.required {
+                        args.push(format!("{}: {}", p.wire_name, render(&p.shape, 1)?));
+                        values.push(p.wire_name.clone());
+                    }
+                }
+                writeln!(
+                    out,
+                    " {method}({}): {} {{ return {{ {} }}; }},",
+                    args.join(", "),
+                    named.name,
+                    values.join(", ")
+                )?;
             }
             out.push_str("} as const;\n");
         }
@@ -397,6 +443,7 @@ export interface HostEventInputs<S = unknown> {
         writeln!(out, "{event:?}: {},", serde_json::to_string(&paths)?)?;
     }
     out.push_str(r#"};
+/** @internal Runtime attachment planning record. */
 export interface PendingAttachment {
  readonly path: readonly (string | number)[];
  readonly selection: 'body';

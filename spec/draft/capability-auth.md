@@ -252,8 +252,9 @@ are not a model `request` message-list target. `user.elicitation.result` permits
 `modify(content)` only over the parsed MCP answer object for an accepted form
 result, not its action or whole result. `user.message.outbound` uses the same
 `content` target name for canonical `message.messages` lists. Hosts MUST enforce
-these boundary-specific types; the standalone effect schema's list-or-object
-union does not grant cross-boundary authority. Object merge remains shallow;
+these boundary-specific types using the request-correlated response schemas;
+the standalone effect schema's typed alternatives do not grant cross-boundary
+authority. See [typed payload contracts](typed-contracts.md). Object merge remains shallow;
 ordinary model and user-message targets retain list append semantics.
 `tool.after` `modify(output)` targets canonical `items` messages, with whole-list
 replacement and ordered append merge, not an undeclared native JSON output

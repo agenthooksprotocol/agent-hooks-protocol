@@ -183,11 +183,49 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "counters": {
+          "$ref": "#/$defs/SessionCounters"
         }
       }
     },
     "native": {
       "description": "Opaque implementation-defined JSON, delivered only when includeNative is authorized. AHP does not prescribe its shape, completeness, or construction. Native data cannot replace required normalized fields or bypass content selection, inline text and attachment-only uploads, permissions, or credential exclusions."
+    },
+    "SessionCounters": {
+      "type": "object",
+      "properties": {
+        "turns": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Completed host turns."
+        },
+        "modelRequests": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Actual provider attempts, including retries."
+        },
+        "toolCalls": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Actual tool executions, including failures."
+        },
+        "inputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Provider-reported total input tokens, when known."
+        },
+        "outputTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Provider-reported total output tokens, when known."
+        }
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "description": "Host-supplied counters. Omitted means unknown, not zero; SDKs do not infer values."
     }
   }
 }

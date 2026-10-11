@@ -83,6 +83,429 @@
       }
     },
     {
+      "id": "omitted-effects-preserves-input",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-input",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "omitted-effects-preserves-input",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "none",
+            "candidate": null
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-input",
+        "result": {
+          "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects",
+        "state"
+      ],
+      "expected": {
+        "decision": "allow",
+        "executed": true,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": []
+      }
+    },
+    {
+      "id": "omitted-effects-preserves-candidate",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-candidate",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "omitted-effects-preserves-candidate",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "none",
+            "candidate": {
+              "value": {
+                "cached": 1
+              },
+              "provenance": {
+                "requestId": "earlier"
+              }
+            }
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-candidate",
+        "result": {
+          "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects",
+        "state"
+      ],
+      "expected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [],
+        "result": {
+          "cached": 1
+        }
+      }
+    },
+    {
+      "id": "omitted-effects-preserves-null-candidate-value",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-null-candidate-value",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "omitted-effects-preserves-null-candidate-value",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "none",
+            "candidate": {
+              "value": null
+            }
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-null-candidate-value",
+        "result": {
+          "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects",
+        "state"
+      ],
+      "expected": {
+        "decision": "allow",
+        "executed": false,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": [],
+        "result": null
+      }
+    },
+    {
+      "id": "omitted-effects-preserves-incoming-ask",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-incoming-ask",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "omitted-effects-preserves-incoming-ask",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "ask",
+            "candidate": null
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-incoming-ask",
+        "result": {
+          "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects",
+        "state"
+      ],
+      "expected": {
+        "decision": "ask",
+        "executed": false,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": []
+      }
+    },
+    {
+      "id": "omitted-effects-preserves-incoming-deny",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-incoming-deny",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "omitted-effects-preserves-incoming-deny",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "deny",
+            "candidate": null
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "omitted-effects-preserves-incoming-deny",
+        "result": {
+          "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects",
+        "state"
+      ],
+      "expected": {
+        "decision": "deny",
+        "executed": false,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": []
+      }
+    },
+    {
       "id": "omitted-state-empty-response",
       "request": {
         "jsonrpc": "2.0",
@@ -6646,6 +7069,88 @@
         "id": "missing-effects-array",
         "result": {
           "protocolVersion": "draft"
+        }
+      },
+      "tags": [
+        "no-effect",
+        "omitted-effects"
+      ],
+      "expected": {
+        "decision": "allow",
+        "executed": true,
+        "input": {
+          "task": 1,
+          "options": {
+            "recursive": true,
+            "limit": 20
+          },
+          "keep": "yes"
+        },
+        "messages": []
+      }
+    },
+    {
+      "id": "null-effects-array",
+      "request": {
+        "jsonrpc": "2.0",
+        "id": "null-effects-array",
+        "method": "hooks/intercept",
+        "params": {
+          "protocolVersion": "draft",
+          "event": {
+            "id": "null-effects-array",
+            "source": "urn:ahp:interop",
+            "type": "tool.before",
+            "time": "2026-01-01T00:00:00Z",
+            "session": {
+              "id": "interop"
+            },
+            "call": {
+              "id": "call-1"
+            },
+            "path": "native",
+            "tool": {
+              "origin": "native",
+              "name": "task",
+              "kind": "task",
+              "input": {
+                "task": 1,
+                "options": {
+                  "recursive": true,
+                  "limit": 20
+                },
+                "keep": "yes"
+              }
+            }
+          },
+          "capabilities": {
+            "effects": [
+              "deny",
+              "allow",
+              "ask",
+              "modify",
+              "message",
+              "return"
+            ],
+            "modify": {
+              "input": {
+                "replace": true,
+                "merge": true
+              }
+            }
+          },
+          "state": {
+            "permission": "none",
+            "candidate": null
+          }
+        }
+      },
+      "response": {
+        "jsonrpc": "2.0",
+        "id": "null-effects-array",
+        "result": {
+          "protocolVersion": "draft",
+          "effects": null
         }
       },
       "tags": [

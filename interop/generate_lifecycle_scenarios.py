@@ -34,7 +34,15 @@ EFFECTS=[{'type':'modify','target':'input','operation':'replace','value':{'value
 ALL=EFFECTS+[{'type':'return','value':{'supplied':True}},{'type':'flow','operation':'continue','instruction':'continue staged'}]
 # Injection effect's canonical shape is taken from the established shared suite.
 core=json.loads((HERE/'scenarios.json').read_text())['scenarios']
-inject=next(e for s in core for e in ((s.get('response') or {}).get('result') or {}).get('effects',[]) if isinstance(e,dict) and e.get('type')=='inject')
+def response_effects(rows):
+    # Fixture discovery includes invalid responses; only arrays contain effects.
+    # This does not admit or normalize invalid wire values in SDK validation.
+    for row in rows:
+        effects = ((row.get('response') or {}).get('result') or {}).get('effects', [])
+        if isinstance(effects, list):
+            yield from (effect for effect in effects if isinstance(effect, dict))
+
+inject=next(e for e in response_effects(core) if e.get('type')=='inject')
 ALL.append(deepcopy(inject))
 scenarios=[]
 for name,after in [('cancel-before-reply',False),('cancel-after-reply-before-acceptance',True)]:

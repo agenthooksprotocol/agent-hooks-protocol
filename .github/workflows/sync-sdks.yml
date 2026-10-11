@@ -53,12 +53,16 @@ jobs:
         run: python3 tools/generate_sdk.py --output-dir generated
       - name: Test generated TypeScript
         run: |
-          npx --yes --package typescript@5.9.3 tsc generated/typescript/generated.ts \
+          npx --yes --package typescript@5.9.3 tsc generated/typescript/public.ts \
             --outDir "$RUNNER_TEMP/typescript" --strict --target ES2022 \
             --module commonjs --skipLibCheck --noUncheckedIndexedAccess \
             --exactOptionalPropertyTypes
           node tools/sdk-codegen/tests/typescript-smoke.cjs \
-            "$RUNNER_TEMP/typescript/generated.js" "$GITHUB_WORKSPACE"
+            "$RUNNER_TEMP/typescript/raw.js" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/typescript/public.js"
+      - name: Test generated NodeNext package exports
+        run: >-
+          npx --yes --package typescript@5.9.3 --call
+          'bash tools/sdk-codegen/tests/typescript-nodenext-public-smoke.sh generated/typescript "$GITHUB_WORKSPACE"'
       - name: Test generated Python
         run: python3 tools/sdk-codegen/tests/python-smoke.py generated/python/generated.py "$GITHUB_WORKSPACE"
       - name: Test generated Go

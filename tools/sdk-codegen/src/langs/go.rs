@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use anyhow::{Context, Result};
 
-use crate::model::{Ir, Property, Shape};
+use crate::model::{AdditionalProperties, Ir, Property, Shape};
 
 /// Emit a self-contained Go package containing the public AHP models and codecs.
 ///
@@ -221,6 +221,11 @@ impl<'a> Generator<'a> {
         visiting: &mut BTreeSet<String>,
     ) -> Option<Vec<Property>> {
         match shape {
+            Shape::Object {
+                properties,
+                additional: AdditionalProperties::Typed { .. },
+                ..
+            } if properties.is_empty() => None,
             Shape::Object { properties, .. } => Some(properties.clone()),
             Shape::Intersection { variants } => {
                 let mut merged = Vec::<Property>::new();
@@ -396,6 +401,16 @@ impl<'a> Generator<'a> {
         shape: &Shape,
     ) -> Result<()> {
         self.decoder_shapes.insert(name.to_owned(), shape.clone());
+        let typed_additional = if let Shape::Object {
+            additional: AdditionalProperties::Typed { shape },
+            ..
+        } = shape
+        {
+            Some(self.render_type(shape, &format!("{name}AdditionalValue"))?)
+        } else {
+            None
+        };
+        let additional_type = typed_additional.as_deref().unwrap_or("json.RawMessage");
         properties.sort_by(|left, right| left.wire_name.cmp(&right.wire_name));
         let mut fields = Vec::with_capacity(properties.len());
         let mut field_names = BTreeSet::from(["AdditionalProperties".to_owned()]);
@@ -449,7 +464,7 @@ impl<'a> Generator<'a> {
         }
         writeln!(
             declaration,
-            "\t{:<width$}map[string]json.RawMessage",
+            "\t{:<width$}map[string]{additional_type}",
             "AdditionalProperties",
             width = field_width
         )?;
@@ -499,10 +514,15 @@ impl<'a> Generator<'a> {
                 go_string(&field.wire_name)?
             )?;
         }
-        writeln!(
-            declaration,
-            "\tdecoded.AdditionalProperties = fields\n\t*value = decoded\n\treturn nil\n}}\n"
-        )?;
+        if typed_additional.is_some() {
+            writeln!(
+                declaration,
+                "\tdecoded.AdditionalProperties = make(map[string]{additional_type}, len(fields))\n\tfor key, raw := range fields {{\n\t\tvar child {additional_type}\n\t\tif err := decodeValidatedJSON(raw, &child); err != nil {{\n\t\t\treturn fmt.Errorf(\"additional property %s: %w\", key, err)\n\t\t}}\n\t\tdecoded.AdditionalProperties[key] = child\n\t}}"
+            )?;
+        } else {
+            writeln!(declaration, "\tdecoded.AdditionalProperties = fields")?;
+        }
+        writeln!(declaration, "\t*value = decoded\n\treturn nil\n}}\n")?;
 
         writeln!(
             declaration,
@@ -517,10 +537,17 @@ impl<'a> Generator<'a> {
             "\tfields := make(map[string]json.RawMessage, len(value.AdditionalProperties)+{})",
             fields.len()
         )?;
-        writeln!(
-            declaration,
-            "\tfor key, raw := range value.AdditionalProperties {{\n\t\tfields[key] = raw\n\t}}"
-        )?;
+        if typed_additional.is_some() {
+            writeln!(
+                declaration,
+                "\tfor key, child := range value.AdditionalProperties {{\n\t\traw, err := json.Marshal(child)\n\t\tif err != nil {{\n\t\t\treturn nil, fmt.Errorf(\"additional property %s: %w\", key, err)\n\t\t}}\n\t\tfields[key] = raw\n\t}}"
+            )?;
+        } else {
+            writeln!(
+                declaration,
+                "\tfor key, raw := range value.AdditionalProperties {{\n\t\tfields[key] = raw\n\t}}"
+            )?;
+        }
         for field in &fields {
             if field.required {
                 writeln!(declaration, "\t{{")?;
@@ -726,7 +753,7 @@ impl<'a> Generator<'a> {
         Ok(match shape {
             Shape::Any | Shape::Never | Shape::Null => "json.RawMessage".into(),
             Shape::Boolean => "bool".into(),
-            Shape::Integer | Shape::Number => "json.Number".into(),
+            Shape::Integer | Shape::BoundedInteger { .. } | Shape::Number => "json.Number".into(),
             Shape::String => "string".into(),
             Shape::Literal { .. } | Shape::Enum { .. } => {
                 let name = self.allocate_type_name(hint);
@@ -735,6 +762,16 @@ impl<'a> Generator<'a> {
             }
             Shape::Array { items } => {
                 format!("[]{}", self.render_type(items, &format!("{hint}Item"))?)
+            }
+            Shape::Object {
+                properties,
+                additional: AdditionalProperties::Typed { shape },
+                ..
+            } if properties.is_empty() => {
+                format!(
+                    "map[string]{}",
+                    self.render_type(shape, &format!("{hint}Value"))?
+                )
             }
             Shape::Object { properties, .. } => {
                 let name = self.allocate_type_name(hint);
@@ -786,8 +823,10 @@ impl<'a> Generator<'a> {
         let rendered = self.render_type(shape, hint)?;
         // Primitive JSON codecs do not enforce numeric restrictions or array item
         // descriptors. Give these payloads their own model; Nullable stays generic.
-        if matches!(shape, Shape::Integer | Shape::Number | Shape::Array { .. })
-            || rendered == "json.RawMessage"
+        if matches!(
+            shape,
+            Shape::Integer | Shape::BoundedInteger { .. } | Shape::Number | Shape::Array { .. }
+        ) || rendered == "json.RawMessage"
         {
             let name = self.allocate_type_name(hint);
             self.emit_checked_type(&name, &rendered, shape)?;
@@ -1032,6 +1071,7 @@ const IMPORTS: &str = r#"import (
 	"io"
 	"math/big"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -1149,18 +1189,26 @@ const RUNTIME: &str = r#"type schemaProperty struct {
 	Shape    *schemaNode `json:"shape"`
 }
 
+type schemaAdditionalProperties struct {
+	Kind  string      `json:"kind"`
+	Shape *schemaNode `json:"shape"`
+}
+
 type schemaNode struct {
-	Kind                  string           `json:"kind"`
-	Value                 any              `json:"value"`
-	Values                []any            `json:"values"`
-	OpenStrings           bool             `json:"open_strings"`
-	Items                 *schemaNode      `json:"items"`
-	Properties            []schemaProperty `json:"properties"`
-	ForbiddenPropertySets [][]string       `json:"forbidden_property_sets"`
-	Mode                  string           `json:"mode"`
-	Variants              []*schemaNode    `json:"variants"`
-	Discriminator         *string          `json:"discriminator"`
-	Name                  string           `json:"name"`
+	Additional            schemaAdditionalProperties `json:"additional"`
+	Kind                  string                     `json:"kind"`
+	Minimum               *json.Number               `json:"minimum"`
+	Maximum               *json.Number               `json:"maximum"`
+	Value                 any                        `json:"value"`
+	Values                []any                      `json:"values"`
+	OpenStrings           bool                       `json:"open_strings"`
+	Items                 *schemaNode                `json:"items"`
+	Properties            []schemaProperty           `json:"properties"`
+	ForbiddenPropertySets [][]string                 `json:"forbidden_property_sets"`
+	Mode                  string                     `json:"mode"`
+	Variants              []*schemaNode              `json:"variants"`
+	Discriminator         *string                    `json:"discriminator"`
+	Name                  string                     `json:"name"`
 }
 
 func loadSchemaDescriptors(source string) map[string]*schemaNode {
@@ -1192,7 +1240,7 @@ func validateModelJSON(schema *schemaNode, input []byte) error {
 
 // decodeValidatedJSON only hydrates an already-checked subtree. Generated models
 // use a private method so each nested struct does not revalidate its descendants.
-// Pointer and slice traversal preserves that seam through references and arrays.
+// Pointer, slice, and map traversal preserves that seam through nested containers.
 // Union selection may still inspect alternatives to select a public arm.
 func decodeValidatedJSON(input []byte, target any) error {
 	if decoder, ok := target.(interface{ unmarshalValidatedJSON([]byte) error }); ok {
@@ -1211,6 +1259,25 @@ func decodeValidatedJSON(input []byte, target any) error {
 		decoded := reflect.New(value.Type().Elem())
 		if err := decodeValidatedJSON(input, decoded.Interface()); err != nil {
 			return err
+		}
+		value.Set(decoded)
+		return nil
+	case reflect.Map:
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(input, &fields); err != nil {
+			return err
+		}
+		if fields == nil {
+			value.SetZero()
+			return nil
+		}
+		decoded := reflect.MakeMapWithSize(value.Type(), len(fields))
+		for key, raw := range fields {
+			child := reflect.New(value.Type().Elem())
+			if err := decodeValidatedJSON(raw, child.Interface()); err != nil {
+				return err
+			}
+			decoded.SetMapIndex(reflect.ValueOf(key).Convert(value.Type().Key()), child.Elem())
 		}
 		value.Set(decoded)
 		return nil
@@ -1298,9 +1365,19 @@ func checkNode(schema *schemaNode, value any, path string, diagnostics *[]ParseD
 		if _, ok := value.(bool); !ok {
 			addError(diagnostics, path, DiagnosticInvalidType, "Expected boolean")
 		}
-	case "integer":
-		if number, ok := value.(json.Number); !ok || !isSafeInteger(number) {
-			addError(diagnostics, path, DiagnosticInvalidType, "Expected safely representable integer")
+	case "integer", "boundedInteger":
+		number, ok := value.(json.Number)
+		if !ok || !isInteger(number) {
+			addError(diagnostics, path, DiagnosticInvalidType, "Expected integer")
+			return
+		}
+		if schema.Kind == "boundedInteger" {
+			if schema.Minimum != nil && compareNumbers(number, *schema.Minimum) < 0 {
+				addError(diagnostics, path, DiagnosticInvalidType, "Integer is below minimum")
+			}
+			if schema.Maximum != nil && compareNumbers(number, *schema.Maximum) > 0 {
+				addError(diagnostics, path, DiagnosticInvalidType, "Integer is above maximum")
+			}
 		}
 	case "number":
 		if number, ok := value.(json.Number); !ok || !isFiniteNumber(number) {
@@ -1372,6 +1449,22 @@ func checkObject(schema *schemaNode, value any, path string, diagnostics *[]Pars
 		}
 		if allPresent {
 			addError(diagnostics, path, DiagnosticInvalidType, "Forbidden property combination: "+strings.Join(forbiddenSet, ", "))
+		}
+	}
+	if schema.Additional.Kind == "typed" {
+		known := make(map[string]bool, len(schema.Properties))
+		for _, property := range schema.Properties {
+			known[property.WireName] = true
+		}
+		keys := make([]string, 0, len(object))
+		for key := range object {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if !known[key] {
+				checkNode(schema.Additional.Shape, object[key], joinPath(path, key), diagnostics)
+			}
 		}
 	}
 	for _, property := range schema.Properties {
@@ -1520,20 +1613,57 @@ func exactNumber(number json.Number) (exactDecimal, bool) {
 	return exactDecimal{Negative: negative, Digits: trimmed, Exponent: exponent}, true
 }
 
-func isSafeInteger(number json.Number) bool {
+func isInteger(number json.Number) bool {
 	value, ok := exactNumber(number)
-	if !ok || value.Digits == "0" {
-		return ok
+	return ok && (value.Digits == "0" || value.Exponent.Sign() >= 0)
+}
+
+func compareNumbers(left, right json.Number) int {
+	l, _ := exactNumber(left)
+	r, _ := exactNumber(right)
+	if l.Negative != r.Negative {
+		if l.Negative {
+			return -1
+		}
+		return 1
 	}
-	if value.Exponent.Sign() < 0 || !value.Exponent.IsInt64() {
-		return false
+	order := 0
+	if l.Digits == "0" && r.Digits != "0" {
+		order = -1
+	} else if l.Digits != "0" && r.Digits == "0" {
+		order = 1
+	} else if l.Digits != "0" {
+		ll := new(big.Int).Add(l.Exponent, big.NewInt(int64(len(l.Digits))))
+		rl := new(big.Int).Add(r.Exponent, big.NewInt(int64(len(r.Digits))))
+		order = ll.Cmp(rl)
+		if order == 0 {
+			length := len(l.Digits)
+			if len(r.Digits) > length {
+				length = len(r.Digits)
+			}
+			for index := 0; index < length; index++ {
+				lc, rc := byte('0'), byte('0')
+				if index < len(l.Digits) {
+					lc = l.Digits[index]
+				}
+				if index < len(r.Digits) {
+					rc = r.Digits[index]
+				}
+				if lc < rc {
+					order = -1
+					break
+				}
+				if lc > rc {
+					order = 1
+					break
+				}
+			}
+		}
 	}
-	zeros := value.Exponent.Int64()
-	if zeros > 16 || int64(len(value.Digits))+zeros > 16 {
-		return false
+	if l.Negative {
+		return -order
 	}
-	digits := value.Digits + strings.Repeat("0", int(zeros))
-	return len(digits) < 16 || digits <= "9007199254740991"
+	return order
 }
 
 func isFiniteNumber(number json.Number) bool {

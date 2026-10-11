@@ -1,11 +1,25 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const [generatedPath, repositoryPath] = process.argv.slice(2);
+const [generatedPath, repositoryPath, publicPath] = process.argv.slice(2);
 if (!generatedPath || !repositoryPath) {
   throw new Error("usage: node typescript-smoke.cjs <generated.js> <repository>");
 }
-const sdk = require(path.resolve(generatedPath));
+const raw = require(path.resolve(generatedPath));
+const sdk = publicPath ? require(path.resolve(publicPath)) : raw;
+if (publicPath) {
+  const assert = require("node:assert/strict");
+  assert.equal(typeof raw._projectHostInput, "function", "SDK runtime raw projection remains available");
+  for (const surface of [sdk, sdk.draftCodecs]) {
+    assert.ok(surface, "public entrypoint includes a safe draftCodecs namespace");
+    for (const name of ["_projectHostInput", "PendingAttachment", "HostInputProjection", "supportPlanning", "supportplanning"]) {
+      assert.equal(Object.hasOwn(surface, name), false, `public facade exposes ${name}`);
+    }
+    for (const name of ["parseRegistration", "encodeRegistration", "ownedAttachment", "supports", "responseForEvent"]) {
+      assert.equal(surface[name], raw[name], `public facade lost ${name}`);
+    }
+  }
+}
 const fixture = (relative) => JSON.parse(fs.readFileSync(path.join(repositoryPath, relative), "utf8"));
 
 const registration = fixture("fixtures/draft/registration/portable.valid.json");
@@ -175,11 +189,27 @@ for (const entry of fixture('tools/sdk-codegen/tests/structural-acceptance.json'
     if (parsed.ok) assert.deepEqual(JSON.parse(sdk[`encode${name}`](parsed.value)), entry.value, entry.id + ': roundtrip');
   }
 }
-// Unknown JSON fields retain finite JS numbers; schema integer positions require safe integers.
+// Unsafe JS numbers are rejected: callers must supply lossless JSON text or bigint.
 for (const id of [0, Number.MAX_SAFE_INTEGER]) assert.equal(sdk.parseInterceptRequest({...fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value, id}).ok, true);
 for (const id of [1.5, Number.MAX_SAFE_INTEGER + 1]) assert.equal(sdk.parseInterceptRequest({...fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value, id}).ok, false);
 const ordinary = fixture('tools/sdk-codegen/tests/structural-acceptance.json').cases[0].value;
-assert.equal(sdk.parseInterceptRequest({...ordinary, future: Number.MAX_SAFE_INTEGER + 1}).ok, true);
+assert.equal(sdk.parseInterceptRequest({...ordinary, future: Number.MAX_SAFE_INTEGER + 1}).ok, false);
+for (const counter of ['1208925819614629174706176', '1267650600228229401496703205376']) {
+  const request = fixture('fixtures/draft/http/intercept-request.valid.json');
+  request.params.event.session.counters = {turns: '__COUNTER__', futureCounter: '__COUNTER__'};
+  const raw = JSON.stringify(request).replaceAll('"__COUNTER__"', counter);
+  const parsed = sdk.parseInterceptRequest(raw);
+  assert.equal(parsed.ok, true, JSON.stringify(parsed.diagnostics));
+  assert.equal(parsed.value.params.event.session.counters.turns, BigInt(counter));
+  assert.equal(parsed.value.params.event.session.counters.futureCounter, BigInt(counter));
+  const encoded = sdk.encodeInterceptRequest(parsed.value);
+  assert.ok(encoded.includes(counter), 'large counters must be JSON numbers, not strings');
+  assert.ok(!encoded.includes('"' + counter + '"'));
+  for (const field of ['turns', 'futureCounter']) {
+    request.params.event.session.counters = {[field]: -1};
+    assert.equal(sdk.parseInterceptRequest(JSON.stringify(request)).ok, false);
+  }
+}
 const cycle = {}; cycle.self = cycle;
 for (const future of [undefined, NaN, Infinity, new Date(), new Map(), cycle, Array(1), {get value() {throw new Error('must not execute');}}]) {
   const parsed = sdk.parseInterceptRequest({...ordinary, future});

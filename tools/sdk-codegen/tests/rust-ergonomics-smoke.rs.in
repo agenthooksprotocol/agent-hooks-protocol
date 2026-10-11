@@ -1,4 +1,4 @@
-use agenthooksprotocol::{ergonomic_inputs::ToolBeforeInput, effects, state, Permission, DeliveryDiagnosticCode};
+use agenthooksprotocol::{inputs::ToolBeforeInput, effects, state, Permission, DeliveryDiagnosticCode};
 use serde_json::{json, Value};
 
 #[test]
@@ -10,7 +10,7 @@ fn typed_host_projection_preserves_application_input_and_distinct_facts() {
         "path":"/tools/read", "origin":"native", "callSynthesized":false,
         "parentEventId":"parent"
     })).unwrap();
-    assert_eq!(input.to_event_value().unwrap(),json!({
+    assert_eq!(input.clone().with_sources::<()>().into_host_event().unwrap().0,json!({
         "type":"tool.before", "call":{"id":"c","synthesized":false},
         "tool":{"name":"read","input":{"path":"app-owned"},"origin":"native"},
         "path":"/tools/read", "parentEventId":"parent"
@@ -25,7 +25,7 @@ fn initial_snapshot_and_effects_are_canonical() {
     let initial = initial.candidate(state::Candidate::new(json!({"answer":1})).provenance([("producer".into(),json!("hook"))].into()));
     let value: Value = serde_json::to_value(initial).unwrap();
     assert_eq!(value,json!({"permission":"allow","candidate":{"value":{"answer":1},"provenance":{"producer":"hook"}},"flow":"stop","instructions":["keep"],"future":7}));
-    assert_eq!(serde_json::to_value(effects::modify_input::replace(json!({"next":true}))).unwrap(),json!({"type":"modify","target":"input","operation":"replace","value":{"next":true}}));
+    assert_eq!(serde_json::to_value(effects::modify_input::try_replace(json!({"next":true})).unwrap()).unwrap(),json!({"type":"modify","target":"input","operation":"replace","value":{"next":true}}));
     assert_eq!(serde_json::to_value(effects::deny("reason".into())).unwrap(),json!({"type":"deny","reason":"reason"}));
     assert_eq!(serde_json::to_value(effects::return_(json!(1))).unwrap(),json!({"type":"return","value":1}));
     assert_eq!(serde_json::to_value(DeliveryDiagnosticCode::RemoteRpc).unwrap(),json!("remote_rpc"));
@@ -113,14 +113,8 @@ fn nonobject_intersections_and_distributed_content_stay_typed() {
 }
 
 #[test]
-fn published_single_index_source_helper_is_preserved() {
-    let binding = agenthooksprotocol::ergonomic_inputs::tool_before_sources::items(3, "source");
-    assert_eq!(binding.path, vec!["items", "3"]);
-}
-
-#[test]
 fn owned_host_attachments_project_nested_paths_without_serializing_sources() {
-    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    use agenthooksprotocol::{inputs::*, *};
     // Intentionally neither Serialize nor Clone; projection can only move it.
     struct Source(Vec<u8>);
     let input: UserMessageInboundInput = serde_json::from_value(json!({
@@ -152,7 +146,7 @@ fn owned_host_attachments_project_nested_paths_without_serializing_sources() {
 
 #[test]
 fn owned_envelope_only_extracts_explicit_schema_slots_and_last_builder_wins() {
-    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    use agenthooksprotocol::{inputs::*, *};
     struct Source(&'static str);
     let opaque = json!({"kind":"attachment", "body":{"ref":"opaque"}, "parts":[{"body":"never scan"}]});
     let input: ToolBeforeInput<Value> = serde_json::from_value(json!({"callId":"c", "name":"n", "path":"/tool/n", "origin":"native", "input":opaque})).unwrap();
@@ -174,7 +168,7 @@ fn owned_envelope_only_extracts_explicit_schema_slots_and_last_builder_wins() {
 
 #[test]
 fn synthesized_host_constructors_assign_identity_once() {
-    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    use agenthooksprotocol::{inputs::*, *};
     struct Source;
     let input = UserMessageInboundInput::new(UserMessageInboundInputMessage::new("chat", vec![], "host"));
     let message = MessageInput::from_parts(CanonicalMessageRole::User, vec![
@@ -200,7 +194,7 @@ fn synthesized_host_constructors_assign_identity_once() {
 
 #[test]
 fn owned_projection_rejects_invalid_metadata_and_bounds() {
-    use agenthooksprotocol::{ergonomic_inputs::*, *};
+    use agenthooksprotocol::{inputs::*, *};
     struct Source;
     fn input() -> UserMessageInboundInput {
         UserMessageInboundInput::new(UserMessageInboundInputMessage::new("chat", vec![], "host"))

@@ -21,6 +21,8 @@ def install_sdk(source: Path, sdk: Path, language: str) -> list[str]:
     commit = lock["sourceCommit"]
     if lock["language"] != language or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("Expected a matching language and immutable sourceCommit")
+    if language == "typescript" and (source / "index.ts").exists():
+        raise ValueError("TypeScript draft index.ts is SDK-owned; use generated public.ts")
     workflow = sdk / ".github/workflows/ci.yml"
     contents = workflow.read_text()
     # Match only the protocol checkout, never action or SDK repository pins.

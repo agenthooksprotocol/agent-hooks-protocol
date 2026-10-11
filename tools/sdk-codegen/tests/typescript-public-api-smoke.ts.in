@@ -1,0 +1,41 @@
+import {
+  draftCodecs, ownedAttachment, responseForEvent, supports, effectNames,
+} from './public.js';
+import type { EventResponses, HostEventInputs, JsonValue, ToolBeforeInput } from './types.js';
+import { _projectHostInput } from './raw.js';
+
+// Raw projections remain SDK runtime imports, not public codec exports.
+const input: HostEventInputs['tool.before'] = {
+  callId: 'call', name: 'read', input: {applicationOwned: true},
+  path: '/tools/read', origin: 'native',
+};
+_projectHostInput('tool.before', input);
+ownedAttachment({source: 'opaque'});
+draftCodecs.parseRegistration('{}');
+supports({effects: ['deny']}, effectNames.deny);
+// @ts-expect-error runtime planning is not in the public codec namespace.
+draftCodecs._projectHostInput;
+// @ts-expect-error runtime planning cannot be imported from the package entrypoint.
+import type { PendingAttachment, HostInputProjection } from './public.js';
+// @ts-expect-error runtime conversion cannot be imported from the client type facade.
+import type { _projectHostInput as HiddenClientProjection } from './types.js';
+// @ts-expect-error runtime conversion cannot be imported from the public codecs facade.
+import { _projectHostInput as HiddenCodecProjection } from './codecs.js';
+
+// Generic application payloads stay unknown unless the caller supplies a type.
+interface Args { path: string }
+declare const typed: ToolBeforeInput<Args>;
+const path: string = typed.input.path;
+const erased: ToolBeforeInput = typed;
+// @ts-expect-error an erased opaque payload does not promise an application shape.
+const unvalidated: Args = erased.input;
+
+// Event context must not be widened to accept a response for another event.
+responseForEvent({type: 'session.start'}, {jsonrpc: '2.0', id: 'r', result: {protocolVersion: draftCodecs.PROTOCOL_VERSION}});
+// @ts-expect-error session.start cannot supply a tool input effect.
+responseForEvent({type: 'session.start'}, {jsonrpc: '2.0', id: 'r', result: {protocolVersion: draftCodecs.PROTOCOL_VERSION, effects: [{type: 'modify', operation: 'replace', target: 'input', value: {}}]}});
+declare const genericResponse: EventResponses[keyof EventResponses];
+// @ts-expect-error a generic response union is not narrowed by knowing the request event.
+responseForEvent({type: 'session.start'}, genericResponse);
+const opaque: JsonValue = {future: {preserved: true}};
+void [path, unvalidated, opaque];

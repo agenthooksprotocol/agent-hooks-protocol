@@ -14,10 +14,17 @@ mod tests {
         let models = &files["_models/__init__.py"];
         assert!(models.contains("items: list[ModelVisibleItem] | list[dict[str, Any]]"));
         assert!(models.contains("class OwnedAttachment:"));
+        let exports = models
+            .lines()
+            .find(|line| line.starts_with("__all__ = "))
+            .unwrap();
+        assert!(!exports.contains("OwnedAttachment"));
         assert!(models.contains("_normalize_owned_input(self, \"user.message.inbound\""));
         assert!(models.contains("from .._boundaries import CONTENT_SOURCE_SLOTS"));
         assert!(models.contains("ahp:owned:pending"));
-        assert!(models.contains("sources[key] = owned.source if isinstance(owned, OwnedAttachment) else owned"));
+        assert!(models.contains(
+            "sources[key] = owned.source if isinstance(owned, OwnedAttachment) else owned"
+        ));
         assert!(models.contains("def _register_attachment_type(attachment_type: type[Any])"));
         assert!(models.contains("isinstance(value, _ATTACHMENT_TYPES)"));
         assert!(!models.contains("from ..attachment import"));
@@ -366,10 +373,12 @@ mod tests {
         );
         assert!(files["_boundaries.py"].contains("input: models.ToolBeforeInput | dict[str, Any]"));
         assert_eq!(
-            files["_boundaries.py"].matches("-> HookResult:").count(),
+            files["_boundaries.py"]
+                .matches("-> _hooks.HookResult[InputT, ResultT, ProvenanceT]:")
+                .count(),
             32
         );
-        assert!(files["_models/effect.py"].contains("EffectModify as Modify"));
+        assert!(files["_models/effect.py"].contains("ModifyInputEffect as ModifyInput"));
         assert!(files["path.py"].contains("NATIVE = Path.NATIVE"));
     }
     #[test]
@@ -391,8 +400,14 @@ mod tests {
         for code in crate::ergonomics::DIAGNOSTIC_CODES {
             assert!(files["diagnostics.py"].contains(&format!("= {code:?}")));
         }
-        assert!(files["effect.py"].contains("def replace_input(value: Any) -> Modify:"));
-        assert!(files["effect.py"].contains("def merge_input(value: Any) -> Modify:"));
+        assert!(
+            files["effect.py"]
+                .contains("def replace_input(value: dict[str, Any]) -> _models.ModifyInputEffect:")
+        );
+        assert!(
+            files["effect.py"]
+                .contains("def merge_input(value: dict[str, Any]) -> _models.ModifyInputEffect:")
+        );
         assert!(files["_grants.py"].contains("def intercept() -> Builder:"));
         assert!(files["_grants.py"].contains("return Builder((Mode.INTERCEPT, Mode.OBSERVE),"));
         assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
@@ -598,6 +613,91 @@ mod tests {
             !serde_json::to_string(&fields)
                 .unwrap()
                 .contains("constructor_default")
+        );
+    }
+    #[test]
+    fn contextual_dispatch_and_generic_projections_derive_canonical_models() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let response = &files["response.py"];
+        assert!(response.contains("__all__ = [\"ContextualResponse\", \"response_for_request\"]"));
+        assert!(
+            response
+                .contains("\"model.request.before\": _models.ModelRequestBeforeInterceptResponse")
+        );
+        assert!(
+            response.contains(
+                "_wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)"
+            )
+        );
+        assert!(response.contains("diagnostics.extend(validate(value))"));
+        assert!(response.contains("Unknown request event: "));
+        let contract = &files["contract.py"];
+        assert!(
+            contract.contains("__all__ = [\"Candidate\",\"ElicitResult\",\"RequestedSchema\"]")
+        );
+        assert!(
+            contract.contains("from dataclasses import dataclass as _dataclass, field as _field")
+        );
+        assert!(contract.contains("@_dataclass(kw_only=True)"));
+        assert!(contract.contains("class Candidate(Generic[T, P]):"));
+        assert!(contract.contains("class ElicitResult(Generic[T]):"));
+        assert!(contract.contains("result[\"_meta\"] = self.meta"));
+        assert!(contract.contains("dict(self.additional_properties)"));
+        assert!(files["_boundaries.py"].contains("\nfrom . import _models as models\n"));
+        assert!(files["_boundaries.py"].contains("result_codec: Codec[ResultT] | None = None"));
+        assert!(
+            files["_boundaries.py"].contains("provenance_codec: Codec[ProvenanceT] | None = None")
+        );
+        assert!(
+            files["_boundaries.py"].contains("_hooks = _import_module(\"._hooks\", __package__)")
+        );
+        assert!(!files["_boundaries.py"].contains("**kwargs: Any"));
+        assert!(
+            files["elicitation.py"].contains(
+                "McpElicitationElicitRequestFormParamsRequestedSchema as RequestedSchema"
+            )
+        );
+    }
+
+    #[test]
+    fn omission_and_flow_helpers_preserve_wire_contracts() {
+        let files = emit(&draft()).unwrap();
+        let models = &files["_models/__init__.py"];
+        assert!(models.contains("def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:"));
+        assert!(models.contains("def __copy__(self) -> _Unset:"));
+        assert!(models.contains("return list(self.get(\"effects\", []))"));
+        assert!(!models.contains("self.setdefault(\"effects\""));
+        assert!(files["state.py"].contains("from ._models import _UNSET"));
+        assert!(!files["state.py"].contains("object()"));
+        for counter in [
+            "continuation_count",
+            "remaining_continuations",
+            "max_continuations",
+        ] {
+            assert!(
+                files["_grants.py"]
+                    .contains(&format!("if type({counter}) is not int or {counter} < 0:"))
+            );
+        }
+        assert!(!files["_grants.py"].contains("safe integers"));
+    }
+
+    #[test]
+    fn bounded_integer_projection_keeps_python_integer_annotation() {
+        let ir = draft();
+        assert_eq!(
+            annotation(
+                &ir,
+                &Shape::BoundedInteger {
+                    minimum: Some(Value::from(0)),
+                    maximum: None
+                },
+                "Count",
+                ""
+            )
+            .unwrap(),
+            "int"
         );
     }
 }

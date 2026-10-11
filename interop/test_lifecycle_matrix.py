@@ -36,6 +36,19 @@ def evidence(scenarios):
     return report,{'entries':entries}
 
 class VerifierTests(unittest.TestCase):
+    def test_effect_discovery_skips_invalid_arrays_without_changing_fixtures(self):
+        from generate_lifecycle_scenarios import core, response_effects
+        from observation_wire import ObservationValidator
+        self.assertEqual(len(core), 111)
+        before = deepcopy(core)
+        effects = list(response_effects(core))
+        self.assertTrue(any(effect.get('type') == 'inject' for effect in effects))
+        null = next(row for row in core if row['id'] == 'null-effects-array')
+        self.assertIsNone(null['response']['result']['effects'])
+        self.assertEqual(list(response_effects([null])), [])
+        self.assertTrue(ObservationValidator().schema_errors(null['response'], 'intercept-response'))
+        self.assertEqual(core, before)
+
     def test_shared_lifecycle_responses_use_canonical_injections(self):
         from observation_wire import ObservationValidator
         from generate_lifecycle_scenarios import scenarios as generated
