@@ -19,16 +19,12 @@ import subprocess
 import tempfile
 
 
-def audit_public_names(directory: Path) -> None:
-    """Audit actual emitted names, not only hand-picked generator hints.
-
-    Private low-level TypedDict names deliberately retain FieldN path hints.
-    Those are implementation details, not public models or constructors.
-    """
+def audit_public_name_source(source: Path) -> int:
+    """Audit one file, allowing only genuine typed typing overload groups."""
     count = 0
     forbidden = re.compile(r"(?:Variant|Field)\d|_\d+$|[0-9a-fA-F]{12}|ObjectWith|Required[A-Z].*Optional[A-Z]")
 
-    def check(name: str, source: Path) -> None:
+    def check(name: str) -> None:
         nonlocal count
         if name.startswith("_"):
             return
@@ -36,33 +32,96 @@ def audit_public_names(directory: Path) -> None:
         assert len(name) <= 100, (source, "unbounded public name", name)
         assert not forbidden.search(name), (source, "nonsemantic public name", name)
 
-    def scope(nodes: list[ast.stmt], source: Path) -> None:
+    def scope(nodes: list[ast.stmt], inherited: dict[str, str]) -> None:
+        bindings = inherited.copy()
         declarations: set[str] = set()
+        pending = None
+        pending_kind = None
+
+        def is_overload(decorator: ast.expr) -> bool:
+            return (
+                isinstance(decorator, ast.Name)
+                and bindings.get(decorator.id) == "typing.overload"
+            ) or (
+                isinstance(decorator, ast.Attribute)
+                and decorator.attr == "overload"
+                and isinstance(decorator.value, ast.Name)
+                and bindings.get(decorator.value.id) == "typing"
+            )
+
         for node in nodes:
+            if pending is not None:
+                assert isinstance(node, pending_kind) and node.name == pending, (
+                    source, "overload missing implementation", pending
+                )
             if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                check(node.name, source)
-                assert node.name not in declarations, (source, "overwritten declaration", node.name)
-                declarations.add(node.name)
+                check(node.name)
+                overloaded = not isinstance(node, ast.ClassDef) and any(
+                    is_overload(decorator) for decorator in node.decorator_list
+                )
+                if overloaded:
+                    assert len(node.decorator_list) == 1, (source, "invalid overload decorators", node.name)
+                    args = [arg for arg in ast.walk(node.args) if isinstance(arg, ast.arg)]
+                    assert node.returns is not None and all(arg.annotation is not None for arg in args), (
+                        source, "untyped overload", node.name
+                    )
+                    assert len(node.body) == 1 and (
+                        isinstance(node.body[0], ast.Pass)
+                        or (isinstance(node.body[0], ast.Expr)
+                            and isinstance(node.body[0].value, ast.Constant)
+                            and node.body[0].value.value is Ellipsis)
+                    ), (source, "non-stub overload", node.name)
+                    assert node.name not in declarations, (source, "overwritten declaration", node.name)
+                    pending, pending_kind = node.name, type(node)
+                else:
+                    assert node.name not in declarations, (source, "overwritten declaration", node.name)
+                    if pending is not None:
+                        assert not node.decorator_list, (source, "decorated overload implementation", node.name)
+                        assert not (len(node.body) == 1 and (
+                            isinstance(node.body[0], ast.Pass)
+                            or (isinstance(node.body[0], ast.Expr)
+                                and isinstance(node.body[0].value, ast.Constant)
+                                and node.body[0].value.value is Ellipsis)
+                        )), (source, "stub overload implementation", node.name)
+                    declarations.add(node.name)
+                    pending = pending_kind = None
+                bindings.pop(node.name, None)
                 if isinstance(node, ast.ClassDef):
-                    scope(node.body, source)
+                    scope(node.body, bindings)
                 else:
                     for arg in ast.walk(node.args):
                         if isinstance(arg, ast.arg):
-                            check(arg.arg, source)
-            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                            check(arg.arg)
+            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
                 targets = node.targets if isinstance(node, ast.Assign) else [node.target]
                 for target in targets:
-                    if isinstance(target, ast.Name):
-                        check(target.id, source)
+                    for part in ast.walk(target):
+                        if isinstance(part, ast.Name):
+                            if isinstance(part.ctx, ast.Store):
+                                check(part.id)
+                            bindings.pop(part.id, None)
             elif isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in node.names:
-                    check(alias.asname or alias.name, source)
+                    name = alias.asname or alias.name
+                    check(name)
+                    bindings.pop(name, None)
+                    if isinstance(node, ast.Import) and alias.name == "typing":
+                        bindings[name] = "typing"
+                    elif (isinstance(node, ast.ImportFrom) and node.level == 0
+                          and node.module == "typing" and alias.name == "overload"):
+                        bindings[name] = "typing.overload"
             elif isinstance(node, ast.If):
-                scope(node.body, source)
-                scope(node.orelse, source)
+                scope(node.body, bindings)
+                scope(node.orelse, bindings)
+        assert pending is None, (source, "overload missing implementation", pending)
 
-    for source in sorted(directory.rglob("*.py")):
-        scope(ast.parse(source.read_text()).body, source)
+    scope(ast.parse(source.read_text()).body, {})
+    return count
+
+
+def audit_public_names(directory: Path) -> None:
+    """Audit emitted names, retaining private low-level TypedDict path hints."""
+    count = sum(audit_public_name_source(source) for source in sorted(directory.rglob("*.py")))
     assert count > 2000, count
 
 
@@ -484,12 +543,38 @@ def check_owned_host_inputs(models, event, wire) -> None:
             raise AssertionError(f"Accepted malformed owned content: {invalid!r}")
 
 
+def _install_boundary_runtime_stubs(package: str) -> type:
+    """Provide the handwritten runtime's generic import seams in standalone CI."""
+    input_t = typing.TypeVar("InputT")
+    result_t = typing.TypeVar("ResultT")
+    provenance_t = typing.TypeVar("ProvenanceT")
+
+    class Codec(typing.Generic[input_t]):
+        pass
+
+    class HookResult(typing.Generic[input_t, result_t, provenance_t]):
+        pass
+
+    codec = types.ModuleType(package + ".codec")
+    codec.Codec = Codec
+    content = types.ModuleType(package + "._content")
+    content.ContentContext = type("ContentContext", (), {})
+    content.ContentSources = dict[tuple[str, ...], typing.Any]
+    hooks = types.ModuleType(package + "._hooks")
+    hooks.HookResult = HookResult
+    for module in (codec, content, hooks):
+        sys.modules[module.__name__] = module
+    return HookResult
+
+
 def main() -> None:
     directory = Path(sys.argv[1]).resolve()
     audit_public_names(directory)
     package = types.ModuleType("facade_contract")
     package.__path__ = [str(directory)]
     sys.modules[package.__name__] = package
+    if not (directory / "_hooks.py").is_file():
+        hook_result = _install_boundary_runtime_stubs("facade_contract")
     models = importlib.import_module("facade_contract._models")
     wire = importlib.import_module("facade_contract.generated")
     assert typing.get_type_hints(models.InterceptRequestParams.__init__)["event"] == models.Event
@@ -539,6 +624,8 @@ def main() -> None:
     assert capability.Event.TOOL_BEFORE == "tool.before"
     tool = importlib.import_module("facade_contract.tool")
     registration = importlib.import_module("facade_contract._models.registration")
+    if (directory / "_hooks.py").is_file():
+        hook_result = importlib.import_module("facade_contract._hooks").HookResult
     boundaries = importlib.import_module("facade_contract._boundaries")
 
     # The package initializer uses this same star export. Check every emitted
@@ -650,7 +737,7 @@ def main() -> None:
     }
     input.to_wire()["tool"]["input"]["changed"] = True
     assert input["input"] == {}
-    assert effect.replace_input({"x": 1}) == effect.Modify(target="input", operation="replace", value={"x": 1})
+    assert effect.replace_input({"x": 1}) == effect.ModifyInputEffect(operation="replace", value={"x": 1})
     assert effect.merge_input({"x": 1})["operation"] == "merge"
     assert wire.parse_effect(effect.replace_input({"x": 1}))["ok"]
     assert effect.flow_continue() == {"type": "flow", "operation": "continue"}
@@ -700,7 +787,6 @@ def main() -> None:
         dict(remaining_continuations=0, continuation_count=-1),
         dict(remaining_continuations=True, continuation_count=0),
         dict(remaining_continuations=0.5, continuation_count=0),
-        dict(remaining_continuations=2**53, continuation_count=0),
         dict(remaining_continuations=0, continuation_count=0, max_continuations=-1),
         {},
     ]
@@ -711,7 +797,7 @@ def main() -> None:
             pass
         else:
             raise AssertionError("Invalid continuation counts accepted")
-    for count in [0, 2**53 - 1]:
+    for count in [0, 2**53 - 1, 2**53, 10**100]:
         assert base.flow(operations=["continue"], remaining_continuations=count, continuation_count=count).to_wire()["capabilities"]["flow"]["remainingContinuations"] == count
     try:
         base._modes = ()
@@ -792,9 +878,19 @@ def main() -> None:
         assert len(methods) == 32, len(methods)
         seen = set()
         for name, method in methods:
-            assert inspect.signature(method).return_annotation == "HookResult"
-            tag, returned, kwargs = await getattr(Hooks(), name)(input, marker="kept")
-            assert returned is input and kwargs == {"marker": "kept"}
+            hints = typing.get_type_hints(method)
+            assert typing.get_origin(hints["return"]) is hook_result
+            parameters = typing.get_args(hints["return"])
+            assert len(parameters) == 3
+            for option, parameter in zip(("input_codec", "result_codec", "provenance_codec"), parameters):
+                annotation = typing.get_args(hints[option])[0]
+                assert typing.get_args(annotation) == (parameter,), (name, option)
+            options = inspect.signature(method).parameters
+            assert not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in options.values())
+            tag, returned, kwargs = await getattr(Hooks(), name)(input, event_id="kept")
+            assert returned is input and kwargs["event_id"] == "kept"
+            assert set(kwargs) == set(options) - {"self", "input"}
+            assert all(value is None for key, value in kwargs.items() if key != "event_id")
             assert tag.replace(".", "_") == name
             seen.add(tag)
         assert len(seen) == 32

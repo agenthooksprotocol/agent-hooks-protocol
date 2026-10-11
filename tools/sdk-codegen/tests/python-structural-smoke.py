@@ -55,8 +55,9 @@ for model, parse, accepted, rejected in (
      [0, 1, 1.0, 1.25, Decimal("1"), Decimal("1.0000000000000000001")],
      [True, float("nan"), Decimal("Infinity")]),
     (models.HydrationIntegers, wire.parse_hydration_integers,
-     [0, 1, 1.0, Decimal("1.0"), 2**53 - 1, Decimal(2**53 - 1)],
-     [True, 1.25, Decimal("1.0000000000000000001"), 2**53, Decimal(2**53)]),
+     [0, 1, 1.0, Decimal("1.0"), 2**53 - 1, Decimal(2**53 - 1),
+      2**53, Decimal(2**53), 10**100, Decimal(10**100)],
+     [True, 1.25, Decimal("1.0000000000000000001")]),
 ):
     for number in accepted:
         raw = {"items": [number, {"left": "ok"}]}
