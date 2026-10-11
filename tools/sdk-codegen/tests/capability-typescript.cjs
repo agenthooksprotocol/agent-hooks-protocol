@@ -50,6 +50,51 @@ for (const declaration of Object.values(wire(host)).concat(Object.values(wire(de
     assert.equal(parsed.ok, true, JSON.stringify(parsed));
   }
 }
+// JavaScript callers bypass static declarations; the renderer must enforce them.
+const invalidDeclarations = [
+  ['missing mode', {toolBefore:{}}],
+  ['empty interception', {toolBefore:{intercept:{}}}],
+  ['observation-only interception', {sessionEnd:{observe:true,intercept:{deny:true}}}],
+  ['unsupported event effect', {toolAfter:{intercept:{deny:true}}}],
+  ['unsupported modification target', {toolBefore:{intercept:{deny:true,modifyOutput:'replace'}}}],
+  ['unknown modification mode', {toolBefore:{intercept:{modifyInput:'none'}}}],
+  ['disabled direct grant', {toolBefore:{intercept:{allow:false}}}],
+  ['empty flow', {toolAfter:{intercept:{flow:{operations:[]}}}}],
+  ['unknown flow operation', {toolAfter:{intercept:{flow:{operations:['jump']}}}}],
+  ['missing continuation counts', {toolAfter:{intercept:{flow:{operations:['continue']}}}}],
+  ['event-restricted continuation', {toolBefore:{intercept:{flow:{operations:['continue'],remainingContinuations:1,continuationCount:0}}}}],
+  ['empty delivery', {toolAfter:{intercept:{inject:{context:{append:true,deliverAt:[]}}}}}],
+  ['unknown delivery', {toolAfter:{intercept:{inject:{context:{append:true,deliverAt:['later']}}}}}],
+  ['disabled append', {toolAfter:{intercept:{inject:{context:{append:false,deliverAt:['now']}}}}}],
+  ['empty injection', {toolAfter:{intercept:{inject:{}}}}],
+  ['empty elicitation', {userElicitationRequest:{intercept:{elicitation:{}}}}],
+  ['disabled elicitation', {userElicitationRequest:{intercept:{elicitation:{form:false,url:false}}}}],
+  ['disabled observation', {sessionStart:{observe:false}}],
+  ['nonboolean observation', {sessionStart:{observe:'true'}}],
+  ['disabled observation beside interception', {toolBefore:{intercept:{deny:true},observe:false}}],
+];
+for (const [label, declaration] of invalidDeclarations) {
+  assert.throws(() => wire(declaration), TypeError, label);
+}
+for (const field of ['remainingContinuations', 'continuationCount', 'maxContinuations']) {
+  for (const invalid of [-1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1, '2']) {
+    const flow = {operations:['continue'],remainingContinuations:2,continuationCount:0,maxContinuations:5};
+    flow[field] = invalid;
+    assert.throws(() => wire({toolAfter:{intercept:{flow}}}), TypeError, `${field}: ${invalid}`);
+  }
+}
+const mutableSource = {toolAfter:{intercept:{
+  flow:{operations:['continue'],remainingContinuations:2,continuationCount:0},
+  inject:{context:{append:true,deliverAt:['now']}},
+}}};
+const sourceSnapshot = wire(mutableSource);
+const expectedSnapshot = JSON.stringify(sourceSnapshot);
+mutableSource.toolAfter.intercept.flow.operations.push('stop');
+mutableSource.toolAfter.intercept.flow.remainingContinuations = -1;
+mutableSource.toolAfter.intercept.inject.context.deliverAt.push('next_turn');
+assert.equal(JSON.stringify(sourceSnapshot), expectedSnapshot);
+assert.throws(() => wire(mutableSource), TypeError);
+
 assert.equal(sdk.capabilities, undefined);
 assert.equal(sdk.CapabilityBuilder, undefined);
 console.log('TypeScript typed capability smoke passed');

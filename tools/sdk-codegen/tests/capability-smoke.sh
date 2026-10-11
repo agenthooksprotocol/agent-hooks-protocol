@@ -33,7 +33,12 @@ cargo +"${AHP_RUST_TOOLCHAIN:-1.88.0}" run --quiet --offline --manifest-path "$t
 cp "$repository/tools/sdk-codegen/tests/typescript-typedcap-smoke.ts.in" "$temporary/usage.ts"
 cp "$repository/tools/sdk-codegen/tests/typescript-generic-input-smoke.ts.in" "$temporary/generic-input.ts"
 tsc --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --target ES2022 --module commonjs --outDir "$temporary/js" "$temporary/generated.ts" "$temporary/usage.ts" "$temporary/generic-input.ts"
+# Compile runtime alias repros separately; usage.ts contains intentional type errors
+# and must never be executed.
+cp "$repository/tools/sdk-codegen/tests/typescript-capability-alias-smoke.ts.in" "$temporary/capability-alias.ts"
+tsc --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes --target ES2022 --module commonjs --outDir "$temporary/alias-js" "$temporary/generated.ts" "$temporary/capability-alias.ts"
 node "$repository/tools/sdk-codegen/tests/capability-typescript.cjs" "$temporary/js/generated.js"
+node "$temporary/alias-js/capability-alias.js"
 cp "$repository/tools/sdk-codegen/Cargo.toml" "$temporary/consumer/Cargo.toml"
 cp "$repository/tools/sdk-codegen/Cargo.lock" "$temporary/consumer/Cargo.lock"
 mkdir -p "$temporary/consumer/tests"

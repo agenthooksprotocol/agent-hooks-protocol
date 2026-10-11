@@ -200,7 +200,38 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
         };
         writeln!(out, "  readonly {}?: {ty};", camel(&event.name))?;
     }
-    out.push_str("}\nexport function hostCapabilitiesToWire(host: HostCapabilities): Readonly<Record<string, WireDeclaration>> {\n  const result: Record<string, WireDeclaration> = {};\n");
+    out.push_str("}\n");
+    let mut rules = BTreeMap::new();
+    for event in &events {
+        let controls = event
+            .effects
+            .iter()
+            .filter(|effect| !["modify", "flow", "inject"].contains(&effect.as_str()))
+            .map(|effect| direct(effect))
+            .collect::<Vec<_>>();
+        let mut modify = BTreeMap::new();
+        for (target, ops) in &event.modify {
+            let mut modes = ops.clone();
+            if ops.contains(&"replace".into()) && ops.contains(&"merge".into()) {
+                modes.push("replace-and-merge".into());
+            }
+            modify.insert(format!("modify{}", title(target)), modes);
+        }
+        rules.insert(
+            camel(&event.name),
+            serde_json::json!({
+                "intercept": event.intercept, "observe": event.observe,
+                "controls": controls, "modify": modify, "flow": event.flow,
+                "delivery": event.delivery, "elicitation": event.elicitation,
+            }),
+        );
+    }
+    writeln!(
+        out,
+        "const capabilityRules: Readonly<Record<string, CapabilityRule>> = {};",
+        serde_json::to_string(&rules)?
+    )?;
+    out.push_str("export function hostCapabilitiesToWire(host: HostCapabilities): Readonly<Record<string, WireDeclaration>> {\n  host = capabilityOwnedHost(host);\n  const result: Record<string, WireDeclaration> = {};\n");
     for event in &events {
         writeln!(
             out,
@@ -283,5 +314,116 @@ export function capabilityCount(value: number): CapabilityCount {
 function capabilityModifyToWire(mode: string): {replace:boolean;merge:boolean} {
   return {replace: mode === 'replace' || mode === 'replace-and-merge', merge: mode === 'merge' || mode === 'replace-and-merge'};
 }
+
+interface CapabilityRule {
+  readonly intercept: boolean; readonly observe: boolean;
+  readonly controls: readonly string[]; readonly modify: Readonly<Record<string, readonly string[]>>;
+  readonly flow: readonly string[]; readonly delivery: readonly string[]; readonly elicitation: readonly string[];
+}
+function capabilityInvalid(): never { throw new TypeError('invalid or mutated host capability declaration'); }
+// Snapshot once, then validate and render only owned data. Readonly types do not protect mutable aliases.
+function capabilitySnapshot(value: unknown, active = new Set<object>()): unknown {
+  if (value === null || typeof value !== 'object') {
+    if (value === undefined || typeof value === 'boolean' || typeof value === 'string' || typeof value === 'number') return value;
+    return capabilityInvalid();
+  }
+  if (active.has(value)) return capabilityInvalid();
+  active.add(value);
+  let result: unknown;
+  if (Array.isArray(value)) {
+    result = Array.from(value, item => capabilitySnapshot(item, active));
+  } else {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return capabilityInvalid();
+    const owned: Record<string, unknown> = Object.create(null);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') return capabilityInvalid();
+      owned[key] = capabilitySnapshot((value as Record<string, unknown>)[key], active);
+    }
+    result = owned;
+  }
+  active.delete(value);
+  return result;
+}
+function capabilityObject(value: unknown): Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return capabilityInvalid();
+  return value as Record<string, unknown>;
+}
+function capabilityKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
+  for (const key of Object.keys(value)) if (!allowed.includes(key)) capabilityInvalid();
+}
+function capabilityList(value: unknown, allowed: readonly string[]): readonly string[] {
+  if (!Array.isArray(value) || value.length === 0 || value.some(item => typeof item !== 'string' || !allowed.includes(item))) return capabilityInvalid();
+  return value as string[];
+}
+function capabilityOwnedHost(value: unknown): HostCapabilities {
+  const host = capabilityObject(capabilitySnapshot(value));
+  capabilityKeys(host, Object.keys(capabilityRules));
+  for (const [event, selected] of Object.entries(host)) {
+    if (selected === undefined) continue;
+    const rule = capabilityRules[event]!;
+    const declaration = capabilityObject(selected);
+    capabilityKeys(declaration, ['observe', 'intercept']);
+    if (declaration.observe !== undefined && (!rule.observe || declaration.observe !== true)) capabilityInvalid();
+    if (declaration.intercept === undefined) {
+      if (declaration.observe !== true) capabilityInvalid();
+      continue;
+    }
+    if (!rule.intercept) capabilityInvalid();
+    const grants = capabilityObject(declaration.intercept);
+    const allowed = [...rule.controls, ...Object.keys(rule.modify)];
+    if (rule.flow.length) allowed.push('flow');
+    if (rule.delivery.length) allowed.push('inject');
+    if (rule.elicitation.length) allowed.push('elicitation');
+    capabilityKeys(grants, allowed);
+    let supported = false;
+    for (const control of rule.controls) {
+      if (grants[control] === undefined) continue;
+      if (grants[control] !== true) capabilityInvalid();
+      supported = true;
+    }
+    for (const [target, modes] of Object.entries(rule.modify)) {
+      const mode = grants[target];
+      if (mode === undefined) continue;
+      if (typeof mode !== 'string' || !modes.includes(mode)) capabilityInvalid();
+      supported = true;
+    }
+    if (grants.flow !== undefined) {
+      const flow = capabilityObject(grants.flow);
+      capabilityKeys(flow, ['operations', 'remainingContinuations', 'continuationCount', 'maxContinuations']);
+      const operations = capabilityList(flow.operations, rule.flow);
+      for (const field of ['remainingContinuations', 'continuationCount', 'maxContinuations']) {
+        const count = flow[field];
+        if (count !== undefined && (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0)) capabilityInvalid();
+      }
+      if (operations.includes('continue') && (flow.remainingContinuations === undefined || flow.continuationCount === undefined)) capabilityInvalid();
+      supported = true;
+    }
+    if (grants.inject !== undefined) {
+      const injection = capabilityObject(grants.inject);
+      capabilityKeys(injection, ['context']);
+      const context = capabilityObject(injection.context);
+      capabilityKeys(context, ['append', 'deliverAt']);
+      if (context.append !== true) capabilityInvalid();
+      capabilityList(context.deliverAt, rule.delivery);
+      supported = true;
+    }
+    if (grants.elicitation !== undefined) {
+      const elicitation = capabilityObject(grants.elicitation);
+      capabilityKeys(elicitation, rule.elicitation);
+      let facility = false;
+      for (const selection of Object.values(elicitation)) {
+        if (selection === undefined) continue;
+        if (selection !== true) capabilityInvalid();
+        facility = true;
+      }
+      if (!facility) capabilityInvalid();
+      supported = true;
+    }
+    if (!supported) capabilityInvalid();
+  }
+  return host as HostCapabilities;
+}
+
 export type CapabilityObservation = { readonly observe: true; readonly intercept?: never };
 "#;
