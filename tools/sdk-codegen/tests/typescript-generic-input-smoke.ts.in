@@ -19,3 +19,33 @@ const source = {owned: true};
 contentSlots['tool.before'].items(2, source);
 // @ts-expect-error unpublished nested index helpers must not exist
 contentSlots['context.compact.before'].itemsParts(2, 5, source);
+
+// Object-constrained Any must not create impossible branded primitive branches.
+import { Event, ExecutionEventContextCompactBefore, JsonValue, ModelVisibleItem } from './generated';
+type ExpectNever<T extends never> = T;
+type ExpectTrue<T extends true> = T;
+type CompactEvent = Extract<Event, {type: 'context.compact.before'}>;
+type CompactHasItems = ExpectTrue<'items' extends keyof CompactEvent ? true : false>;
+type CompactHasTrigger = ExpectTrue<'trigger' extends keyof CompactEvent ? true : false>;
+type CompactHasNoPrimitiveBranches = ExpectNever<Extract<CompactEvent, string | boolean | number | bigint | null>>;
+type CompactHasNoArrayBranches = ExpectNever<Extract<CompactEvent, JsonValue[]>>;
+declare const canonicalCompact: CompactEvent;
+const canonicalItems: ModelVisibleItem[] = canonicalCompact.items;
+const canonicalTrigger: string = canonicalCompact.trigger;
+const canonicalExtras: JsonValue = canonicalCompact.vendorExtra;
+const compactWithOpaqueExtras: ExecutionEventContextCompactBefore = {
+ id: 'compact', type: 'context.compact.before', source: 'test', time: 'now',
+ trigger: 'manual', items: [], vendorExtra: {nested: [true, null, 'opaque']},
+};
+// @ts-expect-error canonical compact-before is not a boolean
+const compactBoolean: CompactEvent = true;
+// @ts-expect-error canonical compact-before is not a number
+const compactNumber: CompactEvent = 42;
+// @ts-expect-error canonical compact-before is not a string
+const compactString: CompactEvent = 'compact';
+// @ts-expect-error canonical compact-before is not null
+const compactNull: CompactEvent = null;
+// @ts-expect-error canonical compact-before is not an array
+const compactArray: CompactEvent = [];
+void [canonicalItems, canonicalTrigger, canonicalExtras, compactWithOpaqueExtras,
+ compactBoolean, compactNumber, compactString, compactNull, compactArray];

@@ -39,7 +39,7 @@ Public model projection is separate from validation. Exactly identical alternati
 
 For an enum-plus-string union, `Known` names the enum-typed arm and `Custom` names the raw-string arm. An extensible enum still accepts future strings; decoding can therefore select `Known` for an unrecognized value according to the existing branch order. These names are not a new known/unknown classification rule.
 
-TypeScript uses structural unions and quoted wire-property names. Parentheses preserve nested intersection/union precedence; required-only constraints cannot escape their containing object. Its open `UnknownVariant` type still accepts arbitrary tagged objects: canonical parsing, not static typing alone, enforces validity of known tags.
+TypeScript uses structural unions and quoted wire-property names. Parentheses preserve nested intersection/union precedence; required-only constraints cannot escape their containing object. Its open `UnknownVariant` type still accepts arbitrary tagged objects: canonical parsing, not static typing alone, enforces validity of known tags. In object-constrained intersections, the public projection omits `Any` conjuncts: rendering them as `JsonValue` distributes impossible primitive and array branches into the object type. Object projections retain opaque additional JSON properties, and the original descriptor retains every validation conjunct.
 
 Runtime loop indexes, schema-descriptor `variants`, generic parameters, and underscore-prefixed Python implementation hints are not public naming defects. Whole-output regression gates also inspect public declarations, enum arms, facade methods, parameters, and aliases.
 

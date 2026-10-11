@@ -122,6 +122,16 @@ fn effect_descriptors(mut value: serde_json::Value) -> serde_json::Value {
     value
 }
 
+// An object conjunct rules out every JSON primitive and array. Keep this
+// projection local: descriptors still contain every original conjunct.
+fn has_object_constraint(shape: &Shape) -> bool {
+    match shape {
+        Shape::Object { .. } => true,
+        Shape::Intersection { variants } => variants.iter().any(has_object_constraint),
+        _ => false,
+    }
+}
+
 fn render(shape: &Shape, depth: usize) -> Result<String> {
     if let Some(reference) = shape.constrained_reference() {
         return render(reference, depth);
@@ -154,6 +164,10 @@ fn render(shape: &Shape, depth: usize) -> Result<String> {
         Shape::Ref { name } => name.clone(),
         Shape::Intersection { variants } => variants
             .iter()
+            // JsonValue is a union in TypeScript, not an intersection identity:
+            // retaining it creates impossible branded primitive alternatives.
+            // Object rendering already preserves opaque additional properties.
+            .filter(|variant| !(matches!(variant, Shape::Any) && has_object_constraint(shape)))
             .map(|variant| {
                 let member = render(variant, depth)?;
                 Ok(
@@ -499,6 +513,40 @@ function error(diagnostics: ParseDiagnostic[], path: string, code: ParseDiagnost
 mod tests {
     use super::*;
     use crate::model::{Ir, NamedType, PublicRoot, Shape};
+
+    #[test]
+    fn object_intersections_do_not_distribute_json_primitive_branches() {
+        let object = Shape::Object {
+            properties: vec![],
+            additional: AdditionalProperties::Allowed,
+            forbidden_property_sets: vec![],
+        };
+        for variants in [
+            vec![object.clone(), Shape::Any],
+            vec![Shape::Any, object.clone()],
+        ] {
+            let shape = Shape::Intersection { variants };
+            assert_eq!(render(&shape, 0).unwrap(), "{\n} & AdditionalProperties");
+            assert!(
+                serde_json::to_value(&shape).unwrap()["variants"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|variant| variant["kind"] == "any")
+            );
+        }
+        assert_eq!(render(&Shape::Any, 0).unwrap(), "JsonValue");
+        assert_eq!(
+            render(
+                &Shape::Intersection {
+                    variants: vec![Shape::String, Shape::Any]
+                },
+                0
+            )
+            .unwrap(),
+            "string & JsonValue"
+        );
+    }
 
     #[test]
     fn intersection_members_preserve_nested_union_precedence() {
