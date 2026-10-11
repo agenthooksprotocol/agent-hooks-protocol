@@ -33,24 +33,22 @@ import "context"
 import "github.com/agenthooksprotocol/go-sdk/event"
 import "testing"
 import ahp "github.com/agenthooksprotocol/go-sdk"
-type Mode string
-const (Intercept Mode = "intercept"; Observe Mode = "observe")
-type EventCapabilities struct { Modes []Mode; Capabilities *ahp.Capabilities }
-type Options struct { Events map[string]EventCapabilities }
+import "github.com/agenthooksprotocol/go-sdk/capability"
+type Options struct { Events map[string]capability.Event }
 func New(ahp.Registration,Options)(*Hooks,error){return &Hooks{},nil}
 func (*Hooks) Close()error{return nil}
 type Hooks struct{}
-type Client = Hooks
 type InterceptOption func()
 type Result struct{}
 type ToolBeforeResult[T any] struct { Input T }
 func (*Hooks) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
-func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
+func interceptToolBefore[T any](ctx context.Context, hooks *Hooks, input event.ToolBeforeInput[T], opts ...InterceptOption)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{Input: input.Input},nil}
 func TestGenericInference(t *testing.T) {
  type arguments struct { Path string }
  result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Name:"read", Origin:"native", Input:arguments{Path:"file"}, ToolKind:ahp.Some("task")})
  if err!=nil {t.Fatal(err)}
  var _ arguments = result.Input
+ if result.Input.Path != "file" { t.Fatal("ToolBefore did not use the typed prepublication helper") }
 }
 EOF
 export GOTOOLCHAIN=go1.27.0+auto

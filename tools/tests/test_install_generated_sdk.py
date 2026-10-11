@@ -45,7 +45,7 @@ class InstallGeneratedSdkTests(unittest.TestCase):
                 (sdk / "unrelated.txt").write_text("do not stage\n")
                 preserved = {}
                 if language == "typescript":
-                    for name in ("packages/sdk/src/draft/index.ts", "packages/sdk/src/generated.ts"):
+                    for name in ("packages/sdk/src/draft/index.ts",):
                         target = sdk / name
                         target.parent.mkdir(parents=True, exist_ok=True)
                         target.write_text("SDK-owned: " + name)
@@ -81,6 +81,23 @@ class InstallGeneratedSdkTests(unittest.TestCase):
                 self.assertEqual(set(staged), set(paths))
                 self.assertEqual(installer.install_sdk(source, sdk, language), paths)
                 subprocess.run(["git", "-C", str(sdk), "diff", "--exit-code"], check=True)
+
+    def test_remove_obsolete_typescript_monolithic_entrypoint(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, sdk = root / "generated", root / "sdk"
+            source.mkdir()
+            (source / "ahp-codegen.lock.json").write_text(json.dumps({"language": "typescript", "sourceCommit": COMMIT}))
+            (source / "raw.ts").write_text("canonical")
+            (sdk / ".github/workflows").mkdir(parents=True)
+            (sdk / ".github/workflows/ci.yml").write_text(WORKFLOW)
+            obsolete = sdk / "packages/sdk/src/generated.ts"
+            obsolete.parent.mkdir(parents=True)
+            obsolete.write_text("obsolete")
+            paths = installer.install_sdk(source, sdk, "typescript")
+            self.assertFalse(obsolete.exists())
+            self.assertIn("packages/sdk/src/generated.ts", paths)
+            self.assertNotIn("packages/sdk/src/generated.ts", installer.install_sdk(source, sdk, "typescript"))
 
     def test_reject_typescript_handwritten_index_collision(self):
         with tempfile.TemporaryDirectory() as temporary:

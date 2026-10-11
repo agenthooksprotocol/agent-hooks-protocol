@@ -14,11 +14,7 @@ assert.deepEqual(sdk.effects.modify_input.replace({next:true}),{type:'modify',ta
 assert.deepEqual(sdk.effects.deny('reason'),{type:'deny',reason:'reason'});
 assert.deepEqual(sdk.effects.return({answer:1}),{type:'return',value:{answer:1}});
 console.log('generated TypeScript ergonomics passed');
-assert.equal(Object.keys(sdk.contentSlots).length, 32);
-const source = { read() { throw new Error('binding must not read'); } };
-assert.deepEqual(sdk.contentSlots['tool.before'].items(2, source), {path:['items',2],source});
-assert.throws(() => sdk.contentSlots['tool.before'].items(-1, source), RangeError);
-assert.equal(typeof sdk.contentSlots['context.compact.before'], 'object');
+assert.equal('contentSlots' in sdk, false);
 
 assert.equal(sdk.events.toolBefore, 'tool.before');
 assert.equal(Object.keys(sdk.events).length, 32);
@@ -34,6 +30,3 @@ const incoming = sdk.parseInterceptRequest({jsonrpc:'2.0',id:0,method:'hooks/int
 assert.equal(incoming.ok, true, JSON.stringify(incoming.diagnostics));
 assert.equal(sdk.supports(incoming.value.params.capabilities, sdk.effectNames.deny), true);
 assert.equal(sdk.supports(incoming.value.params.capabilities, 'vendor.custom'), true);
-
-assert.equal(sdk.contentSlots['context.compact.before'].itemsParts, undefined);
-assert.equal(sdk.contentSlots['context.compact.before'].instructions, undefined);

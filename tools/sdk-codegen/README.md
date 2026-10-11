@@ -151,13 +151,16 @@ and exercise duration edge cases and presence-preserving projection JSON.
 resolved object root, definition, and nested object, separately from `generated.py`
 wire parsing. Required fields remain required; optional fields preserve absence,
 explicit null, and schema defaults. Literal tags and protocol version are constructor
-conveniences only. Unknown fields remain intact and constructors do not replace
-canonical validation.
+conveniences only. Constructors use snake-case keywords and require typed nested
+models. Wire-spelling keyword aliases and implicit nested dictionary hydration are
+not accepted. Use `Model.from_dict()` explicitly to validate and hydrate JSON.
+Unknown extension fields remain intact and constructors do not replace canonical
+validation.
 
 Generated `_models` exports the complete model surface; `event`, `tool`, `effect`,
 `capability`, `transport`, and `subscription` expose semantic aliases. Runtime-owned
 `registration.py` can re-export `_models.registration` without losing its validator.
-`tool.Call`, `tool.Input`, `tool.Origin`, and `tool.Path.NATIVE` support host event
+`tool.Call`, `tool.Tool`, `tool.Origin`, and `tool.Path.NATIVE` support host event
 construction. Path is an open schema string, not an alias for tool origin; `NATIVE`
 is the documented canonical example, not a closed list of all paths.
 
@@ -173,6 +176,13 @@ Codec-free input and provenance are opaque `object` views. Codec-free results fr
 are respectively `CanonicalMessages`, `TextParts`, and the complete canonical
 `McpElicitationElicitResult` (action and optional content, not just answers).
 Other codec-free results, including tool values, are opaque `object` views.
+The returned `HookResult.event` is always the canonical schema-owned `Event`,
+independent of payload codecs. Use `input`, `candidate`, and `result`, not decoded
+compatibility projections. Complete effects use their typed constructors (for
+example, `effect.ContinueFlow()`); operation-specific builders such as
+`effect.replace_input(value)` select a schema operation and remain canonical.
+Content construction uses `ContentReference`, `ContentSelection`, `ContentUpload`,
+and `ContentUploadReceipt`; diagnostics use `diagnostics.Code`.
 `content.CanonicalMessages` and `content.TextParts` name the canonical containers.
 The facade smoke's `--typing` mode compiles generated files and checks all 256
 origin/codec combinations with mypy, including rejected codec-free typed casts.
@@ -191,9 +201,10 @@ commit in the lock. It never overwrites the package initializer or runtime modul
 ## Go Hooks and typed capability options
 
 The canonical generated boundary receiver is `*client.Hooks` for all 32 draft
-selectors. The handwritten runtime owns `New`, `Options.Events`, mode constants,
-and the deprecated `Client` compatibility alias. The generated client example
-compiles their seam with `map[string]client.EventCapabilities` and typed modes.
+selectors. The handwritten runtime owns `New` and `Options.Events`. The generated
+client example uses `map[string]capability.Event` with `capability.Mode`,
+`capability.InterceptMode`, and `capability.ObserveMode`. No client capability
+re-exports or `Client` compatibility alias are generated.
 
 `capability.New([]string{"modify"}, capability.WithInputModification(true, false))`
 selects the schema-derived open string union arm without exposing union assembly.
@@ -287,20 +298,20 @@ not an earlier checkout with uncommitted generator changes.
   Inline text-only slots have no source binding. The handwritten
   `content` leaf package avoids an event/client import cycle. The runtime must
   collect bindings before serialization in either delivery mode. `capability.Event`
-  and `capability.Mode` can be runtime aliases. Generic receiver methods require
+  and `capability.Mode` own the canonical declarations. Generic receiver methods require
   the declared Go 1.27 toolchain.
-- **Python:** `event.*Input.to_wire()` returns canonical host facts. Immutable
-  `bind_<slot>_source` methods retain sources outside the mapping and expose
+- **Python:** `event.*Input.to_wire()` returns canonical host facts. Generated
+  host attachment adapters retain sources outside the mapping and expose
   `content_sources`. `_boundaries.CONTENT_SOURCE_SLOTS` maps event-qualified slot
-  keys to event name and canonical path tuple; `*` denotes the concrete array
-  index supplied by the binder. Collect bindings before `to_wire()`. `state`,
+  keys to event name and canonical path tuple; `*` denotes the concrete
+  array index collected from host input. Collect bindings before `to_wire()`. `state`,
   `permission`, `candidate`, and `diagnostics` are generated semantic modules;
   the package initializer remains handwritten.
 - **TypeScript:** `EventInputs` maps event selectors to flattened input types;
   `toEventInput(type, input)` performs the generated canonical projection.
-  `contentSlots[event].slot(index?, source)` constructs named out-of-band binding
-  records. Runtime exports can expose these generated helpers without maintaining
-  another event-field or content-slot inventory.
+  `ownedAttachment(source)` embeds an owner in a host attachment;
+  `_projectHostInput` extracts bindings from schema-owned paths. Legacy
+  `contentSlots` constructors are not generated.
 - **Rust:** `ergonomic_inputs::*Input` has required-fact constructors, optional
   field setters and fallible `to_event_value()`. Named `<boundary>_sources`
   modules create out-of-band generic source bindings. The generated
@@ -515,11 +526,10 @@ unknown extra fields retain the existing forward-compatible parser behavior.
 
 ### Existing explicit source bindings
 
-Published singleton and one-index source APIs remain for unchanged slots such as
-`tool.before.items` and `tool.after.fileChangesBefore`. New canonical message
-parts do not introduce indexed caller APIs: embed the owner in the attachment
-part instead. Internal slot metadata retains arbitrary nested paths for runtime
-extraction; it is not a separate public binding API.
+Python indexed `bind_<slot>_source` methods and TypeScript `contentSlots`
+constructors are removed. Embed the owner in the host attachment part instead.
+Internal slot metadata retains arbitrary nested paths for runtime extraction;
+it is not a separate public binding API.
 
 ### Direct owned attachments in host inputs
 

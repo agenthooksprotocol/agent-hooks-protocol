@@ -212,6 +212,13 @@ mod tests {
             assert!(source.contains("  JsonValue,"));
         }
         assert!(files["raw.ts"].contains("export function _projectHostInput"));
+        for (file, source) in &files {
+            assert!(
+                !source.contains("contentSlots"),
+                "{file} exposes legacy bindings"
+            );
+        }
+        assert!(files["types.ts"].contains("  ContentSourceBinding,"));
         assert!(files["codecs.ts"].contains("  parseRegistration,"));
         assert!(files["codecs.ts"].contains("  ownedAttachment,"));
         assert!(files["codecs.ts"].contains("  supports,"));

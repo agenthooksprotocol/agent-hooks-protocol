@@ -14,12 +14,6 @@ toEventInput('tool.before', input);
 const unvalidated: Args = erased.input;
 void [path, proposed, unvalidated];
 
-import {contentSlots} from './generated';
-const source = {owned: true};
-contentSlots['tool.before'].items(2, source);
-// @ts-expect-error unpublished nested index helpers must not exist
-contentSlots['context.compact.before'].itemsParts(2, 5, source);
-
 // Object-constrained Any must not create impossible branded primitive branches.
 import { Event, ExecutionEventContextCompactBefore, JsonValue, ModelVisibleItem } from './generated';
 type ExpectNever<T extends never> = T;

@@ -152,6 +152,25 @@ mod tests {
     }
 
     #[test]
+    fn constructors_and_exports_have_no_compatibility_forms() {
+        let files = emit(&draft()).unwrap();
+        assert!(!files["diagnostics.py"].contains("DiagnosticCode = Code"));
+        assert!(!files["_models/tool.py"].contains(" as Input\n"));
+        for alias in ["Receipt", "UploadReceipt", "Reference", "Selection", "Upload"] {
+            assert!(!files["_models/content.py"].contains(&format!(" as {alias}\n")));
+        }
+        for wrapper in ["modify_summary", "flow_continue", "deny", "continue_flow", "modify_input"] {
+            assert!(!files["effect.py"].contains(&format!("def {wrapper}(")));
+            assert!(!files["effect.py"].contains(&format!("{wrapper} = ")));
+        }
+        assert!(files["effect.py"].contains("def replace_input("));
+        let models = &files["_models/__init__.py"];
+        assert!(!models.contains("extra.pop("));
+        assert!(!models.contains("hydrated = type(self)._hydrate_validated(self"));
+        assert!(models.contains("not _constructor_matches(annotation, self[key])"));
+    }
+
+    #[test]
     fn capability_event_alias_has_an_explicit_stable_owner() {
         let files = emit(&draft()).unwrap();
         assert!(
@@ -413,10 +432,7 @@ mod tests {
         assert!(files["_grants.py"].contains("def elicitation_form(self) -> Builder:"));
         assert!(files["capability.py"].contains("from ._grants import intercept as intercept"));
         assert!(files["_boundaries.py"].contains("CONTENT_SOURCE_SLOTS:"));
-        assert!(
-            models
-                .contains("def bind_items_source(self, source: OwnedContentSource, *, index: int)")
-        );
+        assert!(!models.contains("def bind_items_source"));
         assert!(!models.contains("def bind_items_parts_source"));
         assert!(!models.contains("def bind_instructions_source"));
     }
