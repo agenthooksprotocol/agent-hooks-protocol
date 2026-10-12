@@ -1,0 +1,33 @@
+{
+  "protocolVersion": "draft",
+  "hooks": [
+    {
+      "id": "com.example.local_review",
+      "transport": {
+        "type": "stdio",
+        "command": "/usr/local/bin/local-review",
+        "args": [
+          "serve"
+        ],
+        "lifecycle": "persistent",
+        "cwd": "/srv/review",
+        "env": [
+          "REVIEW_MODE=strict"
+        ]
+      },
+      "subscriptions": [
+        {
+          "events": [
+            "tool.before"
+          ],
+          "mode": "intercept",
+          "timeoutMs": 500,
+          "failurePolicy": "fail-open",
+          "content": {
+            "default": "metadata"
+          }
+        }
+      ]
+    }
+  ]
+}
