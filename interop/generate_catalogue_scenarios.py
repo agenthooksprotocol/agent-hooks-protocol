@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Wire fixtures, never a language-runtime evaluator or native truth oracle."""
 from copy import deepcopy
+import argparse
 import json
 from pathlib import Path
 from observation_wire import ObservationValidator
@@ -141,12 +142,23 @@ def validate(document):
             if step['op']=='register' and scenario['expected']['registrations'][0]['accepted']:
                 errors=validator.schema_errors(step['registration'],'registration')
                 if errors:raise ValueError(scenario['id']+': '+str(errors))
-            if step['op']=='notify':
+            if step['op'] in ('notify','rawNotify'):
                 errors=validator.errors(step['message'])
-                if errors:raise ValueError(scenario['id']+': '+str(errors))
+                index=scenario['steps'].index(step)
+                rejected=scenario['expected']['deliveries'][index].get('errorKind')=='schema'
+                if bool(errors)!=rejected:
+                    raise ValueError(scenario['id']+': '+str(errors or 'expected schema rejection'))
     return document
 
 
 if __name__=='__main__':
-    doc=validate(build());(HERE/'catalogue-scenarios.json').write_text(json.dumps(doc,indent=2)+'\n')
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check',action='store_true')
+    args=parser.parse_args()
+    doc=validate(build())
+    path=HERE/'catalogue-scenarios.json'
+    content=json.dumps(doc,indent=2)+'\n'
+    if args.check:
+        if path.read_text()!=content:raise SystemExit('catalogue-scenarios.json is stale; regenerate fixtures')
+    else:path.write_text(content)
     print(str(len(doc['scenarios']))+' catalogue/lineage/registration scenarios')

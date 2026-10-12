@@ -3,10 +3,6 @@ use crate::model::{Ir, Property, Shape};
 use anyhow::{Result, bail};
 use std::collections::{BTreeMap, BTreeSet};
 
-/// SDK counters use the interoperable integer range, with canonical minimum zero.
-pub const MIN_CONTINUATION_COUNT: i64 = 0;
-pub const MAX_CONTINUATION_COUNT: i64 = 9_007_199_254_740_991;
-
 /// Delivery causes, not stages or protocol error codes. Preserve existing Go codes.
 pub const DIAGNOSTIC_CODES: &[&str] = &[
     "protocol_rejection",
@@ -262,14 +258,6 @@ pub fn input_fields(ir: &Ir, fields: &[Property], event: &str) -> Result<Vec<Inp
 pub struct ContentSlot {
     pub name: String,
     pub path: Vec<String>,
-    pub many: bool,
-}
-
-/// Retain only published source helpers. Canonical message parts use host adapters,
-/// not newly introduced caller-indexed bindings.
-pub fn legacy_source_binding(slot: &ContentSlot) -> bool {
-    !slot.path.iter().any(|p| p == "parts")
-        && slot.path.iter().filter(|p| p.as_str() == "*").count() <= 1
 }
 
 pub fn content_slots(ir: &Ir, fields: &[InputField]) -> Vec<ContentSlot> {
@@ -339,11 +327,7 @@ pub fn content_slots(ir: &Ir, fields: &[InputField]) -> Vec<ContentSlot> {
                 );
                 name.push_str(chars.as_str());
             }
-            result.push(ContentSlot {
-                name,
-                many: path.iter().any(|p| p == "*"),
-                path,
-            });
+            result.push(ContentSlot { name, path });
         }
     }
     result
@@ -368,9 +352,9 @@ mod tests {
             .collect::<Vec<_>>();
         assert!(!counts.is_empty());
         for count in counts {
-            assert_eq!(count["minimum"].as_i64(), Some(MIN_CONTINUATION_COUNT));
+            assert_eq!(count["minimum"].as_i64(), Some(0));
+            assert!(count.get("maximum").is_none());
         }
-        assert_eq!(MAX_CONTINUATION_COUNT, (1_i64 << 53) - 1);
     }
 
     #[test]
@@ -388,24 +372,6 @@ mod tests {
                     .iter()
                     .all(|p| p.required && matches!(p.shape, Shape::Boolean))
             );
-        }
-    }
-
-    #[test]
-    fn legacy_bindings_do_not_publish_message_parts() {
-        for (path, published) in [
-            (vec!["instructions"], true),
-            (vec!["items", "*"], true),
-            (vec!["fileChanges", "*", "before"], true),
-            (vec!["message", "parts", "*"], false),
-            (vec!["items", "*", "parts", "*"], false),
-        ] {
-            let slot = ContentSlot {
-                name: "slot".into(),
-                many: path.contains(&"*"),
-                path: path.into_iter().map(str::to_owned).collect(),
-            };
-            assert_eq!(legacy_source_binding(&slot), published);
         }
     }
 
@@ -440,7 +406,6 @@ mod tests {
             for (name, path) in expected {
                 let slot = slots.iter().find(|s| s.name == name).unwrap();
                 assert_eq!(slot.path, path);
-                assert_eq!(slot.many, path.contains(&"*"));
             }
         }
     }

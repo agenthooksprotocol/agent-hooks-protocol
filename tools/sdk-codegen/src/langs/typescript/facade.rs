@@ -141,10 +141,18 @@ mod tests {
             include_str!("../../../tests/typescript-public-api-smoke.ts.in"),
         )
         .unwrap();
+        std::fs::write(
+            directory.join("typed-capabilities.ts"),
+            include_str!("../../../tests/typescript-typedcap-smoke.ts.in")
+                .replace("'./generated'", "'./public'"),
+        )
+        .unwrap();
         let compiled = std::process::Command::new("tsc")
             .current_dir(&directory)
             .args([
                 "--strict",
+                "--noUncheckedIndexedAccess",
+                "--exactOptionalPropertyTypes",
                 "--target",
                 "es2020",
                 "--module",
@@ -154,6 +162,7 @@ mod tests {
                 "public.ts",
                 "types.ts",
                 "public-api.ts",
+                "typed-capabilities.ts",
             ])
             .output()
             .expect("TypeScript smoke requires tsc");
@@ -212,6 +221,13 @@ mod tests {
             assert!(source.contains("  JsonValue,"));
         }
         assert!(files["raw.ts"].contains("export function _projectHostInput"));
+        for (file, source) in &files {
+            assert!(
+                !source.contains("contentSlots"),
+                "{file} exposes legacy bindings"
+            );
+        }
+        assert!(files["types.ts"].contains("  ContentSourceBinding,"));
         assert!(files["codecs.ts"].contains("  parseRegistration,"));
         assert!(files["codecs.ts"].contains("  ownedAttachment,"));
         assert!(files["codecs.ts"].contains("  supports,"));

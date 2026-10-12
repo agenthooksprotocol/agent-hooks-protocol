@@ -1,9 +1,14 @@
 
 #[cfg(test)]
 pub mod hooks {
+    pub struct EventBoundary<'a, T> {
+        pub name: crate::EventType,
+        pub event: T,
+        pub marker: std::marker::PhantomData<&'a ()>,
+    }
     // This is the SDK's lazy input_for contract: retain input+projector until poll.
     pub struct InputBoundary<'a, T> {
-        pub name: &'static str,
+        pub name: crate::EventType,
         input: Option<T>,
         project: fn(&T) -> Result<serde_json::Value, serde_json::Error>,
         marker: std::marker::PhantomData<&'a ()>,
@@ -18,7 +23,7 @@ pub mod hooks {
         }
     }
     impl<'a, T> InputBoundary<'a, T> {
-        pub fn new(name: &'static str, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> Self {
+        pub fn new(name: crate::EventType, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> Self {
             Self { name, input: Some(input), project, marker: std::marker::PhantomData }
         }
     }
@@ -27,7 +32,7 @@ pub mod hooks {
 pub struct TestHooks;
 #[cfg(test)]
 impl TestHooks {
-    fn input_for<T>(&self, name: &'static str, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> hooks::InputBoundary<'_, T> {
+    fn input_for<T>(&self, name: crate::EventType, input: T, project: fn(&T) -> Result<serde_json::Value, serde_json::Error>) -> hooks::InputBoundary<'_, T> {
         hooks::InputBoundary::new(name, input, project)
     }
     // Handwritten primary API must coexist with the generated event boundary.
@@ -51,7 +56,7 @@ fn named_macro_projects_only_when_polled_without_flat_wire_leakage() {
     drop(h.tool_before_event(make_input()));
     assert_eq!(count.get(), 0, "dropping an unpolled operation must not serialize");
     let mut call: hooks::InputBoundary<'_, inputs::ToolBeforeInput<Probe>> = h.tool_before_event(make_input());
-    assert_eq!(call.name, "tool.before");
+    assert_eq!(call.name, EventType::ToolBefore);
     assert_eq!(count.get(), 0, "constructing a boundary must not serialize");
     let Poll::Ready(result) = Pin::new(&mut call).poll(&mut Context::from_waker(Waker::noop())) else { panic!("projection is ready"); };
     let value = result.unwrap();
@@ -70,4 +75,48 @@ fn content_sources_bind_without_serialization() {
     };
     assert_eq!(binding.path, ["items", "2"]);
     let _source = binding.source;
+}
+
+#[cfg(test)]
+pub mod runtime {
+    pub struct EventBoundary<'a, T> {
+        pub name: crate::EventType,
+        pub event: T,
+        pub marker: std::marker::PhantomData<&'a ()>,
+    }
+}
+#[cfg(test)]
+pub struct TypedClient;
+#[cfg(test)]
+impl TypedClient {
+    fn event_for<T>(&self, name: EventType, event: T) -> runtime::EventBoundary<'_, T> {
+        runtime::EventBoundary {name, event, marker: std::marker::PhantomData}
+    }
+    crate::generated::ahp_event_boundary_methods!();
+}
+#[cfg(test)]
+pub struct CompleteHooks;
+#[cfg(test)]
+impl CompleteHooks {
+    fn event_for<T>(&self, name: EventType, event: T) -> hooks::EventBoundary<'_, T> {
+        hooks::EventBoundary {name, event, marker: std::marker::PhantomData}
+    }
+    crate::generated::ahp_hooks_boundary_methods!();
+}
+#[cfg(test)]
+const NAMED_BOUNDARIES: &[EventType] = crate::generated::ahp_hooks_boundary_methods!(inventory);
+#[test]
+fn native_complete_event_macros_and_inventory_use_the_public_enum() {
+    assert_eq!(NAMED_BOUNDARIES.len(), 32);
+    let typed_names: std::collections::BTreeSet<_> = NAMED_BOUNDARIES.iter().map(|event| event.as_str()).collect();
+    let wire_names: std::collections::BTreeSet<_> = generated::boundary::ALL_BOUNDARIES.iter().map(|event| event.name).collect();
+    assert_eq!(typed_names, wire_names);
+    let client = TypedClient;
+    let hooks = CompleteHooks;
+    let call = client.tool_before_event(7u8);
+    assert_eq!(call.name, EventType::ToolBefore);
+    assert_eq!(call.event, 7);
+    let call = hooks.session_end(8u8);
+    assert_eq!(call.name, EventType::SessionEnd);
+    assert_eq!(call.event, 8);
 }

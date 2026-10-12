@@ -65,6 +65,26 @@ class VerifierTests(unittest.TestCase):
                         self.assertEqual('user', effect['value'][0]['role'])
                         self.assertEqual([], row['expected']['published'])
 
+    def test_generated_lifecycle_validates_observation_steps_and_chain_proofs(self):
+        from generate_lifecycle_scenarios import scenarios, validate
+        self.assertEqual(scenarios, validate(scenarios))
+        legacy = deepcopy(next(s for s in scenarios if s['id']=='changed-body-new-reference'))
+        legacy['steps'][-1]['items'][0]['kind']='text'
+        with self.assertRaisesRegex(ValueError, legacy['id']):
+            validate([legacy])
+        legacy = deepcopy(next(s for s in scenarios if s['id']=='observation-chain-deny'))
+        observation=next(message for message in legacy['chainProof']['observations'] if message['params']['event']['items'])
+        observation['params']['event']['items'][0]['kind']='native'
+        with self.assertRaisesRegex(ValueError, legacy['id']):
+            validate([legacy])
+
+    def test_normal_content_categories_are_attachment_slots(self):
+        from generate_lifecycle_scenarios import scenarios
+        row=next(s for s in scenarios if s['id']=='normal-content-kinds')
+        items=row['steps'][-1]['items']
+        self.assertEqual(['reasoning','skill','native'], [item['category'] for item in items])
+        self.assertTrue(all(item['kind']=='attachment' and 'body' in item for item in items))
+
     def setUp(self):
         self.scenarios=[s for s in load(HERE/'lifecycle-scenarios.json')['scenarios'] if 'chain' not in s]; self.report,self.receipts=evidence(self.scenarios)
     def check(self):return verify(self.scenarios,self.report,self.receipts,'python')

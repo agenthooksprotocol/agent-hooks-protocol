@@ -88,7 +88,7 @@ assert.equal(opaque.event.native, native);
 assert.equal(opaque.event.tool.input, eager);
 assert.deepEqual(opaque.bindings, []);
 assert.equal(evaluations, 0);
-assert.equal(sdk.contentSlots['context.compact.before'].itemsParts, undefined);
+assert.equal('contentSlots' in sdk, false);
 console.log('generated TypeScript owned host inputs passed');
 
 assert.equal(sdk.projectHostInput, undefined); // conversion hook is runtime-internal

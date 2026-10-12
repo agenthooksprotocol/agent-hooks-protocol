@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Central deterministic fixtures. No lifecycle evaluator lives in the runner."""
 from copy import deepcopy
+import argparse
 import base64
 import hashlib
 import json
@@ -77,7 +78,7 @@ s=scenario('upload-integrity-rejection'); s['steps']=[upload('bad-size','body',s
 s=scenario('changed-body-new-reference',EFFECTS); s['steps']=[upload('changed-new-ref','new bytes')]+start()+finish()+[op('observe',key='a',subscription='body',items=[item('changed-new-ref','new bytes')])]; s['expected']=actual(published=[rid(s)],states={rid(s):state()},uploadStatuses=[201],observations=[{'eventId':rid(s),'subscription':'body','input':{'value':'settled'}}]); scenarios.append(s)
 s=scenario('normal-content-kinds',EFFECTS); items=[]
 for kind in ['reasoning','skill','native']:
-    ref='normal-'+kind; s['steps'].append(upload(ref,kind+' content')); i=item(ref,kind+' content'); i.update(id=kind+'-item'); items.append(i)
+    ref='normal-'+kind; s['steps'].append(upload(ref,kind+' content')); i=item(ref,kind+' content'); i.update(id=kind+'-item',category=kind); items.append(i)
 s['steps']+=start()+finish()+[op('observe',key='a',subscription='body',items=items)]; s['expected']=actual(published=[rid(s)],states={rid(s):state()},uploadStatuses=[201]*3,observations=[{'eventId':rid(s),'subscription':'body','input':{'value':'settled'}}]); scenarios.append(s)
 s=scenario('arbitrary-binary-and-empty-content',EFFECTS)
 raw=bytes(range(256))+b'\x00\xff\xfe'
@@ -98,14 +99,41 @@ for s in scenarios:
         s['inapplicableReason'] = ('stdio permits only one outstanding intercept request per persistent backend '
                                    '(spec/draft/base/transports/stdio.md); this schedule requires two.')
 
-if __name__=='__main__':
+def validate(rows):
     from observation_wire import ObservationValidator
     validator=ObservationValidator()
-    for s in scenarios:
+    def check(s, message, name):
+        errors=validator.schema_errors(message,name)
+        if errors:raise ValueError(s['id']+': '+str(errors))
+    for s in rows:
         for field,name in [('requests','intercept-request'),('responses','intercept-response')]:
-            for message in s[field].values():
-                errors=validator.schema_errors(message,name)
-                if errors:raise ValueError(s['id']+': '+str(errors))
-    (HERE/'lifecycle-scenarios.json').write_text(json.dumps({'version':1,'scenarios':scenarios},indent=2)+'\n')
-    (HERE/'observation-chain-scenarios.json').write_text(json.dumps({'version':1,'scenarios':[s for s in scenarios if 'chain' in s]},indent=2)+'\n')
+            for message in s[field].values():check(s,message,name)
+        for responses in s.get('responseSequences',{}).values():
+            for message in responses:check(s,message,'intercept-response')
+        for step in s['steps']:
+            if step['op']=='emit':check(s,step['response'],'intercept-response')
+            if step['op']=='observe':
+                event=deepcopy(s['requests'][step['key']]['params']['event'])
+                if 'items' in step:event['items']=deepcopy(step['items'])
+                message={'jsonrpc':'2.0','method':'hooks/observe',
+                         'params':{'protocolVersion':'draft','event':event}}
+                check(s,message,'observe-notification')
+        for field,name in [('requests','intercept-request'),('observations','observe-notification')]:
+            for message in s.get('chainProof',{}).get(field,[]):check(s,message,name)
+    return rows
+
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check',action='store_true')
+    args=parser.parse_args()
+    validate(scenarios)
+    outputs={'lifecycle-scenarios.json':scenarios,
+             'observation-chain-scenarios.json':[s for s in scenarios if 'chain' in s]}
+    for filename,rows in outputs.items():
+        content=json.dumps({'version':1,'scenarios':rows},indent=2)+'\n'
+        path=HERE/filename
+        if args.check:
+            if path.read_text()!=content:raise SystemExit(filename+' is stale; regenerate fixtures')
+        else:path.write_text(content)
     print(f'{len(scenarios)} lifecycle scenarios')

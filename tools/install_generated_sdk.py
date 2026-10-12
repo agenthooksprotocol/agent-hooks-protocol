@@ -42,6 +42,11 @@ def install_sdk(source: Path, sdk: Path, language: str) -> list[str]:
         raise ValueError("Expected exactly one immutable protocol checkout in SDK CI")
 
     paths = []
+    if language == "typescript":
+        obsolete = Path("packages/sdk/src/generated.ts")
+        if (sdk / obsolete).exists():
+            (sdk / obsolete).unlink()
+            paths.append(obsolete.as_posix())
     for artifact in sorted(source.rglob("*")):
         # Smoke tests may leave Python bytecode in the uploaded artifact.
         if "__pycache__" in artifact.parts or artifact.suffix in (".pyc", ".pyo"):

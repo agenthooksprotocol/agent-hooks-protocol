@@ -1,0 +1,71 @@
+import { capabilityCount, hostCapabilitiesToWire } from './generated';
+import type { CapabilityDelivery, CapabilityFlowOperation, HostCapabilities } from './generated';
+
+// These are ordinary mutable aliases: no casts, suppression, or untyped values.
+function rejects(host: HostCapabilities, label: string): void {
+  try {
+    hostCapabilitiesToWire(host);
+  } catch (error) {
+    if (error instanceof TypeError) return;
+    throw error;
+  }
+  throw new Error(`renderer accepted ${label}`);
+}
+
+const operations: ['stop'] = ['stop'];
+const poppedFlow = {toolAfter: {intercept: {flow: {operations}}}} satisfies HostCapabilities;
+operations.pop();
+rejects(poppedFlow, 'a popped nonempty flow tuple');
+
+const beforeOperations: ['stop'] = ['stop'];
+const before = {toolBefore: {intercept: {flow: {operations: beforeOperations}}}} satisfies HostCapabilities;
+const widenedOperations: CapabilityFlowOperation[] = beforeOperations;
+widenedOperations[0] = 'continue';
+rejects(before, 'continue introduced through a wider tool.before alias');
+
+const deliveries: ['now'] = ['now'];
+const delivery = {toolAfter: {intercept: {inject: {context: {append: true, deliverAt: deliveries}}}}} satisfies HostCapabilities;
+deliveries.pop();
+rejects(delivery, 'a popped nonempty delivery tuple');
+
+const allow = {allow: true} satisfies {allow: true};
+const allowed = {toolBefore: {intercept: allow}} satisfies HostCapabilities;
+const booleanAlias: {allow: boolean} = allow;
+booleanAlias.allow = false;
+rejects(allowed, 'false introduced through a boolean alias');
+
+// Branding validates construction, but a numeric alias can invalidate every count.
+const countFields: ['remainingContinuations', 'continuationCount', 'maxContinuations'] = ['remainingContinuations', 'continuationCount', 'maxContinuations'];
+for (const field of countFields) {
+  for (const invalid of [-1, 0.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    const continuation: ['continue'] = ['continue'];
+    const flow = {
+      operations: continuation,
+      remainingContinuations: capabilityCount(2),
+      continuationCount: capabilityCount(0),
+      maxContinuations: capabilityCount(5),
+    };
+    const host = {toolAfter: {intercept: {flow}}} satisfies HostCapabilities;
+    const numericAlias: {remainingContinuations: number; continuationCount: number; maxContinuations: number} = flow;
+    numericAlias[field] = invalid;
+    rejects(host, `invalid ${field} introduced through a numeric alias`);
+  }
+}
+
+const sourceOperations: ['continue', ...CapabilityFlowOperation[]] = ['continue'];
+const sourceDeliveries: ['now', ...CapabilityDelivery[]] = ['now'];
+const source = {
+  toolAfter: {intercept: {
+    flow: {operations: sourceOperations, remainingContinuations: capabilityCount(2), continuationCount: capabilityCount(0)},
+    inject: {context: {append: true, deliverAt: sourceDeliveries}},
+  }},
+} satisfies HostCapabilities;
+const snapshot = hostCapabilitiesToWire(source);
+const original = JSON.stringify(snapshot);
+sourceOperations.push('stop');
+sourceDeliveries.push('next_turn');
+const numericSource: {remainingContinuations: number} = source.toolAfter.intercept.flow;
+numericSource.remainingContinuations = -1;
+if (JSON.stringify(snapshot) !== original) throw new Error('rendered snapshot changed with its source');
+rejects(source, 'source invalidated after a successful render');
+console.log('TypeScript ordinary capability alias smoke passed');

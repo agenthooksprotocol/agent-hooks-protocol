@@ -6,6 +6,7 @@ original_composed_descriptors_and_union_ambiguity_are_cached, then pass director
 """
 import importlib
 from pathlib import Path
+from decimal import Decimal
 import sys
 import types
 
@@ -49,7 +50,6 @@ print("Python union-of-array private hydration passed")
 
 # Numeric annotation matching must follow the shared wire validator, not
 # isinstance(value, float/int), or mixed arrays silently lose model hydration.
-from decimal import Decimal
 for model, parse, accepted, rejected in (
     (models.HydrationNumbers, wire.parse_hydration_numbers,
      [0, 1, 1.0, 1.25, Decimal("1"), Decimal("1.0000000000000000001")],
@@ -63,11 +63,17 @@ for model, parse, accepted, rejected in (
         raw = {"items": [number, {"left": "ok"}]}
         result = parse(raw)
         assert result["ok"], result
-        for decoded in (model.from_dict(raw), model(items=raw["items"])):
+        for decoded in (model.from_dict(raw), model(items=[number, models.HydrationLeft(left="ok")])):
             assert decoded.items_[1].left == "ok", (model, number)
             assert type(decoded.items_[0]) is type(number)
             assert decoded == raw
             assert parse(decoded) == result
+        try:
+            model(items=raw["items"])
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("Typed numeric/model union accepted a plain model dictionary")
     for number in rejected:
         raw = {"items": [number, {"left": "ok"}]}
         assert not parse(raw)["ok"], (model, number)

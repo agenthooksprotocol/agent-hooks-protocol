@@ -333,8 +333,9 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
         );
         writeln!(
             methods,
-            "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for({event:?}, input, {projection}) }}",
-            if generic { "<T: serde::Serialize>" } else { "" }
+            "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for($crate::EventType::{variant}, input, {projection}) }}",
+            if generic { "<T: serde::Serialize>" } else { "" },
+            variant = type_identifier(&event)
         )?;
         let impl_generics = if generic { "<T: serde::Serialize>" } else { "" };
         let type_generics = if generic { "<T>" } else { "" };
@@ -802,15 +803,16 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
         for (_, event, response) in &responses {
             writeln!(out, "{}(Box<{response}>),", event.trim_end_matches("Event"))?;
         }
-        out.push_str("}\npub fn response_for_request(event_type: &str, input: &str) -> ParseResult<ContextualResponse> {\nmatch event_type {\n");
+        out.push_str("}\npub fn response_for_request(event_type: EventType, input: &str) -> ParseResult<ContextualResponse> {\nmatch event_type {\n");
         for (event, event_model, response) in &responses {
             let arm = event_model.trim_end_matches("Event");
             writeln!(
                 out,
-                "{event:?} => match parse_root::<{response}>({response:?}, input) {{ ParseResult::Success {{value, raw, diagnostics}} => ParseResult::Success {{value: ContextualResponse::{arm}(Box::new(value)), raw, diagnostics}}, ParseResult::Failure {{raw, diagnostics}} => ParseResult::Failure {{raw, diagnostics}} }},"
+                "EventType::{} => match parse_root::<{response}>({response:?}, input) {{ ParseResult::Success {{value, raw, diagnostics}} => ParseResult::Success {{value: ContextualResponse::{arm}(Box::new(value)), raw, diagnostics}}, ParseResult::Failure {{raw, diagnostics}} => ParseResult::Failure {{raw, diagnostics}} }},",
+                type_identifier(event)
             )?;
         }
-        out.push_str("_ => ParseResult::Failure { raw: None, diagnostics: vec![ParseDiagnostic {path:String::new(), code:DiagnosticCode::UnknownVariant, severity:DiagnosticSeverity::Error, message:format!(\"Unknown request event: {event_type}\")}] },\n}\n}\n/// Run application validation before returning a publishable response. No state is changed.\npub fn stage_response_for_request(event_type: &str, input: &str, validate: impl FnOnce(&ContextualResponse) -> Result<(), String>) -> ParseResult<ContextualResponse> {\nmatch response_for_request(event_type, input) {\nParseResult::Success {value, raw, mut diagnostics} => match validate(&value) { Ok(()) => ParseResult::Success {value,raw,diagnostics}, Err(message) => { diagnostics.push(ParseDiagnostic {path:String::new(),code:DiagnosticCode::InvalidKnownVariant,severity:DiagnosticSeverity::Error,message}); ParseResult::Failure {raw:Some(raw),diagnostics} } },\nfailure => failure,\n}\n}\n");
+        out.push_str("_ => ParseResult::Failure { raw: None, diagnostics: vec![ParseDiagnostic {path:String::new(), code:DiagnosticCode::UnknownVariant, severity:DiagnosticSeverity::Error, message:format!(\"Request event does not support interception: {}\", event_type.as_str())}] },\n}\n}\n/// Run application validation before returning a publishable response. No state is changed.\npub fn stage_response_for_request(event_type: EventType, input: &str, validate: impl FnOnce(&ContextualResponse) -> Result<(), String>) -> ParseResult<ContextualResponse> {\nmatch response_for_request(event_type, input) {\nParseResult::Success {value, raw, mut diagnostics} => match validate(&value) { Ok(()) => ParseResult::Success {value,raw,diagnostics}, Err(message) => { diagnostics.push(ParseDiagnostic {path:String::new(),code:DiagnosticCode::InvalidKnownVariant,severity:DiagnosticSeverity::Error,message}); ParseResult::Failure {raw:Some(raw),diagnostics} } },\nfailure => failure,\n}\n}\n");
         out.push_str("\npub mod responses { use super::*;\n");
         for event in ir.types.iter().filter(|t| t.name.ends_with("Event")) {
             let boundary = event.name.trim_end_matches("Event");

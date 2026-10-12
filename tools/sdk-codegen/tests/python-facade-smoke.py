@@ -151,8 +151,14 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         assert decoded.gaps[0].reason == "unavailable"
         assert decoded.gaps[0].path == "url"
         assert decoded == connection
-        constructed = connection_type(**{**facts, "transport": tag, "gaps": [{"path": "url", "reason": "unavailable"}]})
-        assert constructed.gaps[0].reason == "unavailable"
+        try:
+            connection_type(**{**facts, "transport": tag, "gaps": [{"path": "url", "reason": "unavailable"}]})
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("Constructor hydrated a legacy nested dictionary")
+        constructed = connection_type(**{**facts, "transport": tag, "gaps": [gap]})
+        assert constructed.gaps[0] is gap
         assert connection.gaps[0].reason == "unavailable"
         assert connection.gaps[0].path == "url"
         assert connection.transport == tag
@@ -180,7 +186,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             hydrated = models.ToolBeforeEvent.from_dict(dict(event))
             assert max(checks.values()) == 1, checks
             checks.clear()
-            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], time=event["time"], path=event["path"], call=dict(event.call), tool=dict(event.tool))
+            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], time=event["time"], path=event["path"], call=event.call, tool=event.tool)
             assert reconstructed.tool.mcp.connection.gaps[0].reason == "unavailable"
         finally:
             wire._check_node_impl = original_check
@@ -587,6 +593,7 @@ def main() -> None:
     check_structured_consumers(directory, models, wire)
     event = importlib.import_module("facade_contract.event")
     check_owned_host_inputs(models, event, wire)
+    content = importlib.import_module("facade_contract._models.content")
     effect = importlib.import_module("facade_contract.effect")
     capability = importlib.import_module("facade_contract.capability")
     assert not hasattr(models.InterceptDenyResponseResult, "supports")
@@ -603,7 +610,8 @@ def main() -> None:
     assert len(family_models) >= 21 and payload_models
     assert all(hasattr(cls, "supports") for cls in family_models)
     assert all(not hasattr(cls, "supports") for cls in payload_models)
-    capability_models = {value for value in vars(capability).values()
+    raw_capability = importlib.import_module("facade_contract._models.capability")
+    capability_models = {value for value in vars(raw_capability).values()
                          if isinstance(value, type) and issubclass(value, dict) and hasattr(value, "effects")}
     assert len(capability_models) >= 20
     for cls in capability_models:
@@ -612,10 +620,10 @@ def main() -> None:
             assert value.supports("vendor.custom"), cls
             assert not value.supports(capability.EffectName.MODIFY), cls
         assert not cls(effects=[]).supports(capability.EffectName.DENY), cls
-    assert capability.ToolBeforeCapabilities(effects=["deny"]).supports(capability.EffectName.DENY)
-    assert isinstance(capability.Capabilities(effects=["modify"], modify={}).modify, models.CapabilitiesModify)
+    assert raw_capability.ToolBeforeCapabilities(effects=["deny"]).supports(capability.EffectName.DENY)
+    assert isinstance(raw_capability.Capabilities(effects=["modify"], modify=models.CapabilitiesModify()).modify, models.CapabilitiesModify)
     assert effect.EffectName is capability.EffectName
-    for cls in (capability.Capabilities, models.InterceptRequestParamsCapabilities):
+    for cls in (raw_capability.Capabilities, models.InterceptRequestParamsCapabilities):
         value = cls.from_dict({"effects": ["deny", "vendor.custom"], "modify": {"input": {"replace": True, "merge": False}}})
         assert value.supports(capability.EffectName.DENY)
         assert value.supports("vendor.custom")
@@ -686,27 +694,13 @@ def main() -> None:
         "harness": host_facts["harness"], "permissionMode": host_facts["permission_mode"],
         "items": host_facts["items"],
     }
-    # Named sources remain out-of-band; binding neither copies nor reads streams.
-    class UnreadSource:
-        def __deepcopy__(self, memo):
-            raise AssertionError("Source entered wire copy")
-
-    source = UnreadSource()
+    # Host adapters, not indexed compatibility binders, own source extraction.
     assert not hasattr(session_input, "bind_items_parts_source")
     assert boundaries.CONTENT_SOURCE_SLOTS["session.start.items_parts"] == ("session.start", ("items", "*", "parts", "*"))
     assert boundaries.CONTENT_SOURCE_SLOTS["tool.after.file_changes_after"] == ("tool.after", ("fileChanges", "*", "after"))
     assert "context.compact.before.instructions" not in boundaries.CONTENT_SOURCE_SLOTS
     before_input = event.ToolBeforeInput(call_id="call", name="run", origin="native", path="/tool", input={})
-    bound = before_input.bind_items_source(source, index=2)
-    assert bound.content_sources == {"tool.before.items[2]": source}
-    assert bound.to_wire() == before_input.to_wire()
-    for index in [-1, True, "0"]:
-        try:
-            before_input.bind_items_source(source, index=index)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Invalid source index accepted")
+    assert not hasattr(before_input, "bind_items_source")
     sdk_fields = {"manifest", "type", "source", "protocol_version"}
     assert sdk_fields.isdisjoint(inspect.signature(event.SessionStartInput).parameters)
     assert inspect.signature(event.SessionStart).parameters["manifest"].default is inspect.Parameter.empty
@@ -717,7 +711,7 @@ def main() -> None:
         pass
     else:
         raise AssertionError("Canonical session.start constructor must require manifest")
-    full_session = event.SessionStart(**envelope, **host_facts, manifest=session_event["manifest"])
+    full_session = event.SessionStart.from_dict(session_event)
     assert wire.parse_session_start_event(full_session)["ok"]
     assert json.loads(wire.encode_session_start_event(full_session)) == full_session
     missing_manifest = dict(full_session)
@@ -741,8 +735,8 @@ def main() -> None:
     assert effect.replace_input({"x": 1}) == effect.ModifyInputEffect(operation="replace", value={"x": 1})
     assert effect.merge_input({"x": 1})["operation"] == "merge"
     assert wire.parse_effect(effect.replace_input({"x": 1}))["ok"]
-    assert effect.flow_continue() == {"type": "flow", "operation": "continue"}
-    assert effect.inject_context_append(value=[], deliver_at="now") == {"type": "inject", "operation": "append", "target": "context", "value": [], "deliverAt": "now"}
+    assert effect.ContinueFlow() == {"type": "flow", "operation": "continue"}
+    assert effect.Inject(value=[], deliver_at="now") == {"type": "inject", "operation": "append", "target": "context", "value": [], "deliverAt": "now"}
     state = importlib.import_module("facade_contract.state")
     candidate = importlib.import_module("facade_contract.candidate")
     diagnostics = importlib.import_module("facade_contract.diagnostics")
@@ -764,50 +758,29 @@ def main() -> None:
     else:
         raise AssertionError("A present candidate must supply its value, even when null")
     assert diagnostics.Code.REMOTE_RPC == "remote_rpc"
-    base = capability.intercept()
-    composed = base.deny().modify_input(replace=True).elicitation_form()
-    assert base.allow().to_wire() == {"modes": ["intercept", "observe"], "capabilities": {"effects": ["allow"]}}
-    assert base.elicitation_form().to_wire()["capabilities"] == {"effects": [], "elicitation": {"form": {}}}
-    assert base.elicitation_url().to_wire()["capabilities"] == {"effects": [], "elicitation": {"url": {}}}
-    composed_wire = composed.to_wire()
-    assert composed_wire["capabilities"]["effects"] == ["deny", "modify"]
-    assert composed_wire["capabilities"]["elicitation"] == {"form": {}}
-    assert wire.parse_capabilities(composed_wire["capabilities"])["ok"]
-    composed_wire["capabilities"]["effects"].clear()
-    assert composed.to_wire()["capabilities"]["effects"] == ["deny", "modify"]
-    assert capability.observe().to_wire()["modes"] == ["observe"]
-    for invalid in [lambda: base.to_wire(), lambda: base.modify_input(), lambda: base.modify_input(replace="true"), lambda: capability.observe().deny(), lambda: base.flow(operations=[]), lambda: base.flow(operations=["unknown"])]:
-        try:
-            invalid()
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Invalid ergonomic grant accepted")
-    invalid_counts = [
-        dict(remaining_continuations=-1, continuation_count=0),
-        dict(remaining_continuations=0, continuation_count=-1),
-        dict(remaining_continuations=True, continuation_count=0),
-        dict(remaining_continuations=0.5, continuation_count=0),
-        dict(remaining_continuations=0, continuation_count=0, max_continuations=-1),
-        {},
-    ]
-    for counts in invalid_counts:
-        try:
-            base.flow(operations=["continue"], **counts)
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("Invalid continuation counts accepted")
-    for count in [0, 2**53 - 1, 2**53, 10**100]:
-        assert base.flow(operations=["continue"], remaining_continuations=count, continuation_count=count).to_wire()["capabilities"]["flow"]["remainingContinuations"] == count
-    try:
-        base._modes = ()
-    except AttributeError:
-        pass
-    else:
-        raise AssertionError("Mutable capability builder")
+    typed_smoke = Path(__file__).with_name("python-typed-capability-smoke.py")
+    import runpy
+    typed_checks = runpy.run_path(str(typed_smoke))
+    typed_checks["check"]("facade_contract")
+    event_checks = runpy.run_path(str(Path(__file__).with_name("python-event-type-smoke.py")))
+    event_checks["check"]("facade_contract")
+    if "--typing" in sys.argv:
+        typed_checks["check_typing"](directory)
+        event_checks["check_typing"](directory)
     assert "id" not in input and "type" not in input
     assert effect.Deny(reason="blocked") == {"type": "deny", "reason": "blocked"}
+    for alias in ["modify_summary", "modify_instructions", "flow_continue", "inject_context_append", "modify_request", "modify_response", "modify_content", "modify", "return_", "flow_stop", "modify_output", "modify_prompt", "deny", "continue_flow"]:
+        assert not hasattr(effect, alias), alias
+    assert not hasattr(diagnostics, "DiagnosticCode")
+    assert not hasattr(tool, "Input")
+    for alias in ["Receipt", "UploadReceipt", "Reference", "Selection", "Upload"]:
+        assert not hasattr(content, alias), alias
+    try:
+        registration.Registration(hooks=[], protocolVersion="draft")
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Constructor accepted a duplicate wire-spelling keyword")
     value = registration.Registration(hooks=[])
     assert value["protocolVersion"] == wire.PROTOCOL_VERSION
     try:
@@ -822,29 +795,35 @@ def main() -> None:
     assert parsed["ok"], parsed
     assert value == json.loads(wire.encode_registration(value))
 
-    declaration = capability.Declaration(
-        modes=[capability.Mode.INTERCEPT],
-        grants=[capability.Allow(), capability.ModifyInput(replace=True), capability.ModifyInput(merge=True)],
-    )
-    assert declaration == {
-        "modes": ["intercept"],
-        "capabilities": {
-            "effects": ["allow", "modify"],
-            "modify": {"input": {"replace": True, "merge": True}},
-        },
-    }
+    declaration = capability.HostCapabilities(tool_before=capability.ToolBeforeCapabilities(
+        intercept=capability.ToolBeforeIntercept(allow=True, modify_input=capability.Modify.REPLACE_AND_MERGE)
+    )).to_wire()["tool.before"]
+    assert declaration == {"modes": ["intercept"], "capabilities": {
+        "effects": ["allow", "modify"], "modify": {"input": {"replace": True, "merge": True}}}}
     assert wire.parse_capabilities(declaration["capabilities"])["ok"]
+
+    facility = capability.HostCapabilities(
+        user_elicitation_request=capability.UserElicitationRequestCapabilities(
+            intercept=capability.UserElicitationRequestIntercept(elicitation=capability.Elicitation.FORM)
+        )
+    ).to_wire()["user.elicitation.request"]
+    assert facility == {"modes": ["intercept"], "capabilities": {
+        "effects": [], "elicitation": {"form": {}}}}
+    # parse_capabilities validates against the canonical capabilities schema root.
+    parsed_facility = wire.parse_capabilities(facility["capabilities"])
+    assert parsed_facility["ok"], parsed_facility
+
     # Exercise the real constructed payload, including nested StrEnum values;
     # comparing enum values to strings alone misses parser preflight rejection.
     occurrence = event.ToolBefore(
         id="enum-event", source="urn:example:facade", time="2026-08-24T08:51:14Z",
-        call=tool.Call(id="enum-call"), tool=input.to_wire()["tool"], path=tool.Path.NATIVE,
+        call=tool.Call(id="enum-call"), tool=tool.Tool.from_dict(input.to_wire()["tool"]), path=tool.Path.NATIVE,
     )
     request = models.InterceptRequest(
         id="enum-event",
         params=models.InterceptRequestParams(
-            event=occurrence, capabilities=declaration["capabilities"],
-            state={"permission": "allow", "candidate": None},
+            event=occurrence, capabilities=models.InterceptRequestParamsCapabilities.from_dict(declaration["capabilities"]),
+            state=models.InterceptRequestParamsState(permission="allow", candidate=None),
         ),
     )
     parsed_request = wire.parse_intercept_request(request)
@@ -863,12 +842,6 @@ def main() -> None:
         validator.validators["tool-before.schema.json"].validate(occurrence)
         validator.validate("capabilities", declaration["capabilities"])
         validator.validate("capabilities-response", response)
-
-    explicit_form = capability.Declaration(modes=["observe"], grants=[capability.ElicitationForm()])
-    assert explicit_form == {"modes": ["observe"], "capabilities": {"effects": [], "elicitation": {"form": {}}}}
-    assert "url" not in explicit_form["capabilities"]["elicitation"]
-    assert capability.Declaration(modes=[], grants=[]) == {"modes": [], "capabilities": {"effects": []}}
-    assert capability.Allow() == {"effects": ["allow"]}
 
     class Hooks(boundaries.BoundaryMixin):
         async def dispatch(self, event_name, input, **kwargs):

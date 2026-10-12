@@ -27,16 +27,19 @@ def main() -> None:
         (package / "_hooks.pyi").write_text("""from typing import Any, Generic, TypeVar
 from ._boundaries import BoundaryMixin
 from .contract import Candidate
+from ._models import Event
 I = TypeVar('I')
 R = TypeVar('R')
 P = TypeVar('P')
 class HookResult(Generic[I, R, P]):
     @property
-    def decoded_input(self) -> I: ...
+    def event(self) -> Event: ...
     @property
-    def decoded_result(self) -> R: ...
+    def input(self) -> I: ...
     @property
-    def decoded_candidate(self) -> Candidate[R, P] | None: ...
+    def result(self) -> R: ...
+    @property
+    def candidate(self) -> Candidate[R, P] | None: ...
 class Hooks(BoundaryMixin):
     async def dispatch(self, *args: Any, **kwargs: Any) -> Any: ...
 """)
@@ -59,18 +62,19 @@ class Hooks(BoundaryMixin):
                 name = f"{method}_{mask}"
                 lines.append(f"    {name} = await h.{method}({{}}, {', '.join(args)})")
                 lines.append(f"    assert_type({name}, HookResult[{', '.join(types)}])")
-                lines.append(f"    assert_type({name}.decoded_result, {types[1]})")
-                lines.append(f"    assert_type({name}.decoded_candidate, Candidate[{types[1]}, {types[2]}] | None)")
+                lines.append(f"    assert_type({name}.event, m.Event)")
+                lines.append(f"    assert_type({name}.result, {types[1]})")
+                lines.append(f"    assert_type({name}.candidate, Candidate[{types[1]}, {types[2]}] | None)")
             # A contextual annotation cannot manufacture the missing codecs.
             lines.append(f"    bad_{method}: HookResult[int, str, bool] = await h.{method}({{}})  # type: ignore[assignment]")
         lines.extend([
             "    text = await h.context_compact_before({})",
             "    messages = await h.model_request_before({})",
             "    elicit = await h.user_elicitation_request({})",
-            "    assert_type(elicit.decoded_result.action, str)",
-            "    wrong_messages: m.CanonicalMessages = text.decoded_result  # type: ignore[assignment]",
-            "    wrong_text: m.TextParts = messages.decoded_result  # type: ignore[assignment]",
-            "    wrong_answers: str = elicit.decoded_result  # type: ignore[assignment]",
+            "    assert_type(elicit.result.action, str)",
+            "    wrong_messages: m.CanonicalMessages = text.result  # type: ignore[assignment]",
+            "    wrong_text: m.TextParts = messages.result  # type: ignore[assignment]",
+            "    wrong_answers: str = elicit.result  # type: ignore[assignment]",
         ])
         consumer = root / "consumer.py"
         consumer.write_text("\n".join(lines) + "\n")

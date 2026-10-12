@@ -1,0 +1,78 @@
+import { capabilityCount, hostCapabilitiesToWire, responseForRequest } from './generated';
+const dynamicEvent: string = 'tool.before';
+// @ts-expect-error known event contexts do not accept dynamic strings
+responseForRequest(dynamicEvent, '{}');
+// @ts-expect-error arbitrary event literals are not canonical context
+responseForRequest('tool.not-an-event', '{}');
+responseForRequest('tool.before', '{}');
+import type { HostCapabilities, ToolBeforeIntercept, CapabilityFlow, CapabilityInjection, CapabilityElicitation } from './generated';
+
+const host = {
+  toolBefore: {intercept: {allow: true, deny: true, returnResult: true, modifyInput: 'replace-and-merge'}, observe: true},
+  sessionStart: {observe: true},
+  toolAfter: {intercept: {flow: {operations: ['continue', 'stop'], remainingContinuations: capabilityCount(2), continuationCount: capabilityCount(0)}, inject: {context: {append: true, deliverAt: ['now', 'next_turn']}}}},
+} as const satisfies HostCapabilities;
+hostCapabilitiesToWire(host);
+hostCapabilitiesToWire({});
+const stop: CapabilityFlow = {operations: ['stop']};
+const form: CapabilityElicitation = {form: true};
+const injection: CapabilityInjection = {context: {append: true, deliverAt: ['now']}};
+void [stop, form, injection];
+// @ts-expect-error an event declaration must explicitly grant a mode
+const noMode: HostCapabilities = {toolBefore: {}};
+// @ts-expect-error interception must contain a real control
+const empty: HostCapabilities = {toolBefore: {intercept: {}}};
+// @ts-expect-error observation must be explicitly true
+const disabled: HostCapabilities = {sessionStart: {observe: false}};
+// @ts-expect-error session.end is observation-only
+const observationControl: HostCapabilities = {sessionEnd: {observe: true, intercept: {deny: true}}};
+// @ts-expect-error tool.after does not support deny
+const badEvent: HostCapabilities = {toolAfter: {intercept: {deny: true}}};
+const wide = {message: true, deny: true} as const;
+// @ts-expect-error forbidden fields remain forbidden through assigned wider values
+const badWide: HostCapabilities = {toolAfter: {intercept: wide}};
+// @ts-expect-error unsupported target cannot hide behind a valid control
+const wrongTarget: ToolBeforeIntercept = {deny: true, modifyOutput: 'replace'};
+// @ts-expect-error controls are positive literal grants, not booleans
+const falseControl: ToolBeforeIntercept = {deny: false};
+// @ts-expect-error modification modes are closed
+const emptyModify: ToolBeforeIntercept = {modifyInput: 'none'};
+// @ts-expect-error continuation counts are required for continue
+const missingCounts: CapabilityFlow = {operations: ['continue']};
+// @ts-expect-error counts must be validated once at construction
+const unvalidatedCount: CapabilityFlow = {operations: ['continue'], remainingContinuations: 2, continuationCount: 0};
+// @ts-expect-error flow operations cannot be empty
+const noOperations: CapabilityFlow = {operations: []};
+// @ts-expect-error unknown flow operation
+const unknownOperation: CapabilityFlow = {operations: ['jump']};
+// @ts-expect-error injection delivery must be nonempty
+const noDelivery: CapabilityInjection = {context: {append: true, deliverAt: []}};
+// @ts-expect-error delivery vocabulary is closed
+const badDelivery: CapabilityInjection = {context: {append: true, deliverAt: ['later']}};
+// @ts-expect-error append is a positive grant
+const noAppend: CapabilityInjection = {context: {append: false, deliverAt: ['now']}};
+// @ts-expect-error elicitation must explicitly grant a dimension
+const noElicitation: CapabilityElicitation = {};
+// @ts-expect-error readonly declarations cannot be modified
+host.toolBefore.intercept.deny = true;
+// @ts-expect-error old generic builders are removed
+import { capabilities, CapabilityBuilder, CapabilityDeclaration } from './generated';
+
+// @ts-expect-error tool.before supports stop, never continue (even with valid counts)
+const toolBeforeContinue: HostCapabilities = {toolBefore: {intercept: {flow: {operations: ['continue'], remainingContinuations: capabilityCount(1), continuationCount: capabilityCount(0)}}}};
+// Elicitation is an independent interception facility, not an effect modifier.
+const elicitationOnly = {toolBefore: {intercept: {elicitation: {form: true}}}} satisfies HostCapabilities;
+const requestForm = {userElicitationRequest: {intercept: {elicitation: {form: true}}}} satisfies HostCapabilities;
+hostCapabilitiesToWire(elicitationOnly);
+hostCapabilitiesToWire(requestForm);
+// @ts-expect-error an empty elicitation object grants no facility
+const emptyElicitation: HostCapabilities = {userElicitationRequest: {intercept: {elicitation: {}}}};
+// @ts-expect-error false flags grant no elicitation facility
+const falseElicitation: HostCapabilities = {userElicitationRequest: {intercept: {elicitation: {form: false, url: false}}}};
+
+const typedWire = hostCapabilitiesToWire({toolBefore: {intercept: {deny: true}}});
+// @ts-expect-error generated capability map keys are canonical events only
+typedWire["not.an.event"];
+// Sparse canonical events are optional in the owned output.
+const optionalDeclaration = typedWire["tool.before"];
+void optionalDeclaration;

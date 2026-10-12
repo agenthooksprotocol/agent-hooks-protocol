@@ -1,7 +1,7 @@
 import {
-  draftCodecs, ownedAttachment, responseForEvent, supports, effectNames,
+  draftCodecs, ownedAttachment, responseForEvent, supports, effectNames, hostCapabilitiesToWire, capabilityCount,
 } from './public.js';
-import type { EventResponses, HostEventInputs, JsonValue, ToolBeforeInput } from './types.js';
+import type { HostCapabilities, CapabilityCount, EventResponses, HostEventInputs, JsonValue, ToolBeforeInput } from './types.js';
 import { _projectHostInput } from './raw.js';
 
 // Raw projections remain SDK runtime imports, not public codec exports.
@@ -39,3 +39,10 @@ declare const genericResponse: EventResponses[keyof EventResponses];
 responseForEvent({type: 'session.start'}, genericResponse);
 const opaque: JsonValue = {future: {preserved: true}};
 void [path, unvalidated, opaque];
+
+const typedCapabilities: HostCapabilities = {toolBefore: {intercept: {deny: true}}, sessionStart: {observe: true}};
+const validatedCount: CapabilityCount = capabilityCount(0);
+hostCapabilitiesToWire(typedCapabilities);
+void validatedCount;
+// @ts-expect-error old generic capability builder is not public
+import { capabilities, CapabilityBuilder } from './public.js';

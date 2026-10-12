@@ -89,7 +89,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         }
     }
     let mut body = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import copy, deepcopy\nfrom decimal import Decimal\nfrom typing import Self, get_args, get_origin, Union, Literal as _Literal\nfrom types import UnionType\nfrom functools import lru_cache\nfrom uuid import uuid4\nimport re\nimport json\nfrom .. import generated as _wire\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\nclass _Unset:\n    def __copy__(self) -> _Unset:\n        return self\n\n    def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:\n        return self\n\n_UNSET: Any = _Unset()\n\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import deepcopy\nfrom decimal import Decimal\nfrom typing import Self, TypeAlias, get_args, get_origin, Union, Literal as _Literal\nfrom types import UnionType\nfrom functools import lru_cache\nfrom uuid import uuid4\nimport re\nimport json\nfrom .. import generated as _wire\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\nclass _Unset:\n    def __copy__(self) -> _Unset:\n        return self\n\n    def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:\n        return self\n\n_UNSET: Any = _Unset()\n\n"
     );
     body.push_str(MODEL_RUNTIME);
     body.push_str(OWNED_INPUT_RUNTIME);
@@ -140,6 +140,11 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             }
             let role = if name.starts_with("Effect") && name != "Effect" {
                 Some(("effect", name.trim_start_matches("Effect").to_owned()))
+            } else if name.ends_with("Capabilities") || name == "StaticCapabilityManifest" {
+                Some((
+                    "capability",
+                    name.trim_end_matches("Capabilities").to_owned(),
+                ))
             } else {
                 crate::langs::go::facade::role(name)
             };
@@ -222,41 +227,6 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
                                 .collect::<Vec<_>>()
                                 .join(" ")
                         )?;
-                        if !crate::ergonomics::legacy_source_binding(&slot) {
-                            continue;
-                        }
-                        write!(
-                            body,
-                            "    def bind_{method}_source(self, source: OwnedContentSource"
-                        )?;
-                        let indices = if slot.many {
-                            vec!["index".to_owned()]
-                        } else {
-                            Vec::new()
-                        };
-                        if slot.many {
-                            body.push_str(", *");
-                        }
-                        for index in &indices {
-                            write!(body, ", {index}: int")?;
-                        }
-                        writeln!(body, ") -> {input_name}:")?;
-                        for index in &indices {
-                            writeln!(
-                                body,
-                                "        if isinstance({index}, bool) or not isinstance({index}, int) or {index} < 0:\n            raise ValueError(\"Content source index must be a nonnegative integer\")"
-                            )?;
-                        }
-                        let suffix = indices
-                            .iter()
-                            .map(|index| format!("[{{{index}}}]"))
-                            .collect::<Vec<_>>()
-                            .join("");
-                        let prefix = if indices.is_empty() { "" } else { "f" };
-                        writeln!(
-                            body,
-                            "        result = copy(self)\n        result._content_sources = {{**self.content_sources, {prefix}\"{key}{suffix}\": source}}\n        return result\n"
-                        )?;
                     }
                     export(exports, input_name.clone(), input_name.clone())?;
                     emit_boundary(&mut boundaries, short, &input_name, &tag)?;
@@ -338,6 +308,23 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     }
     body.push_str(&aliases);
     body.push('\n');
+    let catalogue = crate::capability_ergonomics::catalogue(ir)?;
+    if !catalogue.is_empty() {
+        let names = catalogue
+            .iter()
+            .map(|event| format!("{:?}", event.event))
+            .collect::<Vec<_>>();
+        writeln!(
+            body,
+            "EventType: TypeAlias = _Literal[{}]\n",
+            names.join(", ")
+        )?;
+        export(
+            modules.entry("event".into()).or_default(),
+            "EventType".into(),
+            "EventType".into(),
+        )?;
+    }
     if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
         writeln!(
             body,
@@ -361,7 +348,6 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     );
     // Stable semantic aliases use the same resolved schema names as Go/Rust.
     for (alias, model) in [
-        ("Input", "ExecutionEventTool"),
         ("Tool", "ExecutionEventTool"),
         ("Call", "ToolBeforeEventCall"),
     ] {
@@ -406,6 +392,16 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             }
         }
     }
+    modules.entry("tool".into()).or_default().remove("Input");
+    for alias in [
+        "Receipt",
+        "UploadReceipt",
+        "Reference",
+        "Selection",
+        "Upload",
+    ] {
+        modules.entry("content".into()).or_default().remove(alias);
+    }
     // The schema defines path as an open string, NOT the origin enum.
     // NATIVE is the canonical path shown in spec/draft/base/events.md.
     // Never infer that other tool origins are supported paths.
@@ -420,6 +416,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
+    if !catalogue.is_empty() {
+        public.push("EventType".into());
+    }
     public.extend(
         ["CanonicalMessages", "TextParts"]
             .into_iter()
@@ -489,7 +488,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         {
             let mut public = HEADER.to_owned();
             for alias in exports.keys() {
-                if namespace == "capability" && grant_exports.contains(alias) {
+                if namespace == "capability" && alias != "Event" {
                     continue;
                 }
                 writeln!(
@@ -559,7 +558,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             "@overload\ndef response_for_request(event_type: Literal[{event:?}], raw: str | JsonValue, validate: Callable[[_models.{response}], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[_models.{response}]: ..."
         )?;
     }
-    response_source.push_str("@overload\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[ContextualResponse]: ...\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[Any]:\n    \"\"\"Validate and stage without publication. Unknown events are not authority.\"\"\"\n    model = _RESPONSE_MODELS.get(event_type)\n    if model is None:\n        return {'ok':False, 'diagnostics':[{'path':'', 'code':'unknown_variant', 'severity':'error', 'message':'Unknown request event: ' + event_type}]}\n    cache: dict[Any, Any] = {}\n    parsed = _wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)\n    if not parsed['ok']:\n        return parsed\n    value = model._hydrate_validated(parsed['value'], '', cache)\n    diagnostics = list(parsed['diagnostics'])\n    if validate is not None:\n        diagnostics.extend(validate(value))\n    if any(d['severity'] == 'error' for d in diagnostics):\n        return {'ok':False, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n    return {'ok':True, 'value':value, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n");
+    response_source.push_str("@overload\ndef response_for_request(event_type: _models.EventType, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[ContextualResponse]: ...\ndef response_for_request(event_type: _models.EventType, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[Any]:\n    \"\"\"Validate and stage without publication. Unknown events are not authority.\"\"\"\n    model = _RESPONSE_MODELS.get(event_type)\n    if model is None:\n        return {'ok':False, 'diagnostics':[{'path':'', 'code':'unknown_variant', 'severity':'error', 'message':'Unknown request event: ' + event_type}]}\n    cache: dict[Any, Any] = {}\n    parsed = _wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)\n    if not parsed['ok']:\n        return parsed\n    value = model._hydrate_validated(parsed['value'], '', cache)\n    diagnostics = list(parsed['diagnostics'])\n    if validate is not None:\n        diagnostics.extend(validate(value))\n    if any(d['severity'] == 'error' for d in diagnostics):\n        return {'ok':False, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n    return {'ok':True, 'value':value, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n");
     files.insert("response.py".into(), response_source);
     let mut projections = format!(
         "{HEADER}from __future__ import annotations\nfrom dataclasses import dataclass as _dataclass, field as _field\nfrom typing import Any, Generic, TypeVar\nfrom . import _models\nfrom .generated import JsonValue\n\nT = TypeVar('T')\nP = TypeVar('P')\n\n"
@@ -972,26 +971,11 @@ fn constructor(
     writeln!(out, "**extra: Any) -> None:")?;
     for (p, param) in fields.iter().zip(&params) {
         if p.wire_name != *param {
-            let optional = !p.required
-                || p.constructor_default.is_some()
-                || literal(ir, &p.shape).is_some()
-                || p.wire_name == "protocolVersion";
-            writeln!(out, "        if {:?} in extra:", p.wire_name)?;
-            if optional {
-                writeln!(out, "            if {param} is not _UNSET:")?;
-                writeln!(
-                    out,
-                    "                raise TypeError(\"Duplicate assignment for {} via {param} and wire key\")",
-                    p.wire_name
-                )?;
-                writeln!(out, "            {param} = extra.pop({:?})", p.wire_name)?;
-            } else {
-                writeln!(
-                    out,
-                    "            raise TypeError(\"Duplicate assignment for {} via {param} and wire key\")",
-                    p.wire_name
-                )?;
-            }
+            writeln!(
+                out,
+                "        if {:?} in extra:\n            raise TypeError(\"Use the canonical keyword {param}\")",
+                p.wire_name
+            )?;
         }
     }
     out.push_str("        super().__init__(extra)\n");
@@ -1256,7 +1240,6 @@ fn ergonomic_modules(
             snake_case(code).to_uppercase()
         )?;
     }
-    diagnostics.push_str("\nDiagnosticCode = Code\n");
     files.insert("diagnostics.py".into(), diagnostics);
     let state_name = "InterceptRequestParamsState";
     let candidate_union = &shapes[&format!("{state_name}Candidate")];
@@ -1370,87 +1353,6 @@ fn ergonomic_modules(
             }
         }
     }
-    for (name, shape) in shapes {
-        if (name.starts_with("Effect") || name.ends_with("Effect"))
-            && name != "EffectModify"
-            && name != "DenyEffect"
-        {
-            if let Some(fields) = properties(renderer, shape) {
-                if fields
-                    .iter()
-                    .any(|p| p.wire_name == "type" && literal(renderer.ir, &p.shape).is_some())
-                {
-                    let short = name.trim_start_matches("Effect").trim_end_matches("Effect");
-                    let alias = public_identifier(&snake_case(short), "effect", &mut effect_names)?;
-                    let params = fields
-                        .iter()
-                        .filter(|p| literal(renderer.ir, &p.shape).is_none())
-                        .collect::<Vec<_>>();
-                    let mut occupied = reserved_identifiers();
-                    let param_names = params
-                        .iter()
-                        .map(|p| {
-                            public_identifier(&snake_case(&p.wire_name), "field", &mut occupied)
-                        })
-                        .collect::<Result<Vec<_>>>()?;
-                    write!(effect, "def {alias}(")?;
-                    if !params.is_empty() {
-                        effect.push_str("*, ");
-                    }
-                    for (p, param) in params.iter().zip(&param_names) {
-                        write!(
-                            effect,
-                            "{}: {}{}, ",
-                            param,
-                            annotation(
-                                renderer.ir,
-                                &p.shape,
-                                &field_hint(name, &p.wire_name)?,
-                                "_models."
-                            )?,
-                            if p.required { "" } else { " = _UNSET" }
-                        )?;
-                    }
-                    writeln!(
-                        effect,
-                        ") -> {short}:\n    return {short}({})\n",
-                        param_names
-                            .iter()
-                            .map(|name| format!("{name}={name}"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    )?;
-                    let semantic = ["type", "target", "operation"]
-                        .iter()
-                        .filter_map(|key| {
-                            fields
-                                .iter()
-                                .find(|p| p.wire_name == *key)
-                                .and_then(|p| literal(renderer.ir, &p.shape))
-                                .and_then(|v| v.as_str().map(str::to_owned))
-                        })
-                        .collect::<Vec<_>>()
-                        .join("_");
-                    let semantic =
-                        public_identifier(&semantic, "effect", &mut reserved_identifiers())?;
-                    if semantic != alias
-                        && !(semantic == "return_"
-                            && name != "ReturnToolEffect"
-                            && name != "EffectReturn")
-                        && effect_names.insert(semantic.clone())
-                    {
-                        writeln!(effect, "{semantic} = {alias}")?;
-                    }
-                }
-            }
-        }
-    }
-    // Deny is a separately named canonical model, not an Effect-prefixed model.
-    anyhow::ensure!(
-        effect_names.insert("deny".into()),
-        "public Python effect alias collision: deny"
-    );
-    effect.push_str("deny = Deny\n");
     Ok(())
 }
 
@@ -1596,11 +1498,10 @@ class _WireModel(dict[str, Any]):
         result = _wire._parse_descriptor(_DESCRIPTORS[type(self).__name__], self, cache)
         if not result["ok"]:
             raise _ModelValidationError(result)
-        # Hydrate plain nested mappings after the one validation pass. Keep
-        # already typed child instances, preserving established constructor identity.
-        hydrated = type(self)._hydrate_validated(self, "", cache)
-        dict.clear(self)
-        dict.update(self, hydrated)
+        # Parsing owns hydration. Constructors require their declared model types.
+        for key, annotation in _field_types(type(self).__name__).items():
+            if key in self and not _constructor_matches(annotation, self[key]):
+                raise TypeError(f"{type(self).__name__}.{key} requires its declared model type")
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> Self:
@@ -1640,6 +1541,25 @@ def _literal_schema(annotation: Any) -> dict[str, Any]:
     if len(values) == 1:
         return {"kind": "literal", "value": values[0]}
     return {"kind": "enum", "open_strings": False, "values": list(values)}
+
+def _constructor_matches(annotation: Any, value: Any) -> bool:
+    if annotation is Any:
+        return True
+    origin = get_origin(annotation)
+    if origin in (Union, UnionType):
+        return any(_constructor_matches(arm, value) for arm in get_args(annotation))
+    if isinstance(annotation, type) and issubclass(annotation, _WireModel):
+        return isinstance(value, annotation)
+    if origin is list:
+        return isinstance(value, list) and all(_constructor_matches(get_args(annotation)[0], child) for child in value)
+    if origin is dict:
+        return isinstance(value, dict) and all(_constructor_matches(get_args(annotation)[1], child) for child in value.values())
+    if origin is _Literal:
+        return value in get_args(annotation)
+    if annotation in (int, float):
+        # The wire validator owns JSON number representation and range checks.
+        return isinstance(value, (int, float, Decimal))
+    return isinstance(value, annotation) if isinstance(annotation, type) else True
 
 def _matches(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> bool:
     if annotation is Any:

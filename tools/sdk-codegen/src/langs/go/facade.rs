@@ -1,6 +1,8 @@
 //! Semantic APIs share the wire emitter's resolved names and schema graph. No wire
 //! declarations are copied into this layer; role metadata only controls ownership.
 use super::*;
+#[path = "capabilities.rs"]
+mod capabilities;
 
 const MODULE: &str = "github.com/agenthooksprotocol/go-sdk";
 
@@ -32,14 +34,14 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             )?;
         }
     }
-    capability_options(&g, packages.entry("capability".into()).or_default())?;
+    packages.insert("capability".into(), capabilities::emit(ir)?);
     if ir.types.iter().any(|named| named.name == "Event") {
         packages
             .entry("event".into())
             .or_default()
             .push_str("type Event = ahp.Event\n");
     }
-    capability_composition(&g, packages.entry("capability".into()).or_default())?;
+
     state_helpers(&g, &mut packages)?;
     effect_operations(&g, packages.entry("effect".into()).or_default())?;
     let mut diagnostics = String::from("type Code string\n");
@@ -111,7 +113,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             .unwrap()
             .shape,
     );
-    let mut events = String::from("type Type = string\n");
+    let mut events = String::from(
+        "// Type identifies an event; convert explicitly at string wire boundaries.\ntype Type string\n",
+    );
     if g.unions.contains_key("ContentItem") {
         events.push_str(OWNED_CONTENT_INPUTS);
     }
@@ -147,7 +151,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             if generic {
                 writeln!(
                     methods,
-                    "func (c *Hooks) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return decodeToolBefore[T](c.intercept(ctx, {tag:?}, inputsources.PrepareToolBefore(input), opts...)) }}"
+                    "func (c *Hooks) {short}[T any](ctx context.Context, input event.{short}Input[T], opts ...InterceptOption) (*ToolBeforeResult[T], error) {{ return interceptToolBefore[T](ctx, c, input, opts...) }}"
                 )?;
             } else if intercepts.contains(&tag) {
                 writeln!(
@@ -210,14 +214,20 @@ func Milliseconds(value time.Duration) (json.Number, error) {
             "func (*{response}) contextualResponse() {{}}\nfunc Parse{response}(input []byte) ParseResult[{response}] {{ return parseRoot[{response}]({response:?}, input) }}"
         )?;
     }
-    correlated.push_str("// ResponseForRequest validates without publishing state. Unknown events never grant authority.\nfunc ResponseForRequest(eventType string, input []byte) ParseResult[ContextualResponse] {\nswitch eventType {\n");
+    let mut context_methods = String::from(
+        "// ResponseForRequest validates a known canonical event context without publishing state.\nfunc ResponseForRequest(eventType Type, input []byte) ahp.ParseResult[ahp.ContextualResponse] {\nswitch eventType {\n",
+    );
     for (event, _, response) in &responses {
         writeln!(
-            correlated,
-            "case {event:?}: r := Parse{response}(input); result := ParseResult[ContextualResponse]{{OK:r.OK,Raw:r.Raw,Diagnostics:r.Diagnostics}}; if r.OK {{ result.Value = &r.Value }}; return result"
+            context_methods,
+            "case {event:?}: r := ahp.Parse{response}(input); result := ahp.ParseResult[ahp.ContextualResponse]{{OK:r.OK,Raw:r.Raw,Diagnostics:r.Diagnostics}}; if r.OK {{ result.Value = &r.Value }}; return result"
         )?;
     }
-    correlated.push_str("default: return ParseResult[ContextualResponse]{Diagnostics:[]ParseDiagnostic{{Code:DiagnosticUnknownVariant,Severity:SeverityError,Message:\"Unknown request event: \"+eventType}}}\n}\n}\n// StageResponseForRequest runs application validation before a runtime may publish state.\nfunc StageResponseForRequest(eventType string, input []byte, validate func(ContextualResponse) error) ParseResult[ContextualResponse] { r := ResponseForRequest(eventType,input); if r.OK && validate != nil { if err := validate(r.Value); err != nil { r.OK=false; r.Value=nil; r.Diagnostics=append(r.Diagnostics,ParseDiagnostic{Code:DiagnosticInvalidKnownVariant,Severity:SeverityError,Message:err.Error()}) } }; return r }\n");
+    context_methods.push_str("default: return ahp.ParseResult[ahp.ContextualResponse]{Diagnostics:[]ahp.ParseDiagnostic{{Code:ahp.DiagnosticUnknownVariant,Severity:ahp.SeverityError,Message:\"Unsupported request event: \"+string(eventType)}}}\n}\n}\n// StageResponseForRequest runs application validation before a runtime may publish state.\nfunc StageResponseForRequest(eventType Type, input []byte, validate func(ahp.ContextualResponse) error) ahp.ParseResult[ahp.ContextualResponse] { r := ResponseForRequest(eventType,input); if r.OK && validate != nil { if err := validate(r.Value); err != nil { r.OK=false; r.Value=nil; r.Diagnostics=append(r.Diagnostics,ahp.ParseDiagnostic{Code:ahp.DiagnosticInvalidKnownVariant,Severity:ahp.SeverityError,Message:err.Error()}) } }; return r }\n");
+    packages
+        .get_mut("event")
+        .unwrap()
+        .push_str(&context_methods);
     files.insert("contextual_responses_generated.go".into(), correlated);
     let mut generic_source = String::from(
         "// Code generated by ahp-codegen. DO NOT EDIT.\npackage ahp\nimport \"encoding/json\"\nimport \"fmt\"\n",
@@ -367,7 +377,7 @@ func Milliseconds(value time.Duration) (json.Number, error) {
         }
         files.insert(format!("{package}/generated.go"), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage {package_name}\n{imports}\n{body}"));
     }
-    files.insert("client/boundaries_generated.go".into(), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage client\nimport \"context\"\nimport \"{MODULE}/event\"\nimport \"{MODULE}/internal/inputsources\"\n{methods}"));
+    files.insert("client/boundaries_generated.go".into(), format!("// Code generated by ahp-codegen. DO NOT EDIT.\npackage client\nimport \"context\"\nimport \"{MODULE}/event\"\n{methods}"));
     files.insert(
         "facade_generated_test.go".into(),
         include_str!("../../../tests/go-facade_test.go").into(),
@@ -392,8 +402,6 @@ pub(crate) fn role(name: &str) -> Option<(&'static str, String)> {
         ("effect", name.trim_end_matches("Effect").into())
     } else if name.starts_with("Content") {
         ("content", name.trim_start_matches("Content").into())
-    } else if name.ends_with("Capabilities") || name == "StaticCapabilityManifest" {
-        ("capability", name.trim_end_matches("Capabilities").into())
     } else {
         return None;
     };
@@ -457,105 +465,6 @@ fn string_union_list(g: &Generator<'_>, field: &RenderedField, argument: &str) -
 
 // Constraints such as anyOf validate combinations; only object declarations
 // define helper arguments. Never turn predicate-branch constants into grants.
-fn capability_declarations(shape: &Shape) -> Vec<Property> {
-    match shape {
-        Shape::Object { properties, .. } => properties.clone(),
-        Shape::Intersection { variants } => {
-            variants.iter().flat_map(capability_declarations).collect()
-        }
-        _ => vec![],
-    }
-}
-
-fn capability_options(g: &Generator<'_>, out: &mut String) -> Result<()> {
-    for group in &g.objects["Capabilities"] {
-        // Ownership/naming metadata only; leaf names and bodies come from fields.
-        let group_name = match group.wire_name.as_str() {
-            "modify" => "Modification",
-            "elicitation" => "Elicitation",
-            _ => continue,
-        };
-        let leaves = g.objects.get(&group.field_type).ok_or_else(|| {
-            anyhow::anyhow!("capability group {} has no object model", group.wire_name)
-        })?;
-        for leaf in leaves {
-            anyhow::ensure!(
-                !group.required && !leaf.required,
-                "capability grant must be explicitly optional"
-            );
-            let (helper, args, value) = if group.wire_name == "modify" {
-                let mut properties = capability_declarations(&leaf.shape);
-                anyhow::ensure!(
-                    !properties.is_empty()
-                        && properties
-                            .iter()
-                            .all(|p| p.required && matches!(p.shape, Shape::Boolean)),
-                    "unsupported modification grant {}",
-                    leaf.wire_name
-                );
-                // Semantic argument order; membership is entirely schema-derived.
-                properties.sort_by_key(|p| (p.wire_name != "replace", p.wire_name.clone()));
-                let args = properties
-                    .iter()
-                    .map(|p| format!("arg{} bool", go_identifier(&p.wire_name)))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
-                    anyhow::anyhow!("modification grant {} has no object model", leaf.wire_name)
-                })?;
-                let mut values = Vec::new();
-                for property in &properties {
-                    let field = fields
-                        .iter()
-                        .find(|field| field.wire_name == property.wire_name)
-                        .context("modification property has no generated field")?;
-                    anyhow::ensure!(
-                        field.required && field.field_type == "bool",
-                        "unsupported modification field {}",
-                        field.wire_name
-                    );
-                    values.push(format!(
-                        "{}: arg{}",
-                        field.field_name,
-                        go_identifier(&property.wire_name)
-                    ));
-                }
-                (
-                    format!("With{}{group_name}", leaf.field_name),
-                    args,
-                    format!("{}{{{}}}", qualify(&leaf.field_type), values.join(", ")),
-                )
-            } else {
-                let grant_fields = g.objects.get(&leaf.field_type).ok_or_else(|| {
-                    anyhow::anyhow!("elicitation grant {} has no object model", leaf.wire_name)
-                })?;
-                anyhow::ensure!(
-                    grant_fields.is_empty(),
-                    "elicitation grant {} now requires a typed helper policy",
-                    leaf.wire_name
-                );
-                (
-                    format!("With{group_name}{}", leaf.field_name),
-                    String::new(),
-                    format!("{}{{}}", qualify(&leaf.field_type)),
-                )
-            };
-            let ty = qualify(&leaf.field_type);
-            writeln!(
-                out,
-                "// {helper} grants only the declared nested capability; it never adds effects or modes."
-            )?;
-            writeln!(
-                out,
-                "func {helper}({args}) Option {{ return func(v *ahp.Capabilities) {{ v.{}.Present = true; v.{}.Value.{} = ahp.Optional[{ty}]{{Present:true, Value:{value}}} }} }}",
-                group.field_name, group.field_name, leaf.field_name
-            )?;
-        }
-    }
-    Ok(())
-}
-
-// Queries expose family membership without re-encoding wire models.
 pub(super) fn capability_queries(g: &Generator<'_>, out: &mut String) -> Result<()> {
     let Some(fields) = g.objects.get("Capabilities") else {
         return Ok(());
@@ -601,184 +510,6 @@ pub(super) fn capability_queries(g: &Generator<'_>, out: &mut String) -> Result<
 }
 
 // Functional declarations allocate fresh wire models for every composition.
-fn capability_composition(g: &Generator<'_>, out: &mut String) -> Result<()> {
-    let effects_field = g.objects["Capabilities"]
-        .iter()
-        .find(|f| f.wire_name == "effects")
-        .unwrap();
-    let item = effects_field.field_type.strip_prefix("[]").unwrap();
-    let arms = &g.unions[item];
-    let (known, known_type) = arms.iter().find(|(_, ty)| ty != "string").unwrap();
-    out.push_str(&r#"
-type Mode = ahp.StaticCapabilityManifestEventsItemModesItem
-const (InterceptMode Mode = "intercept"; ObserveMode Mode = "observe")
-type Event struct { Modes []Mode; Capabilities *ahp.Capabilities }
-type Grant struct { apply func(*ahp.Capabilities) error }
-type ModifyOperation string
-// Intercept advertises both modes. It does not authorize host execution.
-// The SDK must validate event compatibility and per-call narrowing before delivery.
-func Intercept(grants ...Grant) (Event, error) {
-    if len(grants) == 0 { return Event{}, fmt.Errorf("intercept requires explicit grants") }
-    value := New([]string{})
-    for _, grant := range grants {
-        if grant.apply == nil { return Event{}, fmt.Errorf("empty capability grant") }
-        if err := grant.apply(value); err != nil { return Event{}, err }
-    }
-    raw, err := json.Marshal(value); if err != nil { return Event{}, err }
-    parsed := ahp.ParseCapabilities(raw)
-    if !parsed.OK { return Event{}, fmt.Errorf("invalid capability declaration: %v", parsed.Diagnostics) }
-    return Event{Modes: []Mode{InterceptMode, ObserveMode}, Capabilities: value}, nil
-}
-func Observe() Event { return Event{Modes: []Mode{ObserveMode}} }
-func addEffect(v *ahp.Capabilities, name ahp.EffectName) {
-    if v.Supports(name) { return }
-    v.Effects = append(v.Effects, ahp.$ITEM{$KNOWN: ahp.Some(ahp.$KNOWN_TYPE(name))})
-}
-"#.replace("$KNOWN_TYPE", known_type).replace("$KNOWN", known).replace("$ITEM", item));
-    let effects = &g.objects["Capabilities"]
-        .iter()
-        .find(|f| f.wire_name == "effects")
-        .unwrap()
-        .shape;
-    for effect in enum_strings(g, effects) {
-        if ["modify", "flow", "inject"].contains(&effect.as_str()) {
-            continue;
-        }
-        writeln!(
-            out,
-            "func {}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ addEffect(v, ahp.EffectName{}); return nil }} }} }}",
-            go_identifier(&effect),
-            go_identifier(&effect)
-        )?;
-    }
-    let operations = g.objects["CapabilitiesModify"]
-        .iter()
-        .flat_map(|leaf| capability_declarations(&leaf.shape))
-        .map(|p| p.wire_name)
-        .collect::<BTreeSet<_>>();
-    for operation in operations {
-        writeln!(
-            out,
-            "const {} ModifyOperation = {operation:?}",
-            go_identifier(&operation)
-        )?;
-    }
-    for leaf in &g.objects["CapabilitiesModify"] {
-        let name = &leaf.field_name;
-        let fields = g
-            .objects
-            .get(&leaf.field_type)
-            .context("modification grant has no object model")?;
-        let mut cases = String::new();
-        for field in fields {
-            anyhow::ensure!(
-                field.required && field.field_type == "bool",
-                "unsupported modification field {}",
-                field.wire_name
-            );
-            writeln!(
-                cases,
-                "case {}: grant.{} = true",
-                go_string(&field.wire_name)?,
-                field.field_name
-            )?;
-        }
-        writeln!(
-            out,
-            r#"
-func Modify{name}(operations ...ModifyOperation) Grant {{
-    operations = append([]ModifyOperation(nil), operations...)
-    return Grant{{apply: func(v *ahp.Capabilities) error {{
-        if len(operations) == 0 {{ return fmt.Errorf("modification requires an operation") }}
-        grant := v.Modify.Value.{name}.Value
-        for _, operation := range operations {{
-            switch string(operation) {{
-            {cases}
-            default: return fmt.Errorf("unknown modify operation %q", operation)
-            }}
-        }}
-        v.Modify.Present = true; v.Modify.Value.{name} = ahp.Some(grant); addEffect(v, "modify"); return nil
-    }} }}
-}}
-"#
-        )?;
-    }
-
-    let flow = g.objects["CapabilitiesFlow"]
-        .iter()
-        .find(|f| f.wire_name == "operations")
-        .unwrap();
-    for operation in enum_strings(g, &flow.shape) {
-        let name = go_identifier(&operation);
-        let (args, counts) = if operation == "continue" {
-            (
-                "remaining, count int64",
-                "v.Flow.Value.RemainingContinuations = ahp.Some(json.Number(strconv.FormatInt(remaining, 10))); v.Flow.Value.ContinuationCount = ahp.Some(json.Number(strconv.FormatInt(count, 10)));",
-            )
-        } else {
-            ("", "")
-        };
-        let validation = if operation == "continue" {
-            format!(
-                "if remaining < {min} || count < {min} || remaining > {max} || count > {max} {{ return fmt.Errorf(\"continuation counts must be nonnegative safe integers\") }};",
-                min = crate::ergonomics::MIN_CONTINUATION_COUNT,
-                max = crate::ergonomics::MAX_CONTINUATION_COUNT
-            )
-        } else {
-            String::new()
-        };
-        writeln!(
-            out,
-            "func Flow{name}({args}) Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ {validation} v.Flow.Present = true; {counts} for _, operation := range v.Flow.Value.Operations {{ if string(operation) == {operation:?} {{ return nil }} }}; v.Flow.Value.Operations = append(v.Flow.Value.Operations, ahp.CapabilitiesFlowOperationsItem({operation:?})); addEffect(v, \"flow\"); return nil }} }} }}"
-        )?;
-    }
-    let deliver = g.objects["CapabilitiesInjectContext"]
-        .iter()
-        .find(|f| f.wire_name == "deliverAt")
-        .unwrap();
-    writeln!(
-        out,
-        "type DeliverAt = ahp.CapabilitiesInjectContextDeliverAtItem"
-    )?;
-    let deliveries = enum_strings(g, &deliver.shape);
-    for delivery in &deliveries {
-        writeln!(
-            out,
-            "const {} DeliverAt = {delivery:?}",
-            go_identifier(delivery)
-        )?;
-    }
-    let cases = deliveries
-        .iter()
-        .map(|v| format!("{v:?}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    writeln!(
-        out,
-        r#"
-func InjectContextAppend(deliveries ...DeliverAt) Grant {{
-    deliveries = append([]DeliverAt(nil), deliveries...)
-    return Grant{{apply: func(v *ahp.Capabilities) error {{
-        if len(deliveries) == 0 {{ return fmt.Errorf("injection requires explicit delivery timing") }}
-        for _, delivery := range deliveries {{ switch delivery {{ case {cases}: default: return fmt.Errorf("invalid injection delivery %q", delivery) }} }}
-        v.Inject.Present = true; v.Inject.Value.Context.Append = true
-        for _, delivery := range deliveries {{ found := false; for _, existing := range v.Inject.Value.Context.DeliverAt {{ if existing == delivery {{ found = true }} }}; if !found {{ v.Inject.Value.Context.DeliverAt = append(v.Inject.Value.Context.DeliverAt, delivery) }} }}
-        addEffect(v, "inject"); return nil
-    }} }}
-}}
-"#
-    )?;
-    // Elicitation is orthogonal to effect grants and must always be explicit.
-    for leaf in &g.objects["CapabilitiesElicitation"] {
-        writeln!(
-            out,
-            "func Elicitation{}() Grant {{ return Grant{{apply: func(v *ahp.Capabilities) error {{ WithElicitation{}()(v); return nil }} }} }}",
-            leaf.field_name, leaf.field_name
-        )?;
-    }
-    Ok(())
-}
-
 fn state_helpers(g: &Generator<'_>, packages: &mut BTreeMap<String, String>) -> Result<()> {
     let name = "InterceptRequestParamsState";
     let fields = &g.objects[name];
@@ -2104,6 +1835,9 @@ mod tests {
         let files = emit(&ir).unwrap();
         let events = &files["event/generated.go"];
         assert!(!events.contains("AHPContentSources"));
+        assert!(events.contains("type Type string"));
+        assert!(!events.contains("type Type = string"));
+        assert!(events.contains("const ToolBefore Type = \"tool.before\""));
         let extractor = &files["internal/inputsources/generated.go"];
         assert_eq!(extractor.matches("case event.").count(), 32);
         assert!(extractor.contains("func ExtractToolBefore[T any]"));
@@ -2140,6 +1874,10 @@ mod tests {
         for code in crate::ergonomics::DIAGNOSTIC_CODES {
             assert!(files["diagnostic/generated.go"].contains(&format!("= {code:?}")));
         }
+        let client_example = &files["client/facade_generated_test.go"];
+        assert!(client_example.contains("capability.Host"));
+        assert!(client_example.contains("ModifyInput: capability.ReplaceAndMerge()"));
+        assert!(!client_example.contains("EventCapabilities"));
         assert!(files["state/generated.go"].contains("func Candidate[T any]"));
         assert!(files["effect/generated.go"].contains("func ModifyInputReplace[T any](value T)"));
         assert!(
@@ -2148,7 +1886,7 @@ mod tests {
         );
         assert!(
             files["capability/generated.go"]
-                .contains("func Intercept(grants ...Grant) (Event, error)")
+                .contains("func (v Host) Wire() map[event.Type]WireDeclaration")
         );
     }
 
@@ -2173,130 +1911,57 @@ mod tests {
         assert_eq!(methods.matches("func (c *Hooks)").count(), events.len());
         assert!(!methods.contains("*Client"));
         for tag in events {
-            assert!(methods.contains(&format!("{tag:?}")), "missing {tag}");
+            if tag == "tool.before" {
+                // The runtime helper owns this selector and atomic contract admission.
+                assert!(methods.contains("return interceptToolBefore[T](ctx, c, input, opts...)"));
+            } else {
+                assert!(methods.contains(&format!("{tag:?}")), "missing {tag}");
+            }
         }
         assert!(methods.contains("ToolBefore[T any]"));
-        assert!(methods.contains("decodeToolBefore[T](c.intercept"));
+        assert!(methods.contains("return interceptToolBefore[T](ctx, c, input, opts...)"));
+        assert!(!methods.contains("decodeToolBefore"));
+        assert!(!methods.contains("internal/inputsources"));
+        assert!(methods.contains("import \"context\""));
         assert!(methods.contains("SessionEnd(ctx context.Context, input event.SessionEndInput)"));
         assert!(methods.contains(
             "ContextCompactBefore(ctx context.Context, input event.ContextCompactBeforeInput, opts"
         ));
     }
     #[test]
-    fn functional_modify_operations_follow_each_targets_schema_metadata() {
+    fn typed_capability_catalogue_and_zero_grants() {
         let ir = draft();
-        let mut g = Generator::new(&ir);
-        for n in &ir.types {
-            g.emit_named(&g.named_name(&n.name), &n.source, &n.shape)
-                .unwrap();
+        let source = capabilities::emit(&ir).unwrap();
+        for event in crate::capability_ergonomics::catalogue(&ir).unwrap() {
+            assert!(source.contains(&format!(
+                "{} {}",
+                event.name,
+                if event.intercept {
+                    format!("{}Declaration", event.name)
+                } else {
+                    "Observation".to_string()
+                }
+            )));
+            if event.intercept {
+                assert!(source.contains(&format!("type {} struct", event.name)));
+            }
         }
-        let targets = g.objects.get_mut("CapabilitiesModify").unwrap();
-        assert!(targets.len() > 1);
-        let first_target = targets[0].field_name.clone();
-        let second_target = targets[1].field_name.clone();
-        for (index, target) in targets.iter_mut().enumerate() {
-            let operation = if index == 0 { "patch" } else { "splice" };
-            target.shape = Shape::Object {
-                properties: vec![Property {
-                    wire_name: operation.into(),
-                    required: true,
-                    shape: Shape::Boolean,
-                    constructor_default: None,
-                }],
-                forbidden_property_sets: vec![],
-                additional: crate::model::AdditionalProperties::Forbidden,
-            };
+        assert!(source.contains("ReturnResult bool"));
+        assert!(source.contains("if len(caps.Effects)>0"));
+        assert!(source.contains("func ReplaceAndMerge() Modify"));
+        for obsolete in [
+            "func New(",
+            "func WithEffects",
+            "func Intercept(",
+            "type Event =",
+            "type Grant",
+            "json.Unmarshal",
+            "ParseCapabilities",
+        ] {
+            assert!(!source.contains(obsolete), "obsolete {obsolete}");
         }
-        // Keep the synthetic typed projections aligned with the edited schema.
-        let projected = targets
-            .iter()
-            .map(|target| {
-                let fields = capability_declarations(&target.shape)
-                    .into_iter()
-                    .map(|property| RenderedField {
-                        field_name: go_identifier(&property.wire_name),
-                        wire_name: property.wire_name,
-                        field_type: "bool".into(),
-                        required: property.required,
-                        constructor_default: None,
-                        shape: property.shape,
-                    })
-                    .collect();
-                (target.field_type.clone(), fields)
-            })
-            .collect::<Vec<_>>();
-        for (name, fields) in projected {
-            g.objects.insert(name, fields);
-        }
-        let mut source = String::new();
-        capability_composition(&g, &mut source).unwrap();
-        assert_eq!(
-            source
-                .matches("const Patch ModifyOperation = \"patch\"")
-                .count(),
-            1
-        );
-        assert_eq!(
-            source
-                .matches("const Splice ModifyOperation = \"splice\"")
-                .count(),
-            1
-        );
-        assert!(!source.contains("const Replace ModifyOperation"));
-        assert!(!source.contains("const Merge ModifyOperation"));
-        let first = source
-            .split(&format!("func Modify{first_target}("))
-            .nth(1)
-            .unwrap()
-            .split("func ")
-            .next()
-            .unwrap();
-        let second = source
-            .split(&format!("func Modify{second_target}("))
-            .nth(1)
-            .unwrap()
-            .split("func ")
-            .next()
-            .unwrap();
-        assert!(first.contains("case \"patch\": grant.Patch = true"));
-        assert!(!first.contains("\"splice\""));
-        assert!(second.contains("case \"splice\": grant.Splice = true"));
-        assert!(!second.contains("\"patch\""));
-        assert!(source.contains("switch string(operation)"));
     }
 
-    #[test]
-    fn capability_helpers_follow_schema_targets_without_implicit_grants() {
-        let ir = draft();
-        let files = emit(&ir).unwrap();
-        let source = &files["capability/generated.go"];
-        assert!(source.contains("func New(argEffects []string, opts ...Option) *ahp.Capabilities"));
-        assert!(source.contains("func WithEffects(values ...string) Option"));
-        assert!(source.contains("func WithElicitationForm() Option"));
-        assert!(source.contains("func WithElicitationURL() Option"));
-        let mut g = Generator::new(&ir);
-        for n in &ir.types {
-            g.emit_named(&g.named_name(&n.name), &n.source, &n.shape)
-                .unwrap();
-        }
-        for field in &g.objects["CapabilitiesModify"] {
-            assert!(source.contains(&format!(
-                "func With{}Modification(argReplace bool, argMerge bool) Option",
-                field.field_name
-            )));
-        }
-        // A changed schema target creates a corresponding helper, with no list
-        // of event boundaries or target names in the implementation.
-        let fields = g.objects.get_mut("CapabilitiesModify").unwrap();
-        fields[0].wire_name = "custom".into();
-        fields[0].field_name = "Custom".into();
-        let mut source = String::new();
-        capability_options(&g, &mut source).unwrap();
-        assert!(source.contains("func WithCustomModification("));
-        assert!(!source.contains("v.Effects"));
-        assert!(!source.contains("json.Unmarshal"));
-        assert!(!source.contains("panic("));
-    }
     #[test]
     fn recursive_facade_graph_walks_terminate() {
         let mut ir = draft();
@@ -2524,6 +2189,7 @@ mod tests {
             ] {
                 // Host inputs refer to the leaf source package, never to client runtime.
                 if (path == "event/generated.go" && dependency == "content")
+                    || (path == "capability/generated.go" && dependency == "event")
                     || (path == "internal/inputsources/generated.go"
                         && ["event", "content"].contains(&dependency))
                 {

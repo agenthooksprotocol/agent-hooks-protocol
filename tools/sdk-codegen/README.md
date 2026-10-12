@@ -4,7 +4,7 @@
 
 Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, generator version, and exact source repository commit. `tools/generate_sdk.py` records its checkout HEAD as `sourceCommit`; commit generator changes before publishing regenerated SDK artifacts. Use `--python-sdk <root>`, `--go-sdk <root>`, or `--rust-sdk <root>` to regenerate one SDK, and append `--check` to verify identical output. Rust keeps matching locks in its root and `src/` directories.
 
-## Compatibility model
+## Wire codec behavior
 
 Parsing and protocol validation are separate operations. Generated parsers preserve forward-compatible data, but a successful parse does not establish that a message is valid AHP.
 
@@ -57,7 +57,7 @@ A conservatively recognized `null | T` is `Nullable[T]`; an optional nullable pr
 
 `state.NoCandidate()` encodes null. `state.Candidate(nil)` encodes `{ "value": null }`, a present candidate with a null application value. Required nullable absence is rejected by the original descriptor checks in the named `Parse*` entrypoints. Generated object unmarshalling also rejects a missing required nullable member specifically, so absence cannot silently become the wrapper’s zero/null state; this is not universal required-member enforcement, and direct `json.Unmarshal` is not a complete schema validator.
 
-Renaming generated symbols and introducing `Nullable[T]` are source-level API changes even when JSON is unchanged. Consumers must migrate renamed members and types; positional aliases are not retained. Regenerate artifacts from a committed generator revision and update SDK CI source pins with their locks.
+Regenerate artifacts from a committed generator revision and update SDK CI source pins with their matching locks.
 
 ## SDK synchronization
 
@@ -151,13 +151,16 @@ and exercise duration edge cases and presence-preserving projection JSON.
 resolved object root, definition, and nested object, separately from `generated.py`
 wire parsing. Required fields remain required; optional fields preserve absence,
 explicit null, and schema defaults. Literal tags and protocol version are constructor
-conveniences only. Unknown fields remain intact and constructors do not replace
-canonical validation.
+conveniences only. Constructors use snake-case keywords and require typed nested
+models. Wire-spelling keyword aliases and implicit nested dictionary hydration are
+not accepted. Use `Model.from_dict()` explicitly to validate and hydrate JSON.
+Unknown extension fields remain intact and constructors do not replace canonical
+validation.
 
 Generated `_models` exports the complete model surface; `event`, `tool`, `effect`,
 `capability`, `transport`, and `subscription` expose semantic aliases. Runtime-owned
 `registration.py` can re-export `_models.registration` without losing its validator.
-`tool.Call`, `tool.Input`, `tool.Origin`, and `tool.Path.NATIVE` support host event
+`tool.Call`, `tool.Tool`, `tool.Origin`, and `tool.Path.NATIVE` support host event
 construction. Path is an open schema string, not an alias for tool origin; `NATIVE`
 is the documented canonical example, not a closed list of all paths.
 
@@ -173,17 +176,40 @@ Codec-free input and provenance are opaque `object` views. Codec-free results fr
 are respectively `CanonicalMessages`, `TextParts`, and the complete canonical
 `McpElicitationElicitResult` (action and optional content, not just answers).
 Other codec-free results, including tool values, are opaque `object` views.
+The returned `HookResult.event` is always the canonical schema-owned `Event`,
+independent of payload codecs. Use `input`, `candidate`, and `result` for caller-owned payload views. Complete effects use their typed constructors (for
+example, `effect.ContinueFlow()`); operation-specific builders such as
+`effect.replace_input(value)` select a schema operation and remain canonical.
+Content construction uses `ContentReference`, `ContentSelection`, `ContentUpload`,
+and `ContentUploadReceipt`; diagnostics use `diagnostics.Code`.
 `content.CanonicalMessages` and `content.TextParts` name the canonical containers.
 The facade smoke's `--typing` mode compiles generated files and checks all 256
 origin/codec combinations with mypy, including rejected codec-free typed casts.
 
-Capability grants are generated from the capabilities schema's effect vocabulary
-and nested target dimensions. For example,
-`capability.Declaration(modes=[capability.Mode.INTERCEPT], grants=[capability.Allow(),
-capability.ModifyInput(replace=True)])` produces the canonical declaration without
-repeating `modify` as both an effect and target key. Grants combine explicit authority;
-delivery modes and elicitation form/URL grants are never inferred. Canonical mappings
-remain usable directly. Conflicting scalar grant metadata raises `ValueError`.
+Capability declarations are frozen keyword-only models generated for each event.
+Host fields accept their matching event declaration or an explicit observation
+marker. For example:
+
+```python
+from agenthooksprotocol import capability as c
+
+capabilities = c.HostCapabilities(
+    session_start=c.Observe(),
+    tool_before=c.ToolBeforeCapabilities(
+        intercept=c.ToolBeforeIntercept(
+            allow=True, deny=True, return_result=True,
+            modify_input=c.Modify.REPLACE_AND_MERGE,
+        ),
+        observe=True,
+    ),
+)
+wire = capabilities.to_wire()
+```
+
+Constructors reject empty interception, incorrect values and mismatched event
+models immediately. Type checkers reject unsupported event fields and grant
+operations. Native argument dictionaries and external raw configuration parsing
+remain separate from typed declaration construction.
 
 The driver targets `python-sdk/src/agenthooksprotocol`, formats every generated
 Python file with the pinned formatter, and records the immutable generator source
@@ -191,28 +217,107 @@ commit in the lock. It never overwrites the package initializer or runtime modul
 ## Go Hooks and typed capability options
 
 The canonical generated boundary receiver is `*client.Hooks` for all 32 draft
-selectors. The handwritten runtime owns `New`, `Options.Events`, mode constants,
-and the deprecated `Client` compatibility alias. The generated client example
-compiles their seam with `map[string]client.EventCapabilities` and typed modes.
+selectors. The handwritten runtime owns `New` and `Options.Events`, whose value
+is the generated `capability.Host`:
 
-`capability.New([]string{"modify"}, capability.WithInputModification(true, false))`
-selects the schema-derived open string union arm without exposing union assembly.
-`WithEffects(...string)` replaces that effect list. Each modification target in
-`Capabilities.modify` receives a `With<Target>Modification(replace, merge bool)`
-option; declarations determine the arguments, not validation predicate branches.
-Boolean values are encoded directly with `strconv.FormatBool` into fresh raw
-backing bytes because the unchanged root wire model uses raw JSON for composite
-constraints. There is no runtime JSON decoding, panic, or implicit validation.
+```go
+capabilities := capability.Host{
+    SessionStart: capability.Observe{},
+    ToolBefore: capability.ToolBefore{
+        Allow: true, Deny: true, ReturnResult: true,
+        ModifyInput: capability.ReplaceAndMerge(), Observe: true,
+    },
+}
+wire := capabilities.Wire()
+```
 
-`WithElicitationForm()` and `WithElicitationURL()` each set an explicit empty-object
-grant. Absent or empty elicitation capability objects grant neither mode. Nested
-options preserve sibling grants and overwrite only their own target; full-object
-options remain available for advanced use. These advanced raw options never automatically add effects,
-modes, flow grants, or injection grants. Boundary-specific capability constructors
-retain their advanced wire signatures. All target helpers come from the schema
-object graph; no handwritten list of event boundaries or modification targets is
-maintained.
+Host fields use closed event-specific declaration interfaces. A matching event
+value or explicit observation marker is accepted; a different event declaration
+is a compile error. Zero hosts and zero event values grant nothing.
+`Replace()`, `Merge()` and `ReplaceAndMerge()` construct nonempty modification
+sets with a private representation. Flow and injection grants require their
+complete typed dependencies. The generated generic `ToolBefore[T]` method calls
+the runtime's `interceptToolBefore[T]` admission helper before publication.
 
+## Typed host capabilities
+
+`src/capability_ergonomics.rs` derives delivery modes and event-specific authority
+from the canonical request unions, capability constraints, and contextual effect
+unions. The contextual effects supply exact modification targets and operations;
+there is no copied permission catalogue. Typed host fields prevent mismatched
+event declarations and duplicate keys. Unsupported effects, targets and flow
+operations are absent from each event's API. Observation is always explicit.
+
+Rust uses event-specific construction states:
+
+```rust
+use agenthooksprotocol::capability::{self as c, HostCapabilities, Modify};
+
+let capabilities = HostCapabilities {
+    tool_before: Some(c::tool_before()
+        .allow().deny().return_result()
+        .modify_input(Modify::ReplaceAndMerge)
+        .observe()),
+    session_end: Some(c::Observe),
+    ..Default::default()
+};
+let wire = capabilities.to_wire();
+```
+
+An initial marker cannot be installed. The first control, supported interception
+facility or explicit observation creates a valid declaration; supported methods compose immutable typed values.
+Nonempty modification and delivery enums and operation-specific flow types carry
+their dependencies, including unsigned continuation counters.
+
+TypeScript uses readonly declarative event types:
+
+```typescript
+import { type HostCapabilities, hostCapabilitiesToWire } from 'agenthooksprotocol';
+
+const capabilities = {
+  toolBefore: {
+    intercept: {
+      allow: true, deny: true, returnResult: true,
+      modifyInput: 'replace-and-merge',
+    },
+    observe: true,
+  },
+  sessionStart: { observe: true },
+} satisfies HostCapabilities;
+const wire = hostCapabilitiesToWire(capabilities);
+```
+
+Interception requires a real control or a supported interception facility. Unsupported known control fields remain
+forbidden when wider objects are assigned. Flow and injection declarations use
+nonempty operation/delivery tuples and complete dependency records. Numeric
+continuation counts use the checked `capabilityCount` value constructor.
+
+Wire renderers emit event-keyed canonical `{modes, capabilities?}` declarations
+from typed stored data. They do not reparse JSON or run schema validators.
+A supported elicitation facility is sufficient interception support on its own:
+
+```typescript
+const formOnly = {
+  userElicitationRequest: { intercept: { elicitation: { form: true } } },
+} satisfies HostCapabilities;
+```
+
+This renders `modes: ["intercept"]` and
+`capabilities: {effects: [], elicitation: {form: {}}}`. The equivalent declarations
+are Rust `c::user_elicitation_request().elicitation_form()`, Python
+`UserElicitationRequestIntercept(elicitation=Elicitation.FORM)`, and Go
+`UserElicitationRequest{ElicitationForm: true}`. Explicit observation remains a
+separate delivery choice.
+
+External raw configuration remains an independent fallible parsing boundary;
+typed construction is not authorization or evidence that a host implements a
+grant. Per-call narrowing and atomic contextual admission belong to runtimes.
+
+Interception and observation server handler maps are separate. Runtimes use the
+existing generated per-event event, contextual effect, request and response
+envelope types. Observation handlers return no control reply. This separation
+preserves complete envelopes, unknown extras, ordered effects, candidate origins
+and neutral omitted effects without introducing a second schema.
 
 ## Shared host ergonomics
 
@@ -242,14 +347,13 @@ legitimate remote RPC error. Runtime integration owns attribution, failure polic
 synthetic-denial evidence and redaction; generated codes introduce no wire error
 codes and no second error framework.
 
-Generated capability composition is separate from advanced raw constructors.
-`intercept()` deliberately advertises both intercept and observe, while
-`observe()` advertises observation only. Effects and their explicit target grants
-are constructed together; form and URL elicitation each require an explicit
-grant. Raw omitted fields retain their exact original semantics. Builders are
-reusable without shared mutable declarations. Boundary compatibility and
-per-call narrowing remain runtime admission checks, not proof that the host
-implements an advertised effect.
+Typed capability construction and wire parsing are separate boundaries. Effects
+and their explicit target grants are rendered together. Elicitation dimensions
+are independent explicit interception facilities: form-only support renders
+`effects: []` with `elicitation: {form: {}}`. Pure observation has no capability
+block. All-absent declarations do not create an interception subscription.
+Raw omitted fields retain their exact wire semantics. Delivery compatibility and
+per-call narrowing remain runtime admission checks.
 
 Initial-state helpers explicitly construct a supplied native decision for this
 occurrence. They are not backend allow/deny effects or default approval. No
@@ -286,21 +390,20 @@ not an earlier checkout with uncommitted generator changes.
   JSON. Paths are event-relative (`/items/1`, `/items/2/parts/5`); nil rows and nil entries are gaps.
   Inline text-only slots have no source binding. The handwritten
   `content` leaf package avoids an event/client import cycle. The runtime must
-  collect bindings before serialization in either delivery mode. `capability.Event`
-  and `capability.Mode` can be runtime aliases. Generic receiver methods require
-  the declared Go 1.27 toolchain.
-- **Python:** `event.*Input.to_wire()` returns canonical host facts. Immutable
-  `bind_<slot>_source` methods retain sources outside the mapping and expose
+  collect bindings before serialization in either delivery mode. `capability.Host`
+  owns event-specific authority, and its `Wire()` method renders explicit modes.
+  Generic receiver methods require the declared Go 1.27 toolchain.
+- **Python:** `event.*Input.to_wire()` returns canonical host facts. Generated
+  host attachment adapters retain sources outside the mapping and expose
   `content_sources`. `_boundaries.CONTENT_SOURCE_SLOTS` maps event-qualified slot
-  keys to event name and canonical path tuple; `*` denotes the concrete array
-  index supplied by the binder. Collect bindings before `to_wire()`. `state`,
+  keys to event name and canonical path tuple; `*` denotes the concrete
+  array index collected from host input. Collect bindings before `to_wire()`. `state`,
   `permission`, `candidate`, and `diagnostics` are generated semantic modules;
   the package initializer remains handwritten.
 - **TypeScript:** `EventInputs` maps event selectors to flattened input types;
   `toEventInput(type, input)` performs the generated canonical projection.
-  `contentSlots[event].slot(index?, source)` constructs named out-of-band binding
-  records. Runtime exports can expose these generated helpers without maintaining
-  another event-field or content-slot inventory.
+  `ownedAttachment(source)` embeds an owner in a host attachment;
+  `_projectHostInput` extracts bindings from schema-owned paths.
 - **Rust:** `ergonomic_inputs::*Input` has required-fact constructors, optional
   field setters and fallible `to_event_value()`. Named `<boundary>_sources`
   modules create out-of-band generic source bindings. The generated
@@ -327,12 +430,12 @@ without casting accepted result input back to the proposed type. Rust
 `state::Candidate::try_new`, `effects::try_return`, and target `try_replace`/
 `try_merge` helpers preserve ordinary serializer errors for native values.
 
-Capability continuation counts are nonnegative interoperable integers. Generated
-Go and Python composition reject negative or out-of-range counts before producing
-a declaration (Python also rejects booleans/fractions and missing continue counts).
-TypeScript already enforces this range; Rust uses unsigned counts and rejects
-values above the safe range. Raw manifests still undergo ordinary canonical
-validation; structural parsing alone does not prove numeric validity.
+Canonical continuation counts are nonnegative integers with no schema maximum.
+Rust and Go construction uses unsigned native counters. Python validates exact
+nonnegative integers and requires both continuation counters; booleans and
+fractions are rejected. TypeScript's checked `CapabilityCount` models safe native
+number values. External raw configuration parsing and canonical validation remain
+independent of these native construction representations.
 
 ## Go structural decoding contract
 
@@ -363,7 +466,6 @@ unknown object members, including canonical closed objects; it does not enforce
 dependent checks remain separate. Neither direct decoding nor `Parse*` replaces
 those validators.
 
-Direct decoding of previously tolerated invalid models is a behavioral break.
 Named primitive aliases become defined types to attach decoders (for example,
 `ReverseDnsName(existingString)`); reference aliases use target values instead
 of pointers so null cannot bypass decoding. Nullable aliases retain their generic
@@ -413,20 +515,14 @@ not merely agreement between two potentially incorrect paths. Every target also
 checks warnings and accepted roundtrips. Language-specific exported consumer tests
 cover original composed constraints, direct nested types, and numeric boundaries.
 
-These changes are behavior-breaking for previously tolerated invalid direct
-Rust decoding and Python wire construction. Rust constrained primitive aliases
-may become checked newtypes. Capability queries are additive. TypeScript rejects
-non-JSON object inputs rather than silently discarding properties; its existing
-native raw-JSON/type-annotation boundary remains unchanged.
+Rust constrained primitive aliases use checked newtypes. TypeScript rejects
+non-JSON object inputs rather than silently discarding properties. Structural
+codec acceptance and canonical validation remain separate contracts.
 
-Python wire constructors and `from_dict` both hydrate nested mappings into typed
-models after validation. Explicit Python-name/wire-name duplicate assignments
-(for example `tool_name=` with `toolName=`) raise `TypeError`, even when values
-agree. A lone wire spelling for an optional/defaulted field is preserved and
-validated; required constructor arguments retain their documented Python spelling.
-`from_dict` does not reinterpret aliases, so distinct wire and extension keys stay
-distinct. Family queries include composed per-occurrence capability arrays, not
-only the generic capability model; effect-payload arrays do not expose queries.
+Python wire constructors require typed nested models and canonical snake-case
+keywords. `Model.from_dict()` explicitly validates and hydrates nested JSON
+mappings. Supplying a wire-spelling keyword to a constructor raises `TypeError`;
+constructor defaults are never applied during parsing.
 
 ### Typed composition payloads
 
@@ -453,13 +549,12 @@ not a replacement for canonical validators or caller-context checks. In
 particular, the generated structural IR still omits canonical constraints such
 as string patterns, numeric bounds, and some conditional keywords.
 
-This is a source-level API migration: former Rust JSON newtypes become structs,
-arrays, scalar models, or semantic enums; Go raw composition arms become typed
-models; Python facade parameters now name their generated nested models. Build
-those models instead of supplying raw JSON where a schema describes the fields.
+Rust composition payloads use structs, arrays, scalar models and semantic enums;
+Go composition arms and Python facade parameters name their generated nested
+models. Construct these models where the schema describes structured fields.
 `ModelVisibleItem` exposes composed content variants with a typed required role.
 
-Python facade objects remain mappings and now also provide typed read-only
+Python facade objects are mappings and provide typed read-only
 attributes. An optional attribute returns `None` when absent; mapping membership
 continues to distinguish absence from an explicit null. Accessors colliding with
 dictionary methods use a trailing underscore (`items_`), leaving `dict.items()`
@@ -476,13 +571,13 @@ Go exposes `req.Params.Capabilities.Supports(ahp.EffectDeny)` and
 identify effect families; `EffectDeny` aliases `EffectNameDeny`. This avoids
 collisions with existing payload types such as `EffectModify`. Queries inspect typed fields
 without serialization and accept the known and custom string representations.
-Capability grant builders use the same family membership query for deduplication.
+Typed capability rendering emits each selected family once.
 
 `Supports` reports only advertised family membership: it does not authorize
 execution or imply a target, operation, delivery mode, or per-call grant. A nested
 modify grant without the `modify` family returns false; a `modify` family alone
-does not grant any modification operation. Continue to use the existing grant
-builders and host/request validation for operation constraints. Equivalent queries
+does not grant any modification operation. Use event-specific declarations and
+canonical host/request validation for operation constraints. Equivalent queries
 are available in every SDK without a new operation-authorization API:
 
 | SDK | Family query |
@@ -513,13 +608,11 @@ receipt-only `size` and `sha256` by presence (including null), while unrelated
 unknown extra fields retain the existing forward-compatible parser behavior.
 `ContentUploadReceipt` is a distinct root for upload size and digest metadata.
 
-### Existing explicit source bindings
+### Source extraction
 
-Published singleton and one-index source APIs remain for unchanged slots such as
-`tool.before.items` and `tool.after.fileChangesBefore`. New canonical message
-parts do not introduce indexed caller APIs: embed the owner in the attachment
-part instead. Internal slot metadata retains arbitrary nested paths for runtime
-extraction; it is not a separate public binding API.
+Embed the owner in the host attachment part.
+Internal slot metadata retains arbitrary nested paths for runtime extraction;
+it is not a separate public binding API.
 
 ### Direct owned attachments in host inputs
 

@@ -55,6 +55,21 @@ class CatalogueVerifierTests(TestCase):
         artifact=Path(__file__).with_name('catalogue-scenarios.json')
         self.assertEqual(artifact.read_text(),json.dumps(validate(build()),indent=2)+'\n')
 
+    def test_generator_preserves_schema_negative_rejections(self):
+        document=build()
+        row=next(r for r in document['scenarios'] if r['id']=='typed-model-error-required')
+        from generate_catalogue_scenarios import notification
+        row['steps'][0]['message']=notification('model.error','repaired')
+        with self.assertRaisesRegex(ValueError, row['id']):
+            validate(document)
+
+    def test_generator_validates_lineage_negatives_against_schema(self):
+        document=build()
+        row=next(r for r in document['scenarios'] if r['id']=='wrong-known-task-parent')
+        row['steps'][0]['message']['params']['event']['task'].pop('id')
+        with self.assertRaisesRegex(ValueError, row['id']):
+            validate(document)
+
     def test_inline_message_parts_preserve_order_and_text(self):
         row=next(r for r in self.scenarios if r['id']=='canonical-inline-messages')
         items=row['steps'][0]['message']['params']['event']['items']

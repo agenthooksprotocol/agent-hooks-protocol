@@ -33,24 +33,22 @@ import "context"
 import "github.com/agenthooksprotocol/go-sdk/event"
 import "testing"
 import ahp "github.com/agenthooksprotocol/go-sdk"
-type Mode string
-const (Intercept Mode = "intercept"; Observe Mode = "observe")
-type EventCapabilities struct { Modes []Mode; Capabilities *ahp.Capabilities }
-type Options struct { Events map[string]EventCapabilities }
+import "github.com/agenthooksprotocol/go-sdk/capability"
+type Options struct { Events capability.Host }
 func New(ahp.Registration,Options)(*Hooks,error){return &Hooks{},nil}
 func (*Hooks) Close()error{return nil}
 type Hooks struct{}
-type Client = Hooks
 type InterceptOption func()
 type Result struct{}
 type ToolBeforeResult[T any] struct { Input T }
 func (*Hooks) intercept(context.Context, string, any, ...InterceptOption) (*Result,error) { return &Result{},nil }
-func decodeToolBefore[T any](*Result,error)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{},nil}
+func interceptToolBefore[T any](ctx context.Context, hooks *Hooks, input event.ToolBeforeInput[T], opts ...InterceptOption)(*ToolBeforeResult[T],error){return &ToolBeforeResult[T]{Input: input.Input},nil}
 func TestGenericInference(t *testing.T) {
  type arguments struct { Path string }
  result,err:=new(Hooks).ToolBefore(context.Background(), event.ToolBeforeInput[arguments]{Name:"read", Origin:"native", Input:arguments{Path:"file"}, ToolKind:ahp.Some("task")})
  if err!=nil {t.Fatal(err)}
  var _ arguments = result.Input
+ if result.Input.Path != "file" { t.Fatal("ToolBefore did not use the typed prepublication helper") }
 }
 EOF
 export GOTOOLCHAIN=go1.27.0+auto
@@ -613,11 +611,14 @@ import (
     "encoding/json"
     "testing"
     ahp "github.com/agenthooksprotocol/go-sdk"
-    "github.com/agenthooksprotocol/go-sdk/capability"
-)
+ )
 
 func TestCapabilitySupports(t *testing.T) {
     if (ahp.Capabilities{}).Supports(ahp.EffectDeny) { t.Fatal("zero grants") }
+    // Elicitation is an independent facility: no artificial effect is required.
+    facility := ahp.ParseCapabilities([]byte(`{"effects":[],"elicitation":{"form":{}}}`))
+    if !facility.OK { t.Fatalf("facility-only capabilities: %+v", facility.Diagnostics) }
+    if facility.Value.Supports(ahp.EffectDeny) { t.Fatal("elicitation granted a control effect") }
     for _, effects := range [][]ahp.CapabilitiesEffectsItem{
         {{Known: ahp.Some(ahp.CapabilitiesEffectsItemKnownDeny)}},
         {{Custom: ahp.Some("deny")}},
@@ -625,7 +626,7 @@ func TestCapabilitySupports(t *testing.T) {
         caps := ahp.Capabilities{Effects: effects}
         if !caps.Supports(ahp.EffectDeny) || caps.Supports(ahp.EffectNameAllow) { t.Fatal("family membership") }
     }
-    extension := capability.New([]string{"vendor.custom"})
+    extension := ahp.Capabilities{Effects: []ahp.CapabilitiesEffectsItem{{Custom: ahp.Some("vendor.custom")}}}
     if !extension.Supports(ahp.EffectName("vendor.custom")) || extension.Supports(ahp.EffectDeny) { t.Fatal("custom family") }
     // Queries follow the encoder's known-arm precedence, even for malformed manual unions.
     invalid := ahp.Capabilities{Effects: []ahp.CapabilitiesEffectsItem{{Known: ahp.Some(ahp.CapabilitiesEffectsItemKnownAllow), Custom: ahp.Some("deny")}}}
@@ -637,17 +638,7 @@ func TestCapabilitySupports(t *testing.T) {
     }
     req.Params.Capabilities.Effects = []ahp.InterceptRequestParamsCapabilitiesEffectsItem{{Custom: ahp.Some("deny")}}
     if !req.Params.Capabilities.Supports(ahp.EffectDeny) { t.Fatal("request custom representation") }
-    event, err := capability.Intercept(capability.Deny(), capability.Deny(), capability.ModifyInput(capability.Replace))
-    if err != nil { t.Fatal(err) }
-    if !event.Capabilities.Supports(ahp.EffectDeny) || !event.Capabilities.Supports(ahp.EffectNameModify) || len(event.Capabilities.Effects) != 2 { t.Fatal("shared grant membership") }
-    // Family support is deliberately not an operation or target authorization query.
-    if event.Capabilities.Modify.Value.Input.Value.Merge || event.Capabilities.Modify.Value.Output.Present { t.Fatal("ungranted operations/targets") }
-    if _, err := capability.Intercept(capability.ModifyInput(capability.ModifyOperation("unknown"))); err == nil { t.Fatal("unknown operation accepted") }
-    if _, err := capability.Intercept(capability.ModifyInput()); err == nil { t.Fatal("empty operation grant accepted") }
-    nestedOnly := capability.New([]string{}, capability.WithModify(event.Capabilities.Modify.Value))
-    if nestedOnly.Supports(ahp.EffectNameModify) { t.Fatal("nested grant implied family support") }
-    familyOnly := capability.New([]string{"modify"})
-    if !familyOnly.Supports(ahp.EffectNameModify) || familyOnly.Modify.Present { t.Fatal("family query implied nested grant") }
+
 }
 EOF
 
@@ -662,4 +653,46 @@ fi
   cd "$tmp"
   AHP_REPOSITORY="$repository" go test ./...
 )
+# These declarations must fail at compile time, not at host installation.
+mkdir -p "$tmp/negative"
+for negative in \
+  'var _ = capability.Host{ToolBefore: capability.SessionStart{}}' \
+  'var _ = capability.Host{SessionEnd: capability.ToolBefore{Deny:true}}' \
+  'var _ = capability.ToolBefore{ModifyOutput:capability.Replace()}' \
+  'var _ = capability.ToolBefore{Unsupported:true}' \
+  'var _ = capability.Modify("replace")' \
+  'var _ = capability.Modify{replace:true}' \
+  'var _ = capability.ContinueFlow{granted:true}' \
+  'var _ = capability.ToolBefore{Flow:capability.Continue(1,2)}' \
+  'var _ = capability.ToolBefore{Flow:capability.ContinueAndStop(1,2)}' \
+  'var _ = capability.Continue(-1,0)' \
+  'var _ = capability.Stop().WithMaxContinuations(-1)' \
+  'var _ = capability.ToolBefore{Flow:capability.Continue(1,2).WithMaxContinuations(3)}' \
+  'var _ = capability.Injection{deliveries:[]string{"now"}}' \
+  'var _ = capability.New(nil)' \
+  'var _ = capability.Intercept()' \
+  'var _ capability.Observation = external{}; type external struct{}; func (external) observation() {}'; do
+  printf 'package negative\nimport "github.com/agenthooksprotocol/go-sdk/capability"\n%s\n' "$negative" >"$tmp/negative/negative.go"
+  if (cd "$tmp" && go test ./negative >"$tmp/negative.log" 2>&1); then
+    echo "invalid typed capability compiled: $negative" >&2
+    exit 1
+  fi
+  if ! grep -Eq 'cannot|unknown field|undefined|unexported|implicit' "$tmp/negative.log"; then
+    head -n 20 "$tmp/negative.log" >&2
+    exit 1
+  fi
+done
+# A dynamic string must not cross the typed event boundary without explicit conversion.
+cat >"$tmp/negative/negative.go" <<'EOF'
+package negative
+import "github.com/agenthooksprotocol/go-sdk/event"
+func subscribes(selected event.Type) {}
+var dynamic string = "tool.before"
+func invalid() { subscribes(dynamic); event.ResponseForRequest(dynamic, nil); event.StageResponseForRequest(dynamic, nil, nil) }
+EOF
+if (cd "$tmp" && go test ./negative >"$tmp/negative.log" 2>&1); then
+  echo "dynamic string crossed typed event boundary" >&2
+  exit 1
+fi
+[[ $(grep -Ec 'cannot use dynamic.*event.Type' "$tmp/negative.log") -eq 3 ]]
 echo "generated Go codec smoke tests passed"

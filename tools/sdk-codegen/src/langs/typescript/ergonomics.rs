@@ -131,7 +131,7 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
     for (event, _, response) in crate::ergonomics::contextual_responses(ir) {
         writeln!(out, "{event:?}: {response:?},")?;
     }
-    out.push_str("};\n/** Validate without publishing; unknown events are never authority. */\nexport function responseForRequest<K extends keyof EventResponses>(eventType: K, input: string | unknown, validate?: (response: ResponseFor<K>) => readonly ParseDiagnostic[]): ParseResult<ResponseFor<K>>;\nexport function responseForRequest(eventType: string, input: string | unknown, validate?: (response: EventResponses[keyof EventResponses]) => readonly ParseDiagnostic[]): ParseResult<EventResponses[keyof EventResponses]>;\nexport function responseForRequest(eventType: string, input: string | unknown, validate?: (response: never) => readonly ParseDiagnostic[]): ParseResult<any> {\n if (!Object.prototype.hasOwnProperty.call(CONTEXTUAL_RESPONSE_SCHEMAS, eventType)) return {ok:false, diagnostics:[{path:'', code:'unknown_variant', severity:'error', message:'Unknown request event: ' + eventType}]};\n const result = parseRoot(CONTEXTUAL_RESPONSE_SCHEMAS[eventType as keyof EventResponses], input) as ParseResult<EventResponses[keyof EventResponses]>;\n if (!result.ok || validate === undefined) return result;\n const diagnostics = [...result.diagnostics, ...validate(result.value as never)];\n if (diagnostics.some(d => d.severity === 'error')) return {ok:false, raw:result.raw, diagnostics};\n return {...result, diagnostics};\n}\n");
+    out.push_str("};\n/** Validate without publishing; unknown events are never authority. */\nexport function responseForRequest<K extends keyof EventResponses>(eventType: K, input: string | unknown, validate?: (response: ResponseFor<K>) => readonly ParseDiagnostic[]): ParseResult<ResponseFor<K>>;\nexport function responseForRequest(eventType: EventType, input: string | unknown, validate?: (response: EventResponses[keyof EventResponses]) => readonly ParseDiagnostic[]): ParseResult<EventResponses[keyof EventResponses]>;\nexport function responseForRequest(eventType: EventType, input: string | unknown, validate?: (response: never) => readonly ParseDiagnostic[]): ParseResult<any> {\n if (!Object.prototype.hasOwnProperty.call(CONTEXTUAL_RESPONSE_SCHEMAS, eventType)) return {ok:false, diagnostics:[{path:'', code:'unknown_variant', severity:'error', message:'Unknown request event: ' + eventType}]};\n const result = parseRoot(CONTEXTUAL_RESPONSE_SCHEMAS[eventType as keyof EventResponses], input) as ParseResult<EventResponses[keyof EventResponses]>;\n if (!result.ok || validate === undefined) return result;\n const diagnostics = [...result.diagnostics, ...validate(result.value as never)];\n if (diagnostics.some(d => d.severity === 'error')) return {ok:false, raw:result.raw, diagnostics};\n return {...result, diagnostics};\n}\n");
     out.push_str("\nexport type EventType = keyof EventInputs;\nexport const events = {\n");
     for (event, name, _) in &inventory {
         let short = name.trim_end_matches("Input");
@@ -140,46 +140,7 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
         writeln!(out, "{key}: {event:?},")?;
     }
     out.push_str("} as const;\n");
-    out.push_str("\n/** Named out-of-band content bindings. Streams are never inserted into wire models. */\nexport interface ContentSourceBinding<S> { readonly path: readonly (string | number)[]; readonly source: S }\nexport const contentSlots = {\n");
-    for (event, _, inputs) in &inventory {
-        writeln!(out, "{event:?}: {{")?;
-        for slot in crate::ergonomics::content_slots(ir, inputs) {
-            if !crate::ergonomics::legacy_source_binding(&slot) {
-                continue;
-            }
-            let indices = if slot.many {
-                vec!["index".to_owned()]
-            } else {
-                Vec::new()
-            };
-            let mut cursor = 0;
-            let path = slot
-                .path
-                .iter()
-                .map(|p| {
-                    if p == "*" {
-                        {
-                            let name = indices[cursor].clone();
-                            cursor += 1;
-                            name
-                        }
-                    } else {
-                        format!("{p:?}")
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            writeln!(
-                out,
-                "{}<S>({}source: S): ContentSourceBinding<S> {{ {}return {{path: [{path}], source}}; }},",
-                slot.name,
-                indices.iter().map(|i| format!("{i}: number, ")).collect::<String>(),
-                indices.iter().map(|i| format!("if (!Number.isSafeInteger({i}) || {i} < 0) throw new RangeError('content index must be a nonnegative integer'); ")).collect::<String>()
-            )?;
-        }
-        out.push_str("},\n");
-    }
-    out.push_str("} as const;\n");
+    out.push_str("\n/** Out-of-band source binding produced by canonical host-input projection. */\nexport interface ContentSourceBinding<S> { readonly path: readonly (string | number)[]; readonly source: S }\n");
     if ir
         .types
         .iter()
@@ -474,7 +435,7 @@ function hostRecord(value: unknown): Record<string, unknown> {
 }
 /** No I/O. The runtime must resolve bindings and replace metadata at pending paths
  * with body references before delivering a body-selected event. Paths are event-relative,
- * exactly like contentSlots. Opaque native/tool payloads are not traversed or serialized. */
+ * including schema-owned message/part placements. Opaque native/tool payloads are not traversed or serialized. */
 /** @internal Runtime conversion hook; applications pass HostEventInputs to runtime methods. */
 export function _projectHostInput<K extends EventType, S = unknown>(type: K, input: HostEventInputs<S>[K]): HostInputProjection<S> {
  const bindings: ContentSourceBinding<S>[] = [];
