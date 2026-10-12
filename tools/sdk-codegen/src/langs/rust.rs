@@ -197,7 +197,8 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
         );
         writeln!(
             output,
-            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::runtime::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
+            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::runtime::EventBoundary<'_, T> {{ self.event_for($crate::EventType::{variant}, event) }}",
+            variant = type_identifier(name)
         )?;
     }
     output.push_str(
@@ -205,9 +206,9 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
     );
     output.push_str("\n/// Add complete-event entrypoints inside the Hooks facade implementation.\n/// Use the `inventory` arm as an expression to obtain the canonical event names.\n/// This macro has no facade dependency until expanded.\n#[allow(unused_macros)]\nmacro_rules! ahp_hooks_boundary_methods {\n    (inventory) => {\n        &[");
     for name in boundaries.keys() {
-        write!(output, "{name:?},")?;
+        write!(output, "$crate::EventType::{},", type_identifier(name))?;
     }
-    output.push_str("] as &'static [&'static str]\n    };\n    () => {\n");
+    output.push_str("] as &'static [$crate::EventType]\n    };\n    () => {\n");
     let mut methods = BTreeSet::new();
     for name in boundaries.keys() {
         // The facade reserves tool_before for its typed ToolCallInput helper.
@@ -222,7 +223,8 @@ fn emit_boundaries(ir: &Ir, output: &mut String) -> Result<()> {
         );
         writeln!(
             output,
-            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::hooks::EventBoundary<'_, T> {{ self.event_for({name:?}, event) }}"
+            "/// Execute the `{name}` boundary with a complete event payload.\npub fn {method}<T: serde::Serialize + serde::de::DeserializeOwned>(&self, event: T) -> $crate::hooks::EventBoundary<'_, T> {{ self.event_for($crate::EventType::{variant}, event) }}",
+            variant = type_identifier(name)
         )?;
     }
     output.push_str(
@@ -2815,7 +2817,10 @@ fn main() {
             assert!(inventory[&name].contains("observe"));
             let method = format!("{}_event", snake_identifier(&name));
             assert!(output.contains(&format!("pub fn {method}<")));
-            assert!(output.contains(&format!("self.event_for({name:?}, event)")));
+            assert!(output.contains(&format!(
+                "self.event_for($crate::EventType::{}, event)",
+                type_identifier(&name)
+            )));
             if intercept.contains(&name) {
                 assert!(
                     output.contains(&format!("Some(\"capabilities.schema.json#/$defs/{name}\")"))
@@ -2845,40 +2850,51 @@ fn main() {
         std::fs::create_dir_all(&directory).unwrap();
         // No runtime or serde module exists in the unexpanded compilation.
         let inert = format!("mod generated {{ {generated} }} fn main() {{}}");
+        let variants = boundary_inventory(&ir)
+            .keys()
+            .map(|name| type_identifier(name))
+            .collect::<Vec<_>>()
+            .join(",");
         let mut expanded = format!(
             r#"
-mod generated {{ {generated} }}
+mod generated {{ #[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum EventType {{ {variants} }} {generated} }}
+pub use generated::EventType;
 mod serde {{ pub trait Serialize {{}} impl Serialize for u8 {{}} pub mod de {{ pub trait DeserializeOwned {{}} impl DeserializeOwned for u8 {{}} }} }}
-mod runtime {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
-mod hooks {{ pub struct EventBoundary<'a, T> {{ pub name: &'a str, pub event: T }} }}
+mod runtime {{ pub struct EventBoundary<'a, T> {{ pub name: crate::EventType, pub event: T, pub marker: std::marker::PhantomData<&'a ()> }} }}
+mod hooks {{ pub struct EventBoundary<'a, T> {{ pub name: crate::EventType, pub event: T, pub marker: std::marker::PhantomData<&'a ()> }} }}
 struct Hooks;
 impl Hooks {{
     crate::generated::ahp_hooks_boundary_methods!();
     fn tool_before(&self) {{}}
-    fn event_for<T>(&self, name: &'static str, event: T) -> hooks::EventBoundary<'_, T> {{ hooks::EventBoundary {{ name, event }} }}
+    fn event_for<T>(&self, name: EventType, event: T) -> hooks::EventBoundary<'_, T> {{ hooks::EventBoundary {{ name, event, marker: std::marker::PhantomData }} }}
 }}
-const NAMED_BOUNDARIES: &[&str] = crate::generated::ahp_hooks_boundary_methods!(inventory);
+const NAMED_BOUNDARIES: &[EventType] = crate::generated::ahp_hooks_boundary_methods!(inventory);
 struct Client;
 impl Client {{
     crate::generated::ahp_event_boundary_methods!();
-    fn event_for<T>(&self, name: &'static str, event: T) -> runtime::EventBoundary<'_, T> {{ runtime::EventBoundary {{ name, event }} }}
+    fn event_for<T>(&self, name: EventType, event: T) -> runtime::EventBoundary<'_, T> {{ runtime::EventBoundary {{ name, event, marker: std::marker::PhantomData }} }}
 }}
 fn main() {{ let client = Client; let hooks = Hooks; hooks.tool_before();
 "#
         );
         for name in boundary_inventory(&ir).keys() {
             let method = format!("{}_event", snake_identifier(name));
-            writeln!(expanded, "let result = client.{method}(7_u8); assert_eq!(result.name, {name:?}); assert_eq!(result.event, 7);").unwrap();
+            writeln!(expanded, "let result = client.{method}(7_u8); assert_eq!(result.name, EventType::{}); assert_eq!(result.event, 7);", type_identifier(name)).unwrap();
         }
         let names = boundary_inventory(&ir).into_keys().collect::<Vec<_>>();
-        writeln!(expanded, "assert_eq!(NAMED_BOUNDARIES, &{names:?});").unwrap();
+        let typed_names = names
+            .iter()
+            .map(|name| format!("EventType::{}", type_identifier(name)))
+            .collect::<Vec<_>>()
+            .join(",");
+        writeln!(expanded, "assert_eq!(NAMED_BOUNDARIES, &[{typed_names}]);").unwrap();
         for name in &names {
             let method = if name == "tool.before" {
                 "tool_before_event".to_owned()
             } else {
                 name.replace('.', "_")
             };
-            writeln!(expanded, "let result = hooks.{method}(7_u8); assert_eq!(result.name, {name:?}); assert_eq!(result.event, 7);").unwrap();
+            writeln!(expanded, "let result = hooks.{method}(7_u8); assert_eq!(result.name, EventType::{}); assert_eq!(result.event, 7);", type_identifier(name)).unwrap();
         }
         expanded.push_str("}");
         for (name, source) in [("inert", inert), ("expanded", expanded)] {

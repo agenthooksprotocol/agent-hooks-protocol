@@ -215,7 +215,7 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
             "        if self.{field} is not None:\n            _exact(self.{field}, ({ty},), {field:?})"
         )?;
     }
-    out.push_str("\n    def to_wire(self) -> dict[str, WireDeclaration]:\n        result: dict[str, WireDeclaration] = {}\n");
+    out.push_str("\n    def to_wire(self) -> dict[EventType, WireDeclaration]:\n        result: dict[EventType, WireDeclaration] = {}\n");
     for e in &events {
         let field = snake_case(&e.name);
         writeln!(
@@ -273,6 +273,7 @@ const RUNTIME: &str = r#"from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, StrEnum
 from typing import Any, Literal, NotRequired, TypedDict
+from ._models import EventType
 
 class WireDeclaration(TypedDict):
     modes: list[Literal['intercept', 'observe']]

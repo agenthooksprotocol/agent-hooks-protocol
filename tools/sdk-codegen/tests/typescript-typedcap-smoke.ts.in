@@ -69,3 +69,10 @@ hostCapabilitiesToWire(requestForm);
 const emptyElicitation: HostCapabilities = {userElicitationRequest: {intercept: {elicitation: {}}}};
 // @ts-expect-error false flags grant no elicitation facility
 const falseElicitation: HostCapabilities = {userElicitationRequest: {intercept: {elicitation: {form: false, url: false}}}};
+
+const typedWire = hostCapabilitiesToWire({toolBefore: {intercept: {deny: true}}});
+// @ts-expect-error generated capability map keys are canonical events only
+typedWire["not.an.event"];
+// Sparse canonical events are optional in the owned output.
+const optionalDeclaration = typedWire["tool.before"];
+void optionalDeclaration;

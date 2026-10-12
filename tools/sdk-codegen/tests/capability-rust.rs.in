@@ -1,5 +1,7 @@
 use ahp_codegen::capability::{self as c, HostCapabilities, Modify};
+use ahp_codegen::EventType;
 use serde_json::{json, to_value};
+use std::collections::BTreeMap;
 
 #[test]
 fn event_specific_immutable_declarations_and_explicit_observation() {
@@ -14,9 +16,10 @@ fn event_specific_immutable_declarations_and_explicit_observation() {
     assert_eq!(to_value(c::tool_before().observe()).unwrap(), json!({"modes":["observe"]}));
     assert_eq!(to_value(c::tool_before().observe().deny()).unwrap()["modes"], json!(["intercept", "observe"]));
     let host = HostCapabilities {tool_before: Some(composed), ..Default::default()};
-    let declarations = host.to_wire();
+    let declarations: BTreeMap<EventType, c::WireDeclaration> = host.to_wire();
     assert_eq!(declarations.len(), 1);
-    assert_eq!(to_value(&declarations["tool.before"]).unwrap(), wire);
+    assert_eq!(to_value(&declarations[&EventType::ToolBefore]).unwrap(), wire);
+    assert_eq!(to_value(&declarations).unwrap(), json!({"tool.before": wire}));
     assert!(HostCapabilities::default().to_wire().is_empty());
 }
 

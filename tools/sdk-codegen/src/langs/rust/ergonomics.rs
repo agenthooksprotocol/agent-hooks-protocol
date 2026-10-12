@@ -333,8 +333,9 @@ impl<I: EventInput, S> ProjectHostInput<S> for HostInput<I, S> {
         );
         writeln!(
             methods,
-            "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for({event:?}, input, {projection}) }}",
-            if generic { "<T: serde::Serialize>" } else { "" }
+            "pub fn {method}{}(&self, input: {input_type}) -> $crate::hooks::InputBoundary<'_, {input_type}> {{ self.input_for($crate::EventType::{variant}, input, {projection}) }}",
+            if generic { "<T: serde::Serialize>" } else { "" },
+            variant = type_identifier(&event)
         )?;
         let impl_generics = if generic { "<T: serde::Serialize>" } else { "" };
         let type_generics = if generic { "<T>" } else { "" };

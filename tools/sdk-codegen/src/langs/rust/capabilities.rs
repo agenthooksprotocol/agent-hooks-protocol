@@ -1,5 +1,5 @@
 //! Catalogue-derived, event-specific capability construction.
-use super::snake_identifier;
+use super::{snake_identifier, type_identifier};
 use crate::model::Ir;
 use anyhow::Result;
 use std::collections::{BTreeMap, BTreeSet};
@@ -80,6 +80,7 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
     let mut out = String::from(
         r#"
 pub mod capability {
+use super::EventType;
 use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
 #[derive(Clone, Copy, Debug)] pub struct Observe;
@@ -280,7 +281,7 @@ impl State {
             if e.intercept { &e.name } else { "Observe" }
         )?;
     }
-    out.push_str("}\nimpl HostCapabilities { pub fn to_wire(&self) -> BTreeMap<String, WireDeclaration> { let mut wire = BTreeMap::new();\n");
+    out.push_str("}\nimpl HostCapabilities { pub fn to_wire(&self) -> BTreeMap<EventType, WireDeclaration> { let mut wire = BTreeMap::new();\n");
     for e in &events {
         let render = if e.intercept {
             "_declaration.0.wire()"
@@ -289,9 +290,9 @@ impl State {
         };
         writeln!(
             out,
-            "if let Some(_declaration) = &self.{} {{ wire.insert({:?}.into(), {render}); }}",
+            "if let Some(_declaration) = &self.{} {{ wire.insert(EventType::{}, {render}); }}",
             snake_identifier(&e.event),
-            e.event
+            type_identifier(&e.event)
         )?;
     }
     out.push_str("wire } }\n");

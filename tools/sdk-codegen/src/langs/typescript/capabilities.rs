@@ -231,7 +231,7 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
         "const capabilityRules: Readonly<Record<string, CapabilityRule>> = {};",
         serde_json::to_string(&rules)?
     )?;
-    out.push_str("export function hostCapabilitiesToWire(host: HostCapabilities): Readonly<Record<string, WireDeclaration>> {\n  host = capabilityOwnedHost(host);\n  const result: Record<string, WireDeclaration> = {};\n");
+    out.push_str("export function hostCapabilitiesToWire(host: HostCapabilities): Readonly<Partial<Record<EventType, WireDeclaration>>> {\n  host = capabilityOwnedHost(host);\n  const result: Partial<Record<EventType, WireDeclaration>> = {};\n");
     for event in &events {
         writeln!(
             out,

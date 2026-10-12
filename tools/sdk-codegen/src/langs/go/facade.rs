@@ -1886,7 +1886,7 @@ mod tests {
         );
         assert!(
             files["capability/generated.go"]
-                .contains("func (v Host) Wire() map[string]WireDeclaration")
+                .contains("func (v Host) Wire() map[event.Type]WireDeclaration")
         );
     }
 
@@ -2189,6 +2189,7 @@ mod tests {
             ] {
                 // Host inputs refer to the leaf source package, never to client runtime.
                 if (path == "event/generated.go" && dependency == "content")
+                    || (path == "capability/generated.go" && dependency == "event")
                     || (path == "internal/inputsources/generated.go"
                         && ["event", "content"].contains(&dependency))
                 {

@@ -131,19 +131,19 @@ func (v Injection) wire() *WireInjection { if len(v.deliveries)==0 { return nil 
             }
         )?;
     }
-    out.push_str("}\nfunc (v Host) Wire() map[string]WireDeclaration { out := map[string]WireDeclaration{}\n");
+    out.push_str("}\nfunc (v Host) Wire() map[event.Type]WireDeclaration { out := map[event.Type]WireDeclaration{}\n");
     for event in &events {
         if event.intercept {
             writeln!(
                 out,
-                "if declaration,ok := wire{}(v.{}); ok {{ out[{:?}] = declaration }}",
-                event.name, event.name, event.event
+                "if declaration,ok := wire{}(v.{}); ok {{ out[event.{}] = declaration }}",
+                event.name, event.name, event.name
             )?;
         } else if event.observe {
             writeln!(
                 out,
-                "if observes(v.{}) {{ out[{:?}] = WireDeclaration{{Modes:[]string{{\"observe\"}}}} }}",
-                event.name, event.event
+                "if observes(v.{}) {{ out[event.{}] = WireDeclaration{{Modes:[]string{{\"observe\"}}}} }}",
+                event.name, event.name
             )?;
         }
     }
