@@ -525,4 +525,18 @@ for invalid in \
   fi
   grep -Eq 'error\[E(0308|0599|0063)\]' "$temporary/blocked.log"
 done
+# Dynamic wire strings must be converted fallibly before contextual parsing.
+for contextual in \
+  'let _ = response_for_request(event.as_str(), input);' \
+  'let _ = stage_response_for_request(event.as_str(), input, |_| Ok(()));'; do
+  printf 'use agenthooksprotocol::{response_for_request, stage_response_for_request}; fn main() { let event = std::env::args().nth(1).unwrap(); let input = "{}"; %s }\n' "$contextual" \
+    > "$temporary/consumer/examples/blocked.rs"
+  if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Cargo.toml" \
+      --example blocked > "$temporary/blocked.log" 2>&1; then
+    echo "dynamic string contextual event compiled: $contextual" >&2
+    exit 1
+  fi
+  grep -q 'error\[E0308\]' "$temporary/blocked.log"
+  grep -q 'expected `EventType`, found `&str`' "$temporary/blocked.log"
+done
 echo "generated Rust codec smoke tests passed"

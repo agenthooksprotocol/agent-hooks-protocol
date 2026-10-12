@@ -762,8 +762,11 @@ def main() -> None:
     import runpy
     typed_checks = runpy.run_path(str(typed_smoke))
     typed_checks["check"]("facade_contract")
+    event_checks = runpy.run_path(str(Path(__file__).with_name("python-event-type-smoke.py")))
+    event_checks["check"]("facade_contract")
     if "--typing" in sys.argv:
         typed_checks["check_typing"](directory)
+        event_checks["check_typing"](directory)
     assert "id" not in input and "type" not in input
     assert effect.Deny(reason="blocked") == {"type": "deny", "reason": "blocked"}
     for alias in ["modify_summary", "modify_instructions", "flow_continue", "inject_context_append", "modify_request", "modify_response", "modify_content", "modify", "return_", "flow_stop", "modify_output", "modify_prompt", "deny", "continue_flow"]:

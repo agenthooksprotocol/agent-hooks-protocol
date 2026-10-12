@@ -223,3 +223,36 @@ fn owned_projection_rejects_invalid_metadata_and_bounds() {
     })).unwrap();
     assert!(tool.with_sources().with_file_changes_after(0, PartInput::owned(Source, "image/png")).into_host_event().is_err());
 }
+
+#[test]
+fn contextual_response_parsing_and_staging_use_typed_events() {
+    use agenthooksprotocol::{response_for_request, stage_response_for_request, ContextualResponse, DiagnosticCode, EventType, ParseResult};
+    let input = r#"{"jsonrpc":"2.0","id":"typed-response","result":{"protocolVersion":"draft","effects":[]}}"#;
+    match response_for_request(EventType::ToolBefore, input) {
+        ParseResult::Success { value: ContextualResponse::ToolBefore(_), raw, .. } => {
+            assert_eq!(raw, json!({"jsonrpc":"2.0", "id":"typed-response", "result":{"protocolVersion":"draft", "effects":[]}}));
+        }
+        other => panic!("typed contextual parse failed: {other:?}"),
+    }
+    assert!(stage_response_for_request(EventType::ToolBefore, input, |value| {
+        assert!(matches!(value, ContextualResponse::ToolBefore(_)));
+        Ok(())
+    }).is_ok());
+    match stage_response_for_request(EventType::ToolBefore, input, |_| Err("application rejection".into())) {
+        ParseResult::Failure { raw: Some(_), diagnostics } => {
+            assert_eq!(diagnostics.last().unwrap().code, DiagnosticCode::InvalidKnownVariant);
+            assert_eq!(diagnostics.last().unwrap().message, "application rejection");
+        }
+        other => panic!("validation rejection was lost: {other:?}"),
+    }
+    match response_for_request(EventType::ToolProgress, input) {
+        ParseResult::Failure { raw: None, diagnostics } => {
+            assert_eq!(diagnostics[0].code, DiagnosticCode::UnknownVariant);
+            assert_eq!(diagnostics[0].message, "Request event does not support interception: tool.progress");
+        }
+        other => panic!("observe-only event was accepted: {other:?}"),
+    }
+    let event: EventType = serde_json::from_str(r#""tool.before""#).unwrap();
+    assert_eq!(event, EventType::ToolBefore);
+    assert!(serde_json::from_str::<EventType>(r#""unknown.event""#).is_err());
+}

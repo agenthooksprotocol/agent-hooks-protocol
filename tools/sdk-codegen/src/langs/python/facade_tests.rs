@@ -9,6 +9,22 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn event_type_is_one_catalogue_literal_with_canonical_exports() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let models = &files["_models/__init__.py"];
+        let line = models.lines().find(|line| line.starts_with("EventType: TypeAlias = _Literal[")).unwrap();
+        let catalogue = crate::capability_ergonomics::catalogue(&ir).unwrap();
+        assert_eq!(catalogue.len(), 32);
+        for event in catalogue { assert!(line.contains(&format!("{:?}", event.event))); }
+        assert_eq!(models.matches("EventType: TypeAlias =").count(), 1);
+        assert!(!models.contains("class EventType("));
+        assert!(files["event.py"].contains("from ._models.event import EventType as EventType"));
+        assert!(files["_models/event.py"].contains("from . import EventType as EventType"));
+        assert!(models.lines().find(|line| line.starts_with("__all__ = ")).unwrap().contains("\"EventType\""));
+    }
+
+    #[test]
     fn owned_attachment_adapter_is_host_only_and_schema_scoped() {
         let files = emit(&draft()).unwrap();
         let models = &files["_models/__init__.py"];

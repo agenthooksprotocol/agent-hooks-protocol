@@ -682,4 +682,17 @@ for negative in \
     exit 1
   fi
 done
+# A dynamic string must not cross the typed event boundary without explicit conversion.
+cat >"$tmp/negative/negative.go" <<'EOF'
+package negative
+import "github.com/agenthooksprotocol/go-sdk/event"
+func subscribes(selected event.Type) {}
+var dynamic string = "tool.before"
+func invalid() { subscribes(dynamic); event.ResponseForRequest(dynamic, nil); event.StageResponseForRequest(dynamic, nil, nil) }
+EOF
+if (cd "$tmp" && go test ./negative >"$tmp/negative.log" 2>&1); then
+  echo "dynamic string crossed typed event boundary" >&2
+  exit 1
+fi
+[[ $(grep -Ec 'cannot use dynamic.*event.Type' "$tmp/negative.log") -eq 3 ]]
 echo "generated Go codec smoke tests passed"

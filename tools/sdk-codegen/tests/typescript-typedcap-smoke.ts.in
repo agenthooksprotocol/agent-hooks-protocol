@@ -1,4 +1,10 @@
-import { capabilityCount, hostCapabilitiesToWire } from './generated';
+import { capabilityCount, hostCapabilitiesToWire, responseForRequest } from './generated';
+const dynamicEvent: string = 'tool.before';
+// @ts-expect-error known event contexts do not accept dynamic strings
+responseForRequest(dynamicEvent, '{}');
+// @ts-expect-error arbitrary event literals are not canonical context
+responseForRequest('tool.not-an-event', '{}');
+responseForRequest('tool.before', '{}');
 import type { HostCapabilities, ToolBeforeIntercept, CapabilityFlow, CapabilityInjection, CapabilityElicitation } from './generated';
 
 const host = {

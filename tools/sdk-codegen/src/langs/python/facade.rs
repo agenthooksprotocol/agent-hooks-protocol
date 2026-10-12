@@ -89,7 +89,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         }
     }
     let mut body = format!(
-        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import deepcopy\nfrom decimal import Decimal\nfrom typing import Self, get_args, get_origin, Union, Literal as _Literal\nfrom types import UnionType\nfrom functools import lru_cache\nfrom uuid import uuid4\nimport re\nimport json\nfrom .. import generated as _wire\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\nclass _Unset:\n    def __copy__(self) -> _Unset:\n        return self\n\n    def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:\n        return self\n\n_UNSET: Any = _Unset()\n\n"
+        "{HEADER}from __future__ import annotations\nfrom typing import TYPE_CHECKING, Any\nfrom enum import StrEnum\nfrom copy import deepcopy\nfrom decimal import Decimal\nfrom typing import Self, TypeAlias, get_args, get_origin, Union, Literal as _Literal\nfrom types import UnionType\nfrom functools import lru_cache\nfrom uuid import uuid4\nimport re\nimport json\nfrom .. import generated as _wire\n\nif TYPE_CHECKING:\n    from ..content import OwnedContentSource\n\nclass _Unset:\n    def __copy__(self) -> _Unset:\n        return self\n\n    def __deepcopy__(self, memo: dict[int, Any]) -> _Unset:\n        return self\n\n_UNSET: Any = _Unset()\n\n"
     );
     body.push_str(MODEL_RUNTIME);
     body.push_str(OWNED_INPUT_RUNTIME);
@@ -308,6 +308,23 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
     }
     body.push_str(&aliases);
     body.push('\n');
+    let catalogue = crate::capability_ergonomics::catalogue(ir)?;
+    if !catalogue.is_empty() {
+        let names = catalogue
+            .iter()
+            .map(|event| format!("{:?}", event.event))
+            .collect::<Vec<_>>();
+        writeln!(
+            body,
+            "EventType: TypeAlias = _Literal[{}]\n",
+            names.join(", ")
+        )?;
+        export(
+            modules.entry("event".into()).or_default(),
+            "EventType".into(),
+            "EventType".into(),
+        )?;
+    }
     if let Some(event) = ir.types.iter().find(|named| named.name == "Event") {
         writeln!(
             body,
@@ -399,6 +416,9 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         .insert("Path".into(), "Path".into());
     let mut public = shapes.iter().filter(|(_, shape)| properties(&renderer, shape).is_some() || matches!(shape, Shape::Enum { values, .. } if values.iter().all(Value::is_string))).map(|(name, _)| name.clone()).collect::<Vec<_>>();
     public.push("Path".into());
+    if !catalogue.is_empty() {
+        public.push("EventType".into());
+    }
     public.extend(
         ["CanonicalMessages", "TextParts"]
             .into_iter()
@@ -538,7 +558,7 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             "@overload\ndef response_for_request(event_type: Literal[{event:?}], raw: str | JsonValue, validate: Callable[[_models.{response}], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[_models.{response}]: ..."
         )?;
     }
-    response_source.push_str("@overload\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[ContextualResponse]: ...\ndef response_for_request(event_type: str, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[Any]:\n    \"\"\"Validate and stage without publication. Unknown events are not authority.\"\"\"\n    model = _RESPONSE_MODELS.get(event_type)\n    if model is None:\n        return {'ok':False, 'diagnostics':[{'path':'', 'code':'unknown_variant', 'severity':'error', 'message':'Unknown request event: ' + event_type}]}\n    cache: dict[Any, Any] = {}\n    parsed = _wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)\n    if not parsed['ok']:\n        return parsed\n    value = model._hydrate_validated(parsed['value'], '', cache)\n    diagnostics = list(parsed['diagnostics'])\n    if validate is not None:\n        diagnostics.extend(validate(value))\n    if any(d['severity'] == 'error' for d in diagnostics):\n        return {'ok':False, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n    return {'ok':True, 'value':value, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n");
+    response_source.push_str("@overload\ndef response_for_request(event_type: _models.EventType, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[ContextualResponse]: ...\ndef response_for_request(event_type: _models.EventType, raw: str | JsonValue, validate: Callable[[Any], Sequence[_wire.ParseDiagnostic]] | None = None) -> _wire.ParseResult[Any]:\n    \"\"\"Validate and stage without publication. Unknown events are not authority.\"\"\"\n    model = _RESPONSE_MODELS.get(event_type)\n    if model is None:\n        return {'ok':False, 'diagnostics':[{'path':'', 'code':'unknown_variant', 'severity':'error', 'message':'Unknown request event: ' + event_type}]}\n    cache: dict[Any, Any] = {}\n    parsed = _wire._parse_descriptor(_models._DESCRIPTORS[model.__name__], raw, cache)\n    if not parsed['ok']:\n        return parsed\n    value = model._hydrate_validated(parsed['value'], '', cache)\n    diagnostics = list(parsed['diagnostics'])\n    if validate is not None:\n        diagnostics.extend(validate(value))\n    if any(d['severity'] == 'error' for d in diagnostics):\n        return {'ok':False, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n    return {'ok':True, 'value':value, 'raw':parsed['raw'], 'diagnostics':diagnostics}\n");
     files.insert("response.py".into(), response_source);
     let mut projections = format!(
         "{HEADER}from __future__ import annotations\nfrom dataclasses import dataclass as _dataclass, field as _field\nfrom typing import Any, Generic, TypeVar\nfrom . import _models\nfrom .generated import JsonValue\n\nT = TypeVar('T')\nP = TypeVar('P')\n\n"
