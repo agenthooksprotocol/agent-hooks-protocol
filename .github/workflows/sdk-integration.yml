@@ -165,7 +165,7 @@ jobs:
         run: |
           timeout --kill-after=30s 45m bash -e -o pipefail -c '
             python3 -m venv .venv
-            .venv/bin/python -m pip install -e ".[http,pydantic]" "trio>=0.29,<1"
+            .venv/bin/python -m pip install -e ".[http,pydantic]" "trio>=0.29,<1" "mypy>=1.15,<2"
             .venv/bin/python -m compileall -q src tests
             .venv/bin/python -m unittest discover -s tests
           ' 2>&1 | tee "$GITHUB_WORKSPACE/reports/python-sdk.log"
@@ -194,6 +194,9 @@ jobs:
         if: ${{ !cancelled() }}
         timeout-minutes: 20
         working-directory: rust-sdk
+        env:
+          AHP_SCHEMA_DIR: ${{ github.workspace }}/agent-hooks-protocol/schema/draft
+          AHP_INTEROP_FIXTURE_ROOT: ${{ github.workspace }}/agent-hooks-protocol/interop
         run: |
           (set -e
             cargo build --locked --all-targets --all-features
