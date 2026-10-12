@@ -1933,19 +1933,12 @@ mod tests {
         let ir = draft();
         let source = capabilities::emit(&ir).unwrap();
         for event in crate::capability_ergonomics::catalogue(&ir).unwrap() {
-            assert!(source.contains(&format!(
-                "{} {}",
-                event.name,
-                if event.intercept {
-                    format!("{}Declaration", event.name)
-                } else {
-                    "Observation".to_string()
-                }
-            )));
-            if event.intercept {
-                assert!(source.contains(&format!("type {} struct", event.name)));
-            }
+            assert!(source.contains(&format!("{} {}Declaration", event.name, event.name)));
+            assert!(source.contains(&format!("type {} struct", event.name)));
+            assert!(source.contains(&format!("type {}Declaration interface", event.name)));
         }
+        assert!(!source.contains("Observation"));
+        assert!(!source.contains("type Observe struct"));
         assert!(source.contains("ReturnResult bool"));
         assert!(source.contains("if len(caps.Effects)>0"));
         assert!(source.contains("func ReplaceAndMerge() Modify"));

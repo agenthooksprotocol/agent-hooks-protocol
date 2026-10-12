@@ -1,14 +1,14 @@
 """Positive consumer fixture: mypy/Pyright must accept this file."""
 from facade_contract.event import EventType
 from facade_contract.capability import (
-    Delivery, Elicitation, FlowContinue, FlowStop, HostCapabilities, InjectContext, Modify, Observe,
-    ToolBeforeCapabilities, ToolBeforeIntercept, TurnFinishBeforeCapabilities,
+    Delivery, Elicitation, FlowContinue, FlowStop, HostCapabilities, InjectContext, Modify,
+    SessionEndCapabilities, SessionStartCapabilities, ToolBeforeCapabilities, ToolBeforeIntercept, TurnFinishBeforeCapabilities,
     TurnFinishBeforeIntercept, UserElicitationRequestCapabilities,
     UserElicitationRequestIntercept, WireDeclaration,
 )
 
 host = HostCapabilities(
-    session_start=Observe(), session_end=Observe(),
+    session_start=SessionStartCapabilities(observe=True), session_end=SessionEndCapabilities(observe=True),
     tool_before=ToolBeforeCapabilities(intercept=ToolBeforeIntercept(
         allow=True, deny=True, return_result=True, modify_input=Modify.REPLACE_AND_MERGE,
         flow=FlowStop(), inject_context=InjectContext(deliver_at=(Delivery.NOW,))), observe=True),
@@ -17,7 +17,7 @@ host = HostCapabilities(
 )
 rendered: dict[EventType, WireDeclaration] = host.to_wire()
 
-observed = HostCapabilities(tool_before=Observe()).to_wire()
+observed = HostCapabilities(tool_before=ToolBeforeCapabilities(observe=True)).to_wire()
 
 facility_only = HostCapabilities(user_elicitation_request=UserElicitationRequestCapabilities(
     intercept=UserElicitationRequestIntercept(elicitation=Elicitation.FORM)))

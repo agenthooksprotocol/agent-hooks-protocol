@@ -114,6 +114,12 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
     out.push_str("export interface WireDeclaration { readonly modes: readonly ['intercept'] | readonly ['observe'] | readonly ['intercept', 'observe']; readonly capabilities?: WireCapabilities }\n");
     for event in &events {
         if !event.intercept {
+            // Observation-only events still get an event-specific declaration type.
+            writeln!(
+                out,
+                "export type {}HostCapabilities = {{ readonly observe?: boolean; readonly intercept?: never }};",
+                event.name
+            )?;
             continue;
         }
         let mut allowed = BTreeMap::new();
@@ -180,7 +186,7 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
         if event.observe {
             writeln!(
                 out,
-                "export type {}HostCapabilities = {{ readonly intercept: {}Intercept; readonly observe?: true }} | CapabilityObservation;",
+                "export type {}HostCapabilities = {{ readonly intercept?: {}Intercept; readonly observe?: boolean }};",
                 event.name, event.name
             )?;
         } else {
@@ -193,12 +199,12 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
     }
     out.push_str("export interface HostCapabilities {\n");
     for event in &events {
-        let ty = if event.intercept {
-            format!("{}HostCapabilities", event.name)
-        } else {
-            "CapabilityObservation".into()
-        };
-        writeln!(out, "  readonly {}?: {ty};", camel(&event.name))?;
+        writeln!(
+            out,
+            "  readonly {}?: {}HostCapabilities;",
+            camel(&event.name),
+            event.name
+        )?;
     }
     out.push_str("}\n");
     let mut rules = BTreeMap::new();
@@ -286,13 +292,13 @@ pub(crate) fn emit(ir: &Ir) -> Result<String> {
             )?;
             writeln!(
                 out,
-                "    }} else {{ result[{:?}] = {{modes: ['observe']}}; }}",
+                "    }} else if (declaration.observe === true) {{ result[{:?}] = {{modes: ['observe']}}; }}",
                 event.event
             )?;
         } else {
             writeln!(
                 out,
-                "    result[{:?}] = {{modes: ['observe']}};",
+                "    if (declaration.observe === true) result[{:?}] = {{modes: ['observe']}};",
                 event.event
             )?;
         }
@@ -364,11 +370,9 @@ function capabilityOwnedHost(value: unknown): HostCapabilities {
     const rule = capabilityRules[event]!;
     const declaration = capabilityObject(selected);
     capabilityKeys(declaration, ['observe', 'intercept']);
-    if (declaration.observe !== undefined && (!rule.observe || declaration.observe !== true)) capabilityInvalid();
-    if (declaration.intercept === undefined) {
-      if (declaration.observe !== true) capabilityInvalid();
-      continue;
-    }
+    // observe: false is the same as omitting observe; a declaration with neither mode installs nothing.
+    if (declaration.observe !== undefined && (!rule.observe || typeof declaration.observe !== 'boolean')) capabilityInvalid();
+    if (declaration.intercept === undefined) continue;
     if (!rule.intercept) capabilityInvalid();
     const grants = capabilityObject(declaration.intercept);
     const allowed = [...rule.controls, ...Object.keys(rule.modify)];
@@ -425,5 +429,4 @@ function capabilityOwnedHost(value: unknown): HostCapabilities {
   return host as HostCapabilities;
 }
 
-export type CapabilityObservation = { readonly observe: true; readonly intercept?: never };
 "#;

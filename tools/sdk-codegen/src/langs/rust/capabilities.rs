@@ -83,7 +83,6 @@ pub mod capability {
 use super::EventType;
 use std::collections::{BTreeMap, BTreeSet};
 use serde::Serialize;
-#[derive(Clone, Copy, Debug)] pub struct Observe;
 #[derive(Clone, Debug, Serialize)] pub struct WireDeclaration {
     modes: Vec<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")] capabilities: Option<WireCapabilities>,
@@ -278,28 +277,21 @@ impl State {
             out,
             "pub {}: Option<{}>,",
             snake_identifier(&e.event),
-            if e.intercept { &e.name } else { "Observe" }
+            e.name
         )?;
     }
     out.push_str("}\nimpl HostCapabilities { pub fn to_wire(&self) -> BTreeMap<EventType, WireDeclaration> { let mut wire = BTreeMap::new();\n");
     for e in &events {
-        let render = if e.intercept {
-            "_declaration.0.wire()"
-        } else {
-            "WireDeclaration { modes: vec![\"observe\"], capabilities: None }"
-        };
         writeln!(
             out,
-            "if let Some(_declaration) = &self.{} {{ wire.insert(EventType::{}, {render}); }}",
+            "if let Some(declaration) = &self.{} {{ wire.insert(EventType::{}, declaration.0.wire()); }}",
             snake_identifier(&e.event),
             type_identifier(&e.event)
         )?;
     }
     out.push_str("wire } }\n");
+    // Every event, including observation-only events, has its own declaration type.
     for (e, methods) in events.iter().zip(event_methods) {
-        if !e.intercept {
-            continue;
-        }
         let name = &e.name;
         writeln!(
             out,

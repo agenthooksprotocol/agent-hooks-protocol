@@ -671,7 +671,11 @@ for negative in \
   'var _ = capability.Injection{deliveries:[]string{"now"}}' \
   'var _ = capability.New(nil)' \
   'var _ = capability.Intercept()' \
-  'var _ capability.Observation = external{}; type external struct{}; func (external) observation() {}'; do
+  'var _ = capability.Host{SessionEnd: capability.TurnEnd{Observe:true}}' \
+  'var _ = capability.SessionEnd{Deny:true}' \
+  'var _ = capability.Host{SessionEnd: capability.Observe{}}' \
+  'var _ capability.Observation' \
+  'var _ capability.SessionEndDeclaration = external{}; type external struct{}; func (external) isSessionEndDeclaration() {}'; do
   printf 'package negative\nimport "github.com/agenthooksprotocol/go-sdk/capability"\n%s\n' "$negative" >"$tmp/negative/negative.go"
   if (cd "$tmp" && go test ./negative >"$tmp/negative.log" 2>&1); then
     echo "invalid typed capability compiled: $negative" >&2
