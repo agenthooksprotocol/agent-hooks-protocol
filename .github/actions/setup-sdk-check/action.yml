@@ -85,13 +85,13 @@ runs:
         path: ~/.npm
         key: ${{ runner.os }}-node20-prettier3.6.2
     - name: Enable pinned pnpm
-      if: ${{ inputs.role == 'generate' || inputs.role == 'build' || inputs.role == 'integration' || inputs.role == 'typescript' }}
+      if: ${{ inputs.role == 'build' || inputs.role == 'integration' || inputs.role == 'typescript' }}
       shell: bash
       run: |
         corepack enable
         corepack prepare pnpm@10.18.3 --activate
     - uses: actions/setup-node@v5
-      if: ${{ inputs.role == 'generate' || inputs.role == 'build' || inputs.role == 'integration' || inputs.role == 'typescript' }}
+      if: ${{ inputs.role == 'build' || inputs.role == 'integration' || inputs.role == 'typescript' }}
       with:
         node-version: '20'
         cache: pnpm
