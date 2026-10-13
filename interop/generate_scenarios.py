@@ -39,6 +39,7 @@ def build():
         request = {"jsonrpc": "2.0", "id": name, "method": "hooks/intercept", "params": {
             "protocolVersion": "draft",
             "event": {"id": name, "source": "urn:ahp:interop", "type": "tool.before",
+                      "harness": {"name": "example-harness", "version": "1.0.0"},
                       "time": "2026-01-01T00:00:00Z", "session": {"id": "interop"},
                       "call": {"id": "call-1"}, "path": "native",
                       "tool": {"origin": "native", "name": "task", "kind": "task",

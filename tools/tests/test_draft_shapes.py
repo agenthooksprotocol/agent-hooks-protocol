@@ -81,6 +81,7 @@ class DraftShapeTests(unittest.TestCase):
         request = self.request()
         for event in ['task.change.after', 'turn.end', 'model.error']:
             request['params']['event'] = {'id': request['id'], 'source': 'urn:test',
+                'harness': {'name': 'example-harness', 'version': '1.0.0'},
                 'time': '2026-09-15T12:00:00Z', 'type': event,
                 'turn': {'id': 'turn'}, 'outcome': 'completed',
                 'task': {'id': 'task', 'operation': 'update', 'change': {}}}

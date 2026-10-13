@@ -13,6 +13,10 @@
             "id": "empty-response-preserves-input",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -94,6 +98,10 @@
             "id": "omitted-effects-preserves-input",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -176,6 +184,10 @@
             "id": "omitted-effects-preserves-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -268,6 +280,10 @@
             "id": "omitted-effects-preserves-null-candidate-value",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -353,6 +369,10 @@
             "id": "omitted-effects-preserves-incoming-ask",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -435,6 +455,10 @@
             "id": "omitted-effects-preserves-incoming-deny",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -517,6 +541,10 @@
             "id": "omitted-state-empty-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -595,6 +623,10 @@
             "id": "omitted-state-ask-defers-execution",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -677,6 +709,10 @@
             "id": "omitted-state-return-skips-execution",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -765,6 +801,10 @@
             "id": "allow-executes",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -850,6 +890,10 @@
             "id": "deny-blocks",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -936,6 +980,10 @@
             "id": "ask-defers-execution",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1021,6 +1069,10 @@
             "id": "message-accumulates-in-order",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1114,6 +1166,10 @@
             "id": "return-skips-original-execution",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1205,6 +1261,10 @@
             "id": "return-null-preserved",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1292,6 +1352,10 @@
             "id": "return-false-preserved",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1379,6 +1443,10 @@
             "id": "return-zero-preserved",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1466,6 +1534,10 @@
             "id": "return-empty-string-preserved",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1553,6 +1625,10 @@
             "id": "return-array-preserved",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1650,6 +1726,10 @@
             "id": "modify-merge-shallow-null-literal",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1743,6 +1823,10 @@
             "id": "modify-replace-removes-omitted-keys",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1829,6 +1913,10 @@
             "id": "modify-sequence-is-ordered",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -1924,6 +2012,10 @@
             "id": "modify-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2022,6 +2114,10 @@
             "id": "modify-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2123,6 +2219,10 @@
             "id": "return-before-modify",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2224,6 +2324,10 @@
             "id": "all-six-effects-atomic",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2337,6 +2441,10 @@
             "id": "ask-then-allow",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2425,6 +2533,10 @@
             "id": "allow-then-ask",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2513,6 +2625,10 @@
             "id": "deny-then-allow",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2602,6 +2718,10 @@
             "id": "allow-then-deny",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2691,6 +2811,10 @@
             "id": "deny-then-ask",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2780,6 +2904,10 @@
             "id": "ask-then-deny",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2869,6 +2997,10 @@
             "id": "deny-then-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -2961,6 +3093,10 @@
             "id": "return-then-deny",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3053,6 +3189,10 @@
             "id": "ask-then-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3144,6 +3284,10 @@
             "id": "return-then-ask",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3235,6 +3379,10 @@
             "id": "empty-preserves-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3327,6 +3475,10 @@
             "id": "return-replaces-earlier-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3426,6 +3578,10 @@
             "id": "deny-discards-earlier-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3520,6 +3676,10 @@
             "id": "changed-input-invalidates-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3619,6 +3779,10 @@
             "id": "unchanged-input-preserves-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3720,6 +3884,10 @@
             "id": "reordered-equal-input-preserves-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3826,6 +3994,10 @@
             "id": "changed-input-binds-new-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -3933,6 +4105,10 @@
             "id": "incoming-ask-survives-allow",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4019,6 +4195,10 @@
             "id": "incoming-ask-blocks-candidate",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4109,6 +4289,10 @@
             "id": "incoming-ask-survives-rewrite-and-allow",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4209,6 +4393,10 @@
             "id": "incoming-deny-survives-allow-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4301,6 +4489,10 @@
             "id": "empty-preserves-incoming-ask",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4383,6 +4575,10 @@
             "id": "empty-preserves-incoming-deny",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4465,6 +4661,10 @@
             "id": "modify-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4556,6 +4756,10 @@
             "id": "message-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4643,6 +4847,10 @@
             "id": "return-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4732,6 +4940,10 @@
             "id": "deny-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4819,6 +5031,10 @@
             "id": "allow-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4905,6 +5121,10 @@
             "id": "ask-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -4991,6 +5211,10 @@
             "id": "deny-missing-reason",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5070,6 +5294,10 @@
             "id": "message-non-string",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5150,6 +5378,10 @@
             "id": "return-missing-value",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5229,6 +5461,10 @@
             "id": "modify-missing-operation",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5312,6 +5548,10 @@
             "id": "modify-unsupported-operation",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5396,6 +5636,10 @@
             "id": "modify-array-value",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5478,6 +5722,10 @@
             "id": "invalid-task-zero-rejects-staged-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5586,6 +5834,10 @@
             "id": "invalid-task-fraction-rejects-staged-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5694,6 +5946,10 @@
             "id": "invalid-task-boolean-rejects-staged-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5802,6 +6058,10 @@
             "id": "invalid-task-missing-rejects-staged-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -5901,6 +6161,10 @@
             "id": "later-invalid-modify-rolls-back-earlier-modify",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6017,6 +6281,10 @@
             "id": "modify-unadvertised-target",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6099,6 +6367,10 @@
             "id": "unadvertised-deny-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6174,6 +6446,10 @@
             "id": "unadvertised-allow-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6248,6 +6524,10 @@
             "id": "unadvertised-ask-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6322,6 +6602,10 @@
             "id": "unadvertised-message-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6397,6 +6681,10 @@
             "id": "unadvertised-return-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6474,6 +6762,10 @@
             "id": "unadvertised-modify-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6547,6 +6839,10 @@
             "id": "unadvertised-merge-rejects-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6631,6 +6927,10 @@
             "id": "unadvertised-replace-rejects-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6715,6 +7015,10 @@
             "id": "absent-modify-capability-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6792,6 +7096,10 @@
             "id": "wrong-response-id",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6868,6 +7176,10 @@
             "id": "wrong-jsonrpc-version",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -6944,6 +7256,10 @@
             "id": "wrong-protocol-version",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7020,6 +7336,10 @@
             "id": "missing-effects-array",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7101,6 +7421,10 @@
             "id": "null-effects-array",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7172,6 +7496,10 @@
             "id": "non-array-effects",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7246,6 +7574,10 @@
             "id": "null-result-envelope",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7314,6 +7646,10 @@
             "id": "extensible-response-envelope",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7401,6 +7737,10 @@
             "id": "prior-accepted-stop-empty",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7492,6 +7832,10 @@
             "id": "prior-accepted-stop-allow",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7587,6 +7931,10 @@
             "id": "prior-accepted-stop-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7685,6 +8033,10 @@
             "id": "flow-stop-prevents-tool-execution",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7779,6 +8131,10 @@
             "id": "flow-stop-wins-over-return",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7880,6 +8236,10 @@
             "id": "flow-stop-does-not-authorize-denied-tool",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -7979,6 +8339,10 @@
             "id": "unadvertised-flow-rejects-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8061,6 +8425,10 @@
             "id": "unadvertised-flow-operation",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8149,6 +8517,10 @@
             "id": "flow-stop-then-unknown-is-atomic",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8236,6 +8608,10 @@
             "id": "flow-stop-missing-reason",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8323,6 +8699,10 @@
             "id": "flow-continue-at-finish",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8396,6 +8776,10 @@
             "id": "flow-repeated-continue-is-one-continuation",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8475,6 +8859,10 @@
             "id": "flow-repeated-continue-uses-last-single-allowance",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8554,6 +8942,10 @@
             "id": "flow-stop-only-preserves-continuation-allowance",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8625,6 +9017,10 @@
             "id": "flow-stop-wins-over-continue",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8703,6 +9099,10 @@
             "id": "flow-stop-before-continue-still-wins",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8781,6 +9181,10 @@
             "id": "flow-exhausted-allowance-rejects-message",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8852,6 +9256,10 @@
             "id": "flow-unadvertised-stop-rejected",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8923,6 +9331,10 @@
             "id": "flow-continue-missing-instruction",
             "source": "urn:ahp:interop",
             "type": "turn.finish.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -8999,6 +9411,10 @@
             "id": "inject-now",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9135,6 +9551,10 @@
             "id": "inject-next-turn-scheduled",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9271,6 +9691,10 @@
             "id": "inject-accumulates-without-user-message",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9456,6 +9880,10 @@
             "id": "unadvertised-inject-rejected",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9554,6 +9982,10 @@
             "id": "unadvertised-injection-delivery-rejects-all",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9678,6 +10110,10 @@
             "id": "unadvertised-injection-append",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9772,6 +10208,10 @@
             "id": "inject-then-unknown-rejects-entire-response",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
@@ -9879,6 +10319,10 @@
             "id": "inject-missing-delivery",
             "source": "urn:ahp:interop",
             "type": "tool.before",
+            "harness": {
+              "name": "example-harness",
+              "version": "1.0.0"
+            },
             "time": "2026-01-01T00:00:00Z",
             "session": {
               "id": "interop"
