@@ -37,7 +37,7 @@ class CheckCIReportsTests(unittest.TestCase):
         return f'sdk-report-integration-{suite}-{index}/nested/summary.json'
 
     def populate(self):
-        for kind, count in (('python', 6), ('interop', 2)):
+        for kind, count in (('python', 6), ('interop', 3)):
             ids = [f'{kind}.test_{index}' for index in range(count + 1)]
             for index in range(count):
                 assigned = ids[index::count]
@@ -46,7 +46,7 @@ class CheckCIReportsTests(unittest.TestCase):
                     'shard_index': index, 'shard_count': count, 'inventory': ids, 'assigned_ids': assigned,
                     'results': [{'id': key, 'status': 'passed'} for key in assigned],
                     'errors': [], 'failures': [], 'unexpected_successes': []})
-        for suite, count in {'lifecycle': 4, 'observation': 3, **dict.fromkeys(checker.SINGLE_SUITES, 1)}.items():
+        for suite, count in {'lifecycle': 4, 'observation': 3, 'matrix': 2, **dict.fromkeys(checker.SINGLE_SUITES, 1)}.items():
             groups = [f'group-{i}' for i in range(count + 1)]
             inventory = [{'group': key, 'scenario_ids': ['a', 'b'], 'inapplicable_scenario_ids': ['c']} for key in groups]
             for index in range(count):
@@ -65,6 +65,24 @@ class CheckCIReportsTests(unittest.TestCase):
             return checker.main(['--reports-dir', str(self.root), *extra])
 
     def test_complete_default_layout_passes(self):
+        self.assertEqual(self.invoke(), 0)
+
+    def test_isolated_configuration_matches_and_preserves_dedicated_shard(self):
+        isolated = ['python.test_0', 'python.test_6']
+        for index in range(6):
+            self.mutate(self.unit_path(index), lambda r: r.update(isolated_ids=isolated))
+        self.assertEqual(self.invoke(), 0)
+        self.mutate(self.unit_path(1), lambda r: r.update(isolated_ids=[]))
+        self.assertEqual(self.invoke(), 1)
+        self.mutate(self.unit_path(1), lambda r: r.update(isolated_ids=isolated))
+        for requested in (['python.test_0'], ['missing'], ['python.test_0', 'python.test_0']):
+            with self.subTest(requested=requested):
+                for index in range(6):
+                    self.mutate(self.unit_path(index), lambda r: r.update(isolated_ids=requested))
+                self.assertEqual(self.invoke(), 1)
+
+    def test_missing_isolation_field_is_backward_compatible_with_empty(self):
+        self.mutate(self.unit_path(0), lambda r: r.update(isolated_ids=[]))
         self.assertEqual(self.invoke(), 0)
 
     def test_tools_unit_is_protocol_only(self):
@@ -119,8 +137,6 @@ class CheckCIReportsTests(unittest.TestCase):
         self.assertEqual(self.invoke(), 0)
 
     def test_integration_rejects_incomplete_or_differing_coverage(self):
-        path = self.root / self.integration_path()
-        original = json.loads(path.read_text())
         patches = [
             lambda r: r.update(prepare_only=True),
             lambda r: r.update(expected_suites=[]),
@@ -134,14 +150,17 @@ class CheckCIReportsTests(unittest.TestCase):
             lambda r: r['suites'][0]['coverage']['expected_inventory'][0]['scenario_ids'].append('different'),
             lambda r: r['suites'][0]['coverage']['expected_group_keys'].append('different'),
         ]
-        for patch in patches:
-            with self.subTest(patch=patch):
-                value = copy.deepcopy(original)
-                patch(value)
-                path.write_text(json.dumps(value))
-                self.assertEqual(self.invoke(), 1)
-        path.write_text(json.dumps(original))
-        self.assertEqual(self.invoke(), 0)
+        for suite in ('lifecycle', 'observation', 'matrix'):
+            path = self.root / self.integration_path(suite)
+            original = json.loads(path.read_text())
+            for patch in patches:
+                with self.subTest(suite=suite, patch=patch):
+                    value = copy.deepcopy(original)
+                    patch(value)
+                    path.write_text(json.dumps(value))
+                    self.assertEqual(self.invoke(), 1)
+            path.write_text(json.dumps(original))
+            self.assertEqual(self.invoke(), 0)
 
     def test_single_integration_suite_is_required(self):
         (self.root / self.integration_path('auth')).unlink()
@@ -150,6 +169,9 @@ class CheckCIReportsTests(unittest.TestCase):
     def test_invalid_counts_and_malformed_json_fail(self):
         self.assertEqual(self.invoke('--python-shards', '0'), 1)
         self.assertEqual(self.invoke('--lifecycle-shards', '5'), 1)
+        self.assertEqual(self.invoke('--matrix-shards', '0'), 1)
+        self.assertEqual(self.invoke('--matrix-shards', '3'), 1)
+        self.assertEqual(self.invoke('--interop-shards', '2'), 1)
         (self.root / self.integration_path()).write_text('{broken')
         self.assertEqual(self.invoke(), 1)
 
@@ -160,17 +182,23 @@ class CheckCIReportsTests(unittest.TestCase):
                 'kind': 'unit', 'status': 'passed', 'shard_index': 0, 'shard_count': 1,
                 'inventory': ['a'], 'assigned_ids': ['a'], 'results': [{'id': 'a', 'status': 'skipped'}],
                 'errors': [], 'failures': [], 'unexpected_successes': []})
-        for suite in ('lifecycle', 'observation', *checker.SINGLE_SUITES):
+        for suite in ('lifecycle', 'observation', 'matrix', *checker.SINGLE_SUITES):
             report = json.loads((self.root / self.integration_path(suite)).read_text())
             report['shard_count'] = 1
-            if suite in ('lifecycle', 'observation'):
+            if suite in ('lifecycle', 'observation', 'matrix'):
                 row = report['suites'][0]
                 row['shard_count'] = 1
                 value = row['coverage']
                 value['assigned_group_keys'] = value['expected_group_keys']
                 value['completed_group_keys'] = value['expected_group_keys']
             self.write(f'small/sdk-report-integration-{suite}-0/summary.json', report)
-        checker.verify(root, 1, 1, 1, 1)
+        checker.verify(root, 1, 1, 1, 1, 1)
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            self.assertEqual(checker.main([
+                '--reports-dir', str(root), '--python-shards', '1',
+                '--interop-shards', '1', '--lifecycle-shards', '1',
+                '--observation-shards', '1', '--matrix-shards', '1',
+            ]), 0)
 
 
 if __name__ == '__main__':

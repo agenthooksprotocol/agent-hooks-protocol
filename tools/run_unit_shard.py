@@ -8,6 +8,8 @@ back with --duration-file. Missing historical timings default to one second.
 Assignment is sorted-ID round robin, or deterministic longest-first greedy
 balancing with timings. Execution retains discovery order for shared fixtures.
 Class/module fixtures may run in several shards; subtests remain indivisible.
+Repeat --isolate-test ID to reserve shard zero exclusively for those cases;
+all other cases are balanced over shards one through N-1.
 """
 from __future__ import annotations
 
@@ -29,8 +31,19 @@ def flatten(suite):
             yield test
 
 
-def allocate(ids, shard_count, durations=None):
+def allocate(ids, shard_count, durations=None, isolated_ids=None):
     """Return disjoint assignments covering every ID, independent of input order."""
+    isolated = list(isolated_ids or [])
+    if isolated:
+        if shard_count < 2:
+            raise ValueError('isolated tests require shard-count >= 2')
+        if len(set(isolated)) != len(isolated):
+            raise ValueError('duplicate isolated test IDs')
+        missing = sorted(set(isolated) - set(ids))
+        if missing:
+            raise ValueError('isolated test IDs not discovered: ' + ', '.join(missing))
+        remaining = [key for key in ids if key not in set(isolated)]
+        return [sorted(isolated)] + allocate(remaining, shard_count - 1, durations)
     shards = [[] for _ in range(shard_count)]
     if durations is None:
         for index, test_id in enumerate(sorted(ids)):
@@ -131,6 +144,7 @@ def main(argv=None):
     parser.add_argument('--shard-count', type=int, required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--duration-file', type=Path)
+    parser.add_argument('--isolate-test', action='append', default=[], metavar='TEST_ID')
     args = parser.parse_args(argv)
     report = {
         'schema_version': 1,
@@ -142,6 +156,7 @@ def main(argv=None):
         'shard_count': args.shard_count,
         'inventory': [],
         'assigned_ids': [],
+        'isolated_ids': sorted(args.isolate_test),
         'results': [],
         'durations': {},
         'errors': [],
@@ -171,11 +186,18 @@ def main(argv=None):
             if len(set(ids)) != len(ids):
                 raise ValueError('discovery returned duplicate test IDs')
             report['inventory'] = sorted(ids)
-            assigned = allocate(ids, args.shard_count, durations)[args.shard_index]
+            assigned = allocate(ids, args.shard_count, durations, args.isolate_test)[args.shard_index]
             report['assigned_ids'] = assigned
             selected = set(assigned)
             selected_tests = [test for test in tests if test.id() in selected]
             run_suite = unittest.TestSuite(selected_tests)
+            # Keep the inventory available even if the process deadline kills a test.
+            args.report.parent.mkdir(parents=True, exist_ok=True)
+            args.report.write_text(json.dumps(dict(report, status='running'), indent=2) + '\n')
+            print(f'Running shard {args.shard_index + 1}/{args.shard_count}: '
+                  f'{len(selected_tests)} of {len(tests)} discovered tests', flush=True)
+            if args.shard_index == 0 and args.isolate_test:
+                print('Isolated tests: ' + ', '.join(sorted(args.isolate_test)), flush=True)
             result = unittest.TextTestRunner(verbosity=1, resultclass=TimedResult).run(run_suite)
             result.propagate_fixture_skips(selected_tests)
             report['results'] = [result.records.get(key, {'id': key, 'status': 'not_run'}) for key in assigned]

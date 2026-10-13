@@ -37,7 +37,10 @@ class SdkGenerationTests(unittest.TestCase):
             elif 'ruff' in command:
                 for source in command[7:]:
                     Path(source).write_text('formatted\n')
-            elif command[0] in ('rustfmt', 'npx'):
+            elif command[0] == 'npx':
+                for source in command[command.index('--write') + 1:]:
+                    Path(source).write_text('formatted\n')
+            elif command[0] == 'rustfmt':
                 Path(command[-1]).write_text('formatted\n')
             return subprocess.CompletedProcess(command, 0)
 
@@ -79,7 +82,15 @@ class SdkGenerationTests(unittest.TestCase):
                 self.assertEqual('formatted\n', (output / 'typescript' / name).read_text())
             self.assertFalse((output / 'typescript/index.ts').exists())
             self.assertFalse((output / 'typescript/generated.ts').exists())
-            self.assertEqual(5, sum(command[:3] == ['npx', '--yes', 'prettier@3.6.2'] for command in calls))
+            prettier_calls = [command for command in calls if command[:3] == ['npx', '--yes', 'prettier@3.6.2']]
+            self.assertEqual(1, len(prettier_calls))
+            prettier_command = prettier_calls[0]
+            typescript_generation = next(command for command in calls if 'typescript-facade' in command)
+            typescript_staging = Path(typescript_generation[typescript_generation.index('--output') + 1])
+            self.assertCountEqual(
+                [str(typescript_staging / name) for name in ('raw.ts', 'codecs.ts', 'types.ts', 'public.ts', 'schemas.ts')],
+                prettier_command[prettier_command.index('--write') + 1:],
+            )
             self.assertTrue(any(command[1:7] == ['-m', 'ruff', 'format', '--isolated', '--target-version', 'py311'] for command in calls))
             self.assertEqual(1, sum(command[:2] == ['cargo', 'build'] for command in calls))
             self.assertTrue(any(command[:4] == ['rustfmt', '+1.88.0', '--edition', '2024'] for command in calls))
@@ -97,10 +108,13 @@ class SdkGenerationTests(unittest.TestCase):
         workflow = (ROOT / '.github/workflows/sync-sdks.yml').read_text()
         self.assertIn('python3 tools/generate_sdk.py --output-dir generated', workflow)
         self.assertNotIn('jq -n', workflow)
-        for name in ('sync-sdks.yml', 'sdk-integration.yml'):
-            contents = (ROOT / '.github/workflows' / name).read_text()
+        integration = (ROOT / '.github/workflows/sdk-integration.yml').read_text()
+        self.assertIn('uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check', integration)
+        setup = (ROOT / '.github/actions/setup-sdk-check/action.yml').read_text()
+        for contents in (workflow, setup):
             self.assertIn('ruff==0.12.12', contents)
-            self.assertIn('actions/setup-node@', contents)
+            self.assertIn('actions/setup-node@v5', contents)
+        self.assertIn("node-version: '20'", setup)
         self.assertIn('python3 protocol/tools/install_generated_sdk.py', workflow)
         self.assertIn('add-paths: ${{ steps.install.outputs.paths }}', workflow)
         self.assertNotIn('**/generated.go', workflow)

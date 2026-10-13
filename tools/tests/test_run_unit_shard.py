@@ -64,6 +64,50 @@ class UnitShardTests(unittest.TestCase):
         self.assertEqual([sum(durations[key] for key in shard) for shard in shards], [10, 10])
         self.assertEqual(runner.allocate(ids, 2), runner.allocate(list(reversed(ids)), 2))
 
+    def test_isolated_cases_get_shard_zero_exclusively_and_union_is_complete(self):
+        self.make_inventory()
+        isolated = ['test_many.Many.test_09', 'test_many.Many.test_02']
+        extra = [arg for key in isolated for arg in ('--isolate-test', key)]
+        reports = []
+        for index in range(4):
+            code, report = self.invoke(index, 4, extra)
+            self.assertEqual(code, 0, report)
+            self.assertEqual(report['isolated_ids'], sorted(isolated))
+            reports.append(report)
+        self.assertEqual(reports[0]['assigned_ids'], sorted(isolated))
+        all_assigned = [key for report in reports for key in report['assigned_ids']]
+        self.assertEqual(sorted(all_assigned), reports[0]['inventory'])
+        self.assertEqual(len(all_assigned), len(set(all_assigned)))
+        self.assertTrue(all(not set(report['assigned_ids']).intersection(isolated) for report in reports[1:]))
+        self.assertEqual([len(report['assigned_ids']) for report in reports[1:]], [3, 3, 3])
+
+    def test_isolation_with_durations_balances_only_other_shards(self):
+        ids = ['stress', 'a', 'b', 'c', 'd']
+        durations = {'stress': 1000, 'a': 8, 'b': 7, 'c': 3, 'd': 2}
+        shards = runner.allocate(ids, 3, durations, ['stress'])
+        self.assertEqual(shards, [['stress'], ['a', 'd'], ['b', 'c']])
+        self.assertEqual(shards, runner.allocate(list(reversed(ids)), 3, durations, ['stress']))
+        self.assertEqual(runner.allocate(ids, 3), runner.allocate(ids, 3, isolated_ids=[]))
+
+    def test_invalid_isolation_fails_before_any_tests_run(self):
+        self.make_inventory(3)
+        known = 'test_many.Many.test_01'
+        for count, requested in ((1, [known]), (3, ['renamed.test']), (3, [known, known])):
+            with self.subTest(count=count, requested=requested):
+                extra = [arg for key in requested for arg in ('--isolate-test', key)]
+                code, report = self.invoke(0, count, extra)
+                self.assertNotEqual(code, 0)
+                self.assertEqual(report['results'], [])
+                self.assertEqual(report['assigned_ids'], [])
+                self.assertTrue(report['errors'])
+
+    def test_no_isolation_cli_keeps_original_assignment(self):
+        self.make_inventory(5)
+        code, report = self.invoke(0, 2)
+        self.assertEqual(code, 0, report)
+        self.assertEqual(report['isolated_ids'], [])
+        self.assertEqual(report['assigned_ids'], report['inventory'][::2])
+
     def test_duration_report_can_be_reused(self):
         self.make_inventory(3)
         code, report = self.invoke()

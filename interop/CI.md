@@ -27,7 +27,7 @@ the pull request's proposed merge tree, not the default branch's generator.
 2. **Generate proposed SDK sources** regenerates all four SDKs, checks byte-for-byte
    reproducibility, and uploads their source archive. Dependency and compiler
    caches reuse downloads/builds, not successful test outcomes.
-3. SDK validation runs in parallel: six Python unittest shards, two TypeScript
+3. SDK validation runs in parallel: one isolated Python retention regression plus five Python test-ID shards, two TypeScript
    file shards, Go build/vet/tests, and Rust all-target/all-feature build/tests.
    Python shards partition the complete discovered test inventory by test ID.
    TypeScript preserves both existing test-file globs. Go disables its test-result
@@ -38,8 +38,9 @@ the pull request's proposed merge tree, not the default branch's generator.
    repeating native compilation or SDK unit tests.
 5. Integration suites run independently. Lifecycle has four disjoint group
    shards; observation has three. Each retains every scenario applicable to its
-   assigned language-pair/transport/auth group. Interop unit tests have two
-   test-ID shards. Matrix, catalogue, elicitation, compaction, compaction-wire,
+   assigned language-pair/transport/auth group. Interop unit tests have three
+   duration-balanced test-ID shards. The protocol matrix has two pair shards;
+   catalogue, elicitation, compaction, compaction-wire,
    authentication, and sender isolation each run once. Protocol tool tests run
    once in the separately required **Conformance artifacts** check.
 6. **SDK integration** requires every preparation, SDK-validation, and integration
@@ -52,7 +53,11 @@ Matrix jobs use `fail-fast: false` so a failing partition does not cancel unrela
 partitions. Reports upload unless the run is cancelled and remain available for
 14 days. Generated sources and executable bundles remain available for one day.
 SDK-validation and integration jobs have 15-minute safety limits; Python/interop
-unit processes and individual integration suites have ten-minute deadlines.
+unit processes and individual integration suites have ten-minute deadlines,
+except the isolated Python retention regression. That test retains all 4097
+operations in one session and has a 40-minute process deadline within a 45-minute
+job. Its existing SDK canonical-schema validation is the remaining end-to-end
+latency bottleneck; more CI shards cannot shorten that indivisible test.
 These limits are safeguards, not a claim of measured end-to-end latency. The
 integration runner kills its active suite process group on termination. New runs
 cancel superseded runs for the same ref.
@@ -74,8 +79,12 @@ python3 tools/run_sdk_integration.py --suite lifecycle --shard-index 0 --shard-c
 
 Run all four lifecycle indices and all three observation indices to reproduce
 complete coverage. Reusing `--adapter-dir` fails rather than rebuilding if any
-required executable is absent. Python test shards emit per-test durations; an
-optional `--duration-file` can balance later runs using measured timings.
+required executable is absent. Unit test shards emit per-test durations. Interop uses
+`tools/ci-interop-durations.json`, measured from Actions run 38451541255, to
+balance expensive tests; unknown new IDs default to one second and remain in
+the full inventory. Refresh the timing hints when tests materially change.
+Python uses `--isolate-test` for its indivisible 4097-call regression, then
+distributes every other discovered test over the remaining five shards.
 
 ## Revision selection
 

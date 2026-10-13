@@ -15,7 +15,7 @@ import run_sdk_integration as runner
 class IntegrationPartitionTests(unittest.TestCase):
     def test_named_suite_retains_full_grid_and_passes_partition(self):
         root = Path('/example/protocol')
-        for suite, count in [('lifecycle', 4), ('observation', 3)]:
+        for suite, count in [('matrix', 2), ('lifecycle', 4), ('observation', 3)]:
             for index in range(count):
                 rows = runner.suite_commands(root, root/'reports', 4,
                     suite=suite, shard_index=index, shard_count=count)
@@ -40,7 +40,7 @@ class IntegrationPartitionTests(unittest.TestCase):
     def test_invalid_partitions_are_rejected_before_building(self):
         cases = [('--shard-count', '0'), ('--shard-index', '-1'),
                  ('--suite', 'lifecycle', '--shard-index', '4', '--shard-count', '4'),
-                 ('--shard-count', '2'), ('--suite', 'matrix', '--shard-count', '2'),
+                 ('--shard-count', '2'), ('--suite', 'catalogue', '--shard-count', '2'),
                  ('--suite', 'matrix', '--suite-group', 'core'), ('--prepare-only',)]
         with patch.object(runner, 'prepare_adapters') as build:
             for flags in cases:
@@ -71,9 +71,9 @@ class IntegrationPartitionTests(unittest.TestCase):
                 if absent:
                     (bundle/absent).unlink()
                 with patch.object(runner, 'prepare_adapters') as build, patch.object(runner, 'run_command', return_value={'status': 'passed'}) as run:
-                    code, summary = self.invoke(root, root/'reports', ['--suite', 'matrix', '--adapter-dir', str(bundle)])
+                    code, summary = self.invoke(root, root/'reports', ['--suite', 'catalogue', '--adapter-dir', str(bundle)])
                     self.assertEqual(code, int(absent is not None))
-                    self.assertEqual(summary['expected_suites'], ['matrix'])
+                    self.assertEqual(summary['expected_suites'], ['catalogue'])
                     build.assert_not_called()
                     if absent:
                         run.assert_not_called()

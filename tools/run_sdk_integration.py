@@ -8,7 +8,7 @@ Rust interop is built before the matrix so nested stdio startup never runs Cargo
 affinity (or host CPU count when affinity is unavailable). Effective jobs are
 logged and recorded in summary.json. Elicitation and compaction
 currently fix their own pools at four. Use --suite for one named suite, with
-zero-based --shard-index and positive --shard-count for lifecycle/observation.
+zero-based --shard-index and positive --shard-count for matrix/lifecycle/observation.
 --suite-group remains available (all by default, or disjoint core and extended).
 --prepare-only --adapter-dir builds a reusable adapter bundle; --adapter-dir
 without --prepare-only validates and reuses it without rebuilding. Observation wire
@@ -38,7 +38,7 @@ SUITE_GROUPS = {
                  'auth', 'sender-isolation'),
 }
 SUITES = tuple(name for names in SUITE_GROUPS.values() for name in names)
-SHARDABLE_SUITES = ('lifecycle', 'observation')
+SHARDABLE_SUITES = ('matrix', 'lifecycle', 'observation')
 MANIFEST_COMMANDS = ('client', 'server', 'lifecycleClient', 'lifecycleServer')
 
 
@@ -164,7 +164,7 @@ def validate_partition(suite, shard_index, shard_count):
     if shard_count < 1 or not 0 <= shard_index < shard_count:
         raise ValueError('require shard-count > 0 and 0 <= shard-index < shard-count')
     if shard_count != 1 and suite not in SHARDABLE_SUITES:
-        raise ValueError('multiple shards require --suite lifecycle or observation')
+        raise ValueError('multiple shards require --suite matrix, lifecycle or observation')
 
 
 def reuse_adapters(directory: Path):

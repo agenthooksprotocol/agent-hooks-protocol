@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 
 
-SINGLE_SUITES = ('matrix', 'catalogue', 'elicitation', 'compaction',
+SINGLE_SUITES = ('catalogue', 'elicitation', 'compaction',
                  'compaction-wire', 'auth', 'sender-isolation')
 
 
@@ -69,8 +69,15 @@ def verify_partition(reports, inventory_key, assigned_key, completed_key=None):
 def verify_units(root, kind, count):
     reports = artifact_reports(root, f'sdk-report-{kind}-', count, f'unit-{kind}-{{index}}.json')
     require(all(report.get('kind') == 'unit' for report in reports), f'{kind}: wrong report kind')
-    require(all(report.get('start_directory') == reports[0].get('start_directory') and report.get('pattern') == reports[0].get('pattern') for report in reports), f'{kind}: differing discovery configuration')
+    require(all(report.get('start_directory') == reports[0].get('start_directory')
+                and report.get('pattern') == reports[0].get('pattern')
+                and report.get('isolated_ids', []) == reports[0].get('isolated_ids', [])
+                for report in reports), f'{kind}: differing discovery configuration')
     verify_partition(reports, 'inventory', 'assigned_ids')
+    isolated = unique_strings(reports[0].get('isolated_ids', []), 'isolated_ids')
+    require(isolated <= set(reports[0]['inventory']), f'{kind}: unknown isolated IDs')
+    if isolated:
+        require(count >= 2 and set(reports[0]['assigned_ids']) == isolated, f'{kind}: isolated shard must contain only isolated tests')
     for report in reports:
         records = report.get('results')
         require(isinstance(records, list) and all(isinstance(row, dict) for row in records), f'{kind}: missing results')
@@ -93,7 +100,7 @@ def verify_integration(root, suite, count):
         require(row.get('name') == suite and row.get('status') == 'passed', f'{suite}: suite did not pass')
         prerequisites = report.get('prerequisites', [])
         require(isinstance(prerequisites, list) and all(isinstance(item, dict) and item.get('status') == 'passed' for item in prerequisites) and not report.get('manifest_errors'), f'{suite}: prerequisite errors')
-        if suite in ('lifecycle', 'observation'):
+        if suite in ('lifecycle', 'observation', 'matrix'):
             require(row.get('suite') == suite and type(row.get('shard_index')) is int and row['shard_index'] == report['shard_index'] and type(row.get('shard_count')) is int and row['shard_count'] == count, f'{suite}: mismatched nested shard metadata')
             value = row.get('coverage')
             require(isinstance(value, dict) and value.get('complete') is True, f'{suite}: incomplete coverage')
@@ -114,15 +121,16 @@ def verify_integration(root, suite, count):
             require(not selected.intersection(excluded), f'{suite}: scenario is both selected and excluded')
 
 
-def verify(root, python_shards=6, interop_shards=2, lifecycle_shards=4,
-           observation_shards=3, require_tools_unit=False):
+def verify(root, python_shards=6, interop_shards=3, lifecycle_shards=4,
+           observation_shards=3, matrix_shards=2, require_tools_unit=False):
     root = Path(root)
     require(root.is_dir(), 'reports directory does not exist')
-    counts = (python_shards, interop_shards, lifecycle_shards, observation_shards)
+    counts = (python_shards, interop_shards, lifecycle_shards, observation_shards, matrix_shards)
     require(all(type(count) is int and count > 0 for count in counts), 'shard counts must be positive integers')
     verify_units(root, 'python', python_shards)
     verify_units(root, 'interop', interop_shards)
     suites = {'lifecycle': lifecycle_shards, 'observation': observation_shards,
+              'matrix': matrix_shards,
               **dict.fromkeys(SINGLE_SUITES, 1)}
     expected_dirs = {f'sdk-report-integration-{suite}-{index}' for suite, count in suites.items() for index in range(count)}
     require({path.name for path in root.glob('sdk-report-integration-*')} == expected_dirs, 'missing or unexpected integration artifacts')
@@ -139,13 +147,13 @@ def verify(root, python_shards=6, interop_shards=2, lifecycle_shards=4,
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports-dir', type=Path, required=True)
-    for kind, count in (('python', 6), ('interop', 2), ('lifecycle', 4), ('observation', 3)):
+    for kind, count in (('python', 6), ('interop', 3), ('lifecycle', 4), ('observation', 3), ('matrix', 2)):
         parser.add_argument(f'--{kind}-shards', type=int, default=count)
     parser.add_argument('--require-tools-unit', action='store_true')
     args = parser.parse_args(argv)
     try:
         verify(args.reports_dir, args.python_shards, args.interop_shards,
-               args.lifecycle_shards, args.observation_shards, args.require_tools_unit)
+               args.lifecycle_shards, args.observation_shards, args.matrix_shards, args.require_tools_unit)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f'CI report verification failed: {exc}', file=sys.stderr)
         return 1

@@ -164,7 +164,7 @@ jobs:
     name: Python SDK tests (${{ matrix.shard }})
     needs: [resolve-sdks, generate]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.shard == 0 && 45 || 15 }}
     strategy:
       fail-fast: false
       matrix:
@@ -180,10 +180,13 @@ jobs:
           role: python
       - name: Compile and run complete assigned Python test inventory
         working-directory: python-sdk
+        env:
+          TEST_TIMEOUT: ${{ matrix.shard == 0 && '40m' || '10m' }}
         run: |
           .venv/bin/python -m compileall -q src tests
-          timeout --kill-after=30s 10m .venv/bin/python ../agent-hooks-protocol/tools/run_unit_shard.py \
+          timeout --kill-after=30s "$TEST_TIMEOUT" .venv/bin/python ../agent-hooks-protocol/tools/run_unit_shard.py \
             --start-directory tests --shard-index '${{ matrix.shard }}' --shard-count 6 \
+            --isolate-test test_content_lifetime.ContentLifetimeTests.test_more_than_4096_calls_release_sources_and_keep_results \
             --report "$GITHUB_WORKSPACE/reports/unit-python-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -254,7 +257,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        shard: [0, 1, 2]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -277,7 +280,8 @@ jobs:
           AHP_RUST_INTEROP: ${{ github.workspace }}/adapters/rust-interop
         run: |
           timeout --kill-after=30s 10m python3 ../tools/run_unit_shard.py --start-directory . --pattern 'test_*.py' \
-            --shard-index '${{ matrix.shard }}' --shard-count 2 \
+            --shard-index '${{ matrix.shard }}' --shard-count 3 \
+            --duration-file ../tools/ci-interop-durations.json \
             --report "$GITHUB_WORKSPACE/reports/unit-interop-${{ matrix.shard }}.json"
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
@@ -303,7 +307,8 @@ jobs:
           - {suite: observation, shard: 0, count: 3}
           - {suite: observation, shard: 1, count: 3}
           - {suite: observation, shard: 2, count: 3}
-          - {suite: matrix, shard: 0, count: 1}
+          - {suite: matrix, shard: 0, count: 2}
+          - {suite: matrix, shard: 1, count: 2}
           - {suite: catalogue, shard: 0, count: 1}
           - {suite: elicitation, shard: 0, count: 1}
           - {suite: compaction, shard: 0, count: 1}

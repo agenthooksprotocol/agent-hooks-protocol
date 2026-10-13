@@ -47,7 +47,7 @@ class ScopeTests(unittest.TestCase):
         self.assertNotIn('continue-on-error', workflow)
         self.assertNotIn('Install and test Python SDK', shards)
         rows = re.findall(r'\{suite: ([\w-]+), shard: (\d+), count: (\d+)\}', shards)
-        expected = {'lifecycle': 4, 'observation': 3, 'matrix': 1, 'catalogue': 1,
+        expected = {'lifecycle': 4, 'observation': 3, 'matrix': 2, 'catalogue': 1,
                     'elicitation': 1, 'compaction': 1, 'compaction-wire': 1,
                     'auth': 1, 'sender-isolation': 1}
         self.assertEqual(len(rows), sum(expected.values()))
@@ -56,7 +56,13 @@ class ScopeTests(unittest.TestCase):
                              [(index, count) for index in range(count)])
         for job in ('python-tests', 'interop-unit'):
             section = re.split(r'\n  [\w-]+:\n', workflow.split('  ' + job + ':\n', 1)[1], maxsplit=1)[0]
-            self.assertIn('timeout --kill-after=30s 10m', section)
+            if job == 'python-tests':
+                self.assertIn('timeout --kill-after=30s \"$TEST_TIMEOUT\"', section)
+                self.assertIn('matrix.shard == 0 && 45 || 15', section)
+                self.assertIn('--isolate-test test_content_lifetime.ContentLifetimeTests.test_more_than_4096_calls_release_sources_and_keep_results', section)
+            else:
+                self.assertIn('timeout --kill-after=30s 10m', section)
+                self.assertIn('--duration-file ../tools/ci-interop-durations.json', section)
             self.assertIn('run_unit_shard.py', section)
         self.assertIn('go test -count=1 -vet=off ./...', workflow)
         self.assertIn('node --test --test-concurrency=2 --test-shard=', workflow)
