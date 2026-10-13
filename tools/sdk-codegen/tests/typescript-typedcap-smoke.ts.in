@@ -5,7 +5,7 @@ responseForRequest(dynamicEvent, '{}');
 // @ts-expect-error arbitrary event literals are not canonical context
 responseForRequest('tool.not-an-event', '{}');
 responseForRequest('tool.before', '{}');
-import type { HostCapabilities, ToolBeforeIntercept, CapabilityFlow, CapabilityInjection, CapabilityElicitation } from './generated';
+import type { HostCapabilities, SessionEndHostCapabilities, ToolBeforeIntercept, CapabilityFlow, CapabilityInjection, CapabilityElicitation } from './generated';
 
 const host = {
   toolBefore: {intercept: {allow: true, deny: true, returnResult: true, modifyInput: 'replace-and-merge'}, observe: true},
@@ -18,12 +18,16 @@ const stop: CapabilityFlow = {operations: ['stop']};
 const form: CapabilityElicitation = {form: true};
 const injection: CapabilityInjection = {context: {append: true, deliverAt: ['now']}};
 void [stop, form, injection];
-// @ts-expect-error an event declaration must explicitly grant a mode
-const noMode: HostCapabilities = {toolBefore: {}};
+// observe: false is the same as omitting observation; every event has its own declaration type.
+const sessionEnd: SessionEndHostCapabilities = {observe: true};
+const disabled = {sessionStart: {observe: false}, sessionEnd: {observe: false}, toolBefore: {intercept: {deny: true}, observe: false}} satisfies HostCapabilities;
+const observed = {sessionEnd, turnEnd: {observe: true}, toolBefore: {observe: true}} satisfies HostCapabilities;
+hostCapabilitiesToWire(disabled);
+hostCapabilitiesToWire(observed);
+// @ts-expect-error observation is a boolean
+const nonBoolean: HostCapabilities = {sessionEnd: {observe: 'yes'}};
 // @ts-expect-error interception must contain a real control
 const empty: HostCapabilities = {toolBefore: {intercept: {}}};
-// @ts-expect-error observation must be explicitly true
-const disabled: HostCapabilities = {sessionStart: {observe: false}};
 // @ts-expect-error session.end is observation-only
 const observationControl: HostCapabilities = {sessionEnd: {observe: true, intercept: {deny: true}}};
 // @ts-expect-error tool.after does not support deny
@@ -57,6 +61,8 @@ const noElicitation: CapabilityElicitation = {};
 host.toolBefore.intercept.deny = true;
 // @ts-expect-error old generic builders are removed
 import { capabilities, CapabilityBuilder, CapabilityDeclaration } from './generated';
+// @ts-expect-error the shared observation marker is removed
+import type { CapabilityObservation } from './generated';
 
 // @ts-expect-error tool.before supports stop, never continue (even with valid counts)
 const toolBeforeContinue: HostCapabilities = {toolBefore: {intercept: {flow: {operations: ['continue'], remainingContinuations: capabilityCount(1), continuationCount: capabilityCount(0)}}}};

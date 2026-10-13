@@ -32,7 +32,6 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
     let mut out = format!("{HEADER}{runtime}");
     let mut exports = vec![
         "HostCapabilities",
-        "Observe",
         "WireDeclaration",
         "Modify",
         "Delivery",
@@ -59,11 +58,17 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
     }
     out.push('\n');
     for e in &events {
+        let capability = format!("{}Capabilities", e.name);
         if !e.intercept {
+            // Observation-only events still get an event-specific declaration.
+            exports.push(capability.clone());
+            writeln!(
+                out,
+                "@dataclass(frozen=True, kw_only=True, slots=True)\nclass {capability}:\n    observe: bool = False\n\n    def __post_init__(self) -> None:\n        _bool(self.observe, 'observe')\n        if not self.observe:\n            raise ValueError('declaration requires observation')\n\n    def _wire(self) -> WireDeclaration:\n        return {{'modes': ['observe']}}\n"
+            )?;
             continue;
         }
         let intercept = format!("{}Intercept", e.name);
-        let capability = format!("{}Capabilities", e.name);
         exports.extend([intercept.clone(), capability.clone()]);
         writeln!(
             out,
@@ -187,32 +192,20 @@ pub(super) fn emit(renderer: &Renderer<'_>) -> Result<(String, Vec<String>)> {
     }
     out.push_str("@dataclass(frozen=True, kw_only=True, slots=True)\nclass HostCapabilities:\n");
     for e in &events {
-        let ty = if e.intercept {
-            format!(
-                "{}Capabilities{}",
-                e.name,
-                if e.observe { " | Observe" } else { "" }
-            )
-        } else {
-            "Observe".into()
-        };
-        writeln!(out, "    {}: {ty} | None = None", snake_case(&e.name))?;
+        writeln!(
+            out,
+            "    {}: {}Capabilities | None = None",
+            snake_case(&e.name),
+            e.name
+        )?;
     }
     out.push_str("\n    def __post_init__(self) -> None:\n");
     for e in &events {
-        let ty = if e.intercept {
-            format!(
-                "{}Capabilities{}",
-                e.name,
-                if e.observe { ", Observe" } else { "" }
-            )
-        } else {
-            "Observe".into()
-        };
         let field = snake_case(&e.name);
         writeln!(
             out,
-            "        if self.{field} is not None:\n            _exact(self.{field}, ({ty},), {field:?})"
+            "        if self.{field} is not None:\n            _exact(self.{field}, ({}Capabilities,), {field:?})",
+            e.name
         )?;
     }
     out.push_str("\n    def to_wire(self) -> dict[EventType, WireDeclaration]:\n        result: dict[EventType, WireDeclaration] = {}\n");
@@ -299,11 +292,6 @@ class Delivery(StrEnum):
 
 class Elicitation(Enum):
 # ELICITATION_MEMBERS
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class Observe:
-    def _wire(self) -> WireDeclaration:
-        return {'modes': ['observe']}
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class FlowStop:

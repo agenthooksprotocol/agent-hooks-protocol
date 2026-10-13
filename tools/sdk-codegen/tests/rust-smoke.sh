@@ -514,6 +514,11 @@ for invalid in \
   'c::tool_before().inject_context([]);' \
   'c::tool_before().flow([]);' \
   'let _ = c::ToolBefore::default();' \
+  'let _ = c::HostCapabilities { session_end: Some(c::session_end()), ..Default::default() };' \
+  'let _ = c::HostCapabilities { session_end: Some(c::turn_end().observe()), ..Default::default() };' \
+  'c::session_end().deny();' \
+  'let _ = c::SessionEnd::default();' \
+  'let _ = c::HostCapabilities { session_end: Some(c::Observe), ..Default::default() };' \
   'c::tool_before().flow(c::Flow::Continue {remaining_continuations: 1, continuation_count: 0, max_continuations: None});' \
   'c::tool_after().flow(c::Flow::Continue {max_continuations: None});'; do
   printf 'use agenthooksprotocol::capability as c; fn main() { %s }\n' "$invalid" \
@@ -523,7 +528,7 @@ for invalid in \
     echo "invalid capability construction compiled: $invalid" >&2
     exit 1
   fi
-  grep -Eq 'error\[E(0308|0599|0063)\]' "$temporary/blocked.log"
+  grep -Eq 'error\[E(0308|0425|0599|0063)\]' "$temporary/blocked.log"
 done
 # Dynamic wire strings must be converted fallibly before contextual parsing.
 for contextual in \

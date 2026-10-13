@@ -14,6 +14,10 @@ assert.deepEqual(wire({toolBefore:{intercept:{deny:true}}}), {
   'tool.before': {modes:['intercept'],capabilities:{effects:['deny']}},
 });
 assert.deepEqual(wire({toolBefore:{observe:true}}), {'tool.before':{modes:['observe']}});
+assert.deepEqual(wire({sessionEnd:{observe:true}, turnEnd:{observe:true}}), {'session.end':{modes:['observe']}, 'turn.end':{modes:['observe']}});
+// observe: false is the same as omitting observation; declarations without a mode install nothing.
+assert.deepEqual(wire({toolBefore:{}, sessionStart:{observe:false}, sessionEnd:{observe:false}, turnEnd:{}}), {});
+assert.deepEqual(wire({toolBefore:{intercept:{deny:true},observe:false}}), {'tool.before':{modes:['intercept'],capabilities:{effects:['deny']}}});
 const elicitationOnly = {userElicitationRequest:{intercept:{elicitation:{form:true}}}};
 assert.deepEqual(wire(elicitationOnly), {
   'user.elicitation.request': {modes:['intercept'],capabilities:{effects:[],elicitation:{form:{}}}},
@@ -52,7 +56,6 @@ for (const declaration of Object.values(wire(host)).concat(Object.values(wire(de
 }
 // JavaScript callers bypass static declarations; the renderer must enforce them.
 const invalidDeclarations = [
-  ['missing mode', {toolBefore:{}}],
   ['empty interception', {toolBefore:{intercept:{}}}],
   ['observation-only interception', {sessionEnd:{observe:true,intercept:{deny:true}}}],
   ['unsupported event effect', {toolAfter:{intercept:{deny:true}}}],
@@ -69,9 +72,8 @@ const invalidDeclarations = [
   ['empty injection', {toolAfter:{intercept:{inject:{}}}}],
   ['empty elicitation', {userElicitationRequest:{intercept:{elicitation:{}}}}],
   ['disabled elicitation', {userElicitationRequest:{intercept:{elicitation:{form:false,url:false}}}}],
-  ['disabled observation', {sessionStart:{observe:false}}],
   ['nonboolean observation', {sessionStart:{observe:'true'}}],
-  ['disabled observation beside interception', {toolBefore:{intercept:{deny:true},observe:false}}],
+  ['nonboolean observation-only declaration', {sessionEnd:{observe:1}}],
 ];
 for (const [label, declaration] of invalidDeclarations) {
   assert.throws(() => wire(declaration), TypeError, label);

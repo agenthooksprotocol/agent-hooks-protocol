@@ -8,11 +8,6 @@ pub(super) fn emit(ir: &Ir) -> Result<String> {
     }
     let mut out = String::from(
         r#"
-// Observation is closed: only Observe explicitly grants observation.
-type Observation interface { observation() }
-type Observe struct{}
-func (Observe) observation() {}
-func observes(v Observation) bool { switch observation := v.(type) { case Observe: return true; case *Observe: return observation != nil }; return false }
 // Modify has no public representation; its zero value grants nothing.
 type Modify struct { replace, merge bool }
 func Replace() Modify { return Modify{replace:true} }
@@ -120,35 +115,19 @@ func (v Injection) wire() *WireInjection { if len(v.deliveries)==0 { return nil 
     }
     out.push_str("type Host struct {\n");
     for event in &events {
-        writeln!(
-            out,
-            "{} {}",
-            event.name,
-            if event.intercept {
-                format!("{}Declaration", event.name)
-            } else {
-                "Observation".to_string()
-            }
-        )?;
+        writeln!(out, "{} {}Declaration", event.name, event.name)?;
     }
     out.push_str("}\nfunc (v Host) Wire() map[event.Type]WireDeclaration { out := map[event.Type]WireDeclaration{}\n");
     for event in &events {
-        if event.intercept {
-            writeln!(
-                out,
-                "if declaration,ok := wire{}(v.{}); ok {{ out[event.{}] = declaration }}",
-                event.name, event.name, event.name
-            )?;
-        } else if event.observe {
-            writeln!(
-                out,
-                "if observes(v.{}) {{ out[event.{}] = WireDeclaration{{Modes:[]string{{\"observe\"}}}} }}",
-                event.name, event.name
-            )?;
-        }
+        writeln!(
+            out,
+            "if declaration,ok := wire{}(v.{}); ok {{ out[event.{}] = declaration }}",
+            event.name, event.name, event.name
+        )?;
     }
     out.push_str("return out }\n");
-    for event in events.iter().filter(|e| e.intercept) {
+    // Every event, including observation-only events, has its own closed declaration.
+    for event in &events {
         let declaration = format!("{}Declaration", event.name);
         let marker = format!("is{}Declaration", event.name);
         writeln!(
@@ -156,18 +135,19 @@ func (v Injection) wire() *WireInjection { if len(v.deliveries)==0 { return nil 
             "type {declaration} interface {{ {marker}() }}\nfunc ({}) {marker}() {{}}",
             event.name
         )?;
-        if event.observe {
-            writeln!(out, "func (Observe) {marker}() {{}}")?;
-        }
         writeln!(
             out,
-            "func wire{}(value {declaration}) (WireDeclaration,bool) {{ switch v := value.(type) {{\ncase {}: return v.wire()\ncase *{}: if v != nil {{ return v.wire() }}",
+            "func wire{}(value {declaration}) (WireDeclaration,bool) {{ switch v := value.(type) {{\ncase {}: return v.wire()\ncase *{}: if v != nil {{ return v.wire() }}\n}}; return WireDeclaration{{}},false }}",
             event.name, event.name, event.name
         )?;
-        if event.observe {
-            out.push_str("case Observe: return WireDeclaration{Modes:[]string{\"observe\"}},true\ncase *Observe: if v != nil { return WireDeclaration{Modes:[]string{\"observe\"}},true }\n");
+        if !event.intercept {
+            writeln!(
+                out,
+                "type {} struct {{\nObserve bool\n}}\nfunc (v {}) wire() (WireDeclaration,bool) {{ if !v.Observe {{ return WireDeclaration{{}},false }}; return WireDeclaration{{Modes:[]string{{\"observe\"}}}},true }}",
+                event.name, event.name
+            )?;
+            continue;
         }
-        out.push_str("}; return WireDeclaration{},false }\n");
         writeln!(out, "type {} struct {{", event.name)?;
         for effect in &event.effects {
             if !["modify", "flow", "inject"].contains(&effect.as_str()) {

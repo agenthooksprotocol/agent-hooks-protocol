@@ -343,7 +343,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "3788ae90ee2aa057473ed03833f5310584d531e90a7f50b00541b013ab0a1c11"
+      "sha256": "f8271c7d8d0e38fd970fc443d49f39427b0e88527a3f69b908efc983501abedb"
     },
     {
       "path": "schema/draft/schema.json",

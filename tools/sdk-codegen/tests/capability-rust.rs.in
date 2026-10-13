@@ -38,8 +38,25 @@ fn dependent_grants_are_nonempty_and_counts_are_required() {
     assert_eq!(to_value(c::tool_before().flow(c::ToolBeforeFlow::Stop)).unwrap()["capabilities"]["flow"], json!({"operations":["stop"]}));
     // Selecting a facility explicitly activates interception without adding effects.
     assert_eq!(to_value(c::tool_before().observe().elicitation_form()).unwrap(), json!({"modes":["intercept","observe"],"capabilities":{"effects":[],"elicitation":{"form":{}}}}));
-    let host = HostCapabilities {tool_progress: Some(c::Observe), ..Default::default()};
+    let host = HostCapabilities {tool_progress: Some(c::tool_progress().observe()), ..Default::default()};
     assert_eq!(to_value(host.to_wire()).unwrap(), json!({"tool.progress":{"modes":["observe"]}}));
+}
+
+#[test]
+fn observation_only_events_have_event_specific_declarations() {
+    let end: c::SessionEnd = c::session_end().observe();
+    assert_eq!(to_value(&end).unwrap(), json!({"modes":["observe"]}));
+    assert_eq!(to_value(end.observe()).unwrap(), json!({"modes":["observe"]}));
+    let host = HostCapabilities {
+        session_end: Some(end),
+        turn_end: Some(c::turn_end().observe()),
+        tool_before: Some(c::tool_before().observe()),
+        ..Default::default()
+    };
+    assert_eq!(
+        to_value(host.to_wire()).unwrap(),
+        json!({"session.end":{"modes":["observe"]},"tool.before":{"modes":["observe"]},"turn.end":{"modes":["observe"]}})
+    );
 }
 
 #[test]

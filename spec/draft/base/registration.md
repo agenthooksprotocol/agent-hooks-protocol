@@ -132,6 +132,7 @@ A stdio transport contains:
 - `args`: optional string array
 - `lifecycle`: `persistent` or `per_event`
 - `cwd`: optional backend working directory
+- `env`: optional object of literal string environment variables for the backend process; see [process environment](transports/stdio.md#process-environment)
 ### HTTP transport fields
 An HTTP transport contains:
 - `type`: exact value `http`

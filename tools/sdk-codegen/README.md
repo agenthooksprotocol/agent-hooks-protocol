@@ -186,15 +186,16 @@ and `ContentUploadReceipt`; diagnostics use `diagnostics.Code`.
 The facade smoke's `--typing` mode compiles generated files and checks all 256
 origin/codec combinations with mypy, including rejected codec-free typed casts.
 
-Capability declarations are frozen keyword-only models generated for each event.
-Host fields accept their matching event declaration or an explicit observation
-marker. For example:
+Capability declarations are frozen keyword-only models generated for every event,
+including observation-only events. Each host field accepts only its matching event
+declaration. Observation-only events expose only `observe`. For example:
 
 ```python
 from agenthooksprotocol import capability as c
 
 capabilities = c.HostCapabilities(
-    session_start=c.Observe(),
+    session_start=c.SessionStartCapabilities(observe=True),
+    session_end=c.SessionEndCapabilities(observe=True),
     tool_before=c.ToolBeforeCapabilities(
         intercept=c.ToolBeforeIntercept(
             allow=True, deny=True, return_result=True,
@@ -222,7 +223,8 @@ is the generated `capability.Host`:
 
 ```go
 capabilities := capability.Host{
-    SessionStart: capability.Observe{},
+    SessionStart: capability.SessionStart{Observe: true},
+    SessionEnd: capability.SessionEnd{Observe: true},
     ToolBefore: capability.ToolBefore{
         Allow: true, Deny: true, ReturnResult: true,
         ModifyInput: capability.ReplaceAndMerge(), Observe: true,
@@ -231,9 +233,10 @@ capabilities := capability.Host{
 wire := capabilities.Wire()
 ```
 
-Host fields use closed event-specific declaration interfaces. A matching event
-value or explicit observation marker is accepted; a different event declaration
-is a compile error. Zero hosts and zero event values grant nothing.
+Host fields use closed event-specific declaration interfaces, one per event.
+Only the matching event value is accepted; a different event declaration is a
+compile error. Observation-only events have a concrete type with only
+`Observe bool`. Zero hosts and zero event values grant nothing.
 `Replace()`, `Merge()` and `ReplaceAndMerge()` construct nonempty modification
 sets with a private representation. Flow and injection grants require their
 complete typed dependencies. The generated generic `ToolBefore[T]` method calls
@@ -247,6 +250,8 @@ unions. The contextual effects supply exact modification targets and operations;
 there is no copied permission catalogue. Typed host fields prevent mismatched
 event declarations and duplicate keys. Unsupported effects, targets and flow
 operations are absent from each event's API. Observation is always explicit.
+Every event, including observation-only events, has its own declaration type;
+there is no shared observation marker.
 
 Rust uses event-specific construction states:
 
@@ -258,13 +263,14 @@ let capabilities = HostCapabilities {
         .allow().deny().return_result()
         .modify_input(Modify::ReplaceAndMerge)
         .observe()),
-    session_end: Some(c::Observe),
+    session_end: Some(c::session_end().observe()),
     ..Default::default()
 };
 let wire = capabilities.to_wire();
 ```
 
-An initial marker cannot be installed. The first control, supported interception
+An initial marker cannot be installed. Observation-only initial markers expose only
+`.observe()`. The first control, supported interception
 facility or explicit observation creates a valid declaration; supported methods compose immutable typed values.
 Nonempty modification and delivery enums and operation-specific flow types carry
 their dependencies, including unsigned continuation counters.
@@ -283,10 +289,14 @@ const capabilities = {
     observe: true,
   },
   sessionStart: { observe: true },
+  sessionEnd: { observe: true },
 } satisfies HostCapabilities;
 const wire = hostCapabilitiesToWire(capabilities);
 ```
 
+Each event has a named declaration type, such as `ToolBeforeHostCapabilities` or
+`SessionEndHostCapabilities`. `observe` is an optional boolean; `false` is the same
+as omitting it, and a declaration with neither mode renders nothing.
 Interception requires a real control or a supported interception facility. Unsupported known control fields remain
 forbidden when wider objects are assigned. Flow and injection declarations use
 nonempty operation/delivery tuples and complete dependency records. Numeric

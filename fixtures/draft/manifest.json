@@ -1197,6 +1197,39 @@
       "sha256": "4fb8fb117aaadf87732268a4e19baad3a10f440c3deddc21f73182a8384c0c4e"
     },
     {
+      "id": "registration.stdio-env.valid",
+      "path": "fixtures/draft/registration/stdio-env.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-001"
+      ],
+      "sha256": "39c860fa27d806242903468f2778a3ab52e45e63ba47f37e5f90bea129c42e6c"
+    },
+    {
+      "id": "registration.stdio-env-non-string.invalid",
+      "path": "fixtures/draft/registration/stdio-env-non-string.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-001"
+      ],
+      "sha256": "e055630a20b07dbce6d451ac24e948b12f0bcc9538b75ac8fa11db018c313135"
+    },
+    {
+      "id": "registration.stdio-env-array.invalid",
+      "path": "fixtures/draft/registration/stdio-env-array.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-001"
+      ],
+      "sha256": "ae5abf66073f11af944de96c3d0d165ccd531cd27272007b9b4a6ae4176887d5"
+    },
+    {
       "id": "http.execution-skipped-policy.valid",
       "path": "fixtures/draft/http/execution-skipped-policy.valid.json",
       "binding": "http-json",

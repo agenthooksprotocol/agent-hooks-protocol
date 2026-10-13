@@ -37,8 +37,17 @@ def check(package: str = "facade_contract") -> None:
     assert c.HostCapabilities(tool_before=c.ToolBeforeCapabilities(observe=True)).to_wire() == {
         "tool.before": {"modes": ["observe"]}}
     assert c.HostCapabilities(tool_before=c.ToolBeforeCapabilities(intercept=c.ToolBeforeIntercept(deny=True))).to_wire()["tool.before"]["modes"] == ["intercept"]
-    assert c.HostCapabilities(session_start=c.Observe(), tool_before=c.Observe(), session_end=c.Observe()).to_wire() == {
-        "session.start": {"modes": ["observe"]}, "tool.before": {"modes": ["observe"]}, "session.end": {"modes": ["observe"]}}
+    assert not hasattr(c, "Observe")
+    assert c.HostCapabilities(
+        session_start=c.SessionStartCapabilities(observe=True),
+        tool_before=c.ToolBeforeCapabilities(observe=True),
+        session_end=c.SessionEndCapabilities(observe=True),
+        turn_end=c.TurnEndCapabilities(observe=True),
+    ).to_wire() == {
+        "session.start": {"modes": ["observe"]}, "tool.before": {"modes": ["observe"]},
+        "session.end": {"modes": ["observe"]}, "turn.end": {"modes": ["observe"]}}
+    assert not hasattr(c, "SessionEndIntercept")
+    assert [f.name for f in dataclasses.fields(c.SessionEndCapabilities)] == ["observe"]
     for field in dataclasses.fields(c.HostCapabilities):
         if field.name == "tool_before":
             continue
@@ -60,6 +69,11 @@ def check(package: str = "facade_contract") -> None:
         lambda: c.ToolBeforeIntercept(inject_context={"append": True}),
         lambda: c.ToolBeforeCapabilities(),
         lambda: c.ToolBeforeCapabilities(observe=1),
+        lambda: c.SessionEndCapabilities(),
+        lambda: c.SessionEndCapabilities(observe=False),
+        lambda: c.SessionEndCapabilities(observe=1),
+        lambda: c.HostCapabilities(session_end=c.TurnEndCapabilities(observe=True)),
+        lambda: c.HostCapabilities(session_end=c.ToolBeforeCapabilities(observe=True)),
         lambda: c.ToolBeforeCapabilities(intercept=c.ToolAfterIntercept(deny=True)),
         lambda: c.HostCapabilities(tool_before={"modes": ["observe"]}),
         lambda: c.HostCapabilities(tool_before=raw.ToolBeforeCapabilities(effects=["deny"])),
@@ -104,7 +118,7 @@ def check(package: str = "facade_contract") -> None:
             if "capabilities" in declaration:
                 parsed = wire_codec.parse_capabilities(declaration["capabilities"])
                 assert parsed["ok"], parsed
-    for value in (host, before, before.intercept, c.Observe(), injection, c.FlowStop(), flow):
+    for value in (host, before, before.intercept, c.SessionEndCapabilities(observe=True), injection, c.FlowStop(), flow):
         name = dataclasses.fields(value)[0].name if dataclasses.fields(value) else "anything"
         try:
             setattr(value, name, None)

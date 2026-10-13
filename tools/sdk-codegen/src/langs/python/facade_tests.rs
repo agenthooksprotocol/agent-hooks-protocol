@@ -734,12 +734,12 @@ mod tests {
         let source = &files["_grants.py"];
         assert!(source.contains("@dataclass(frozen=True, kw_only=True, slots=True)"));
         for event in crate::capability_ergonomics::catalogue(&ir).unwrap() {
-            let ty = if event.intercept {
-                format!("{}Capabilities{}", event.name, if event.observe { " | Observe" } else { "" })
-            } else {
-                "Observe".into()
-            };
-            assert!(source.contains(&format!("{}: {ty} | None = None", snake_case(&event.name))));
+            assert!(source.contains(&format!(
+                "{}: {}Capabilities | None = None",
+                snake_case(&event.name),
+                event.name
+            )));
+            assert!(source.contains(&format!("class {}Capabilities:", event.name)));
             assert!(source.contains(&format!("result[{:?}]", event.event)));
             if event.intercept {
                 assert!(source.contains(&format!("class {}Intercept:", event.name)));
@@ -762,6 +762,8 @@ mod tests {
                 .contains("from ._models.capability import ToolBeforeCapabilities")
         );
         assert!(source.contains("interception requires a real control grant"));
+        assert!(!source.contains("class Observe:"));
+        assert!(!source.contains("| Observe"));
     }
 
     #[test]
