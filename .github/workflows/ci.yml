@@ -180,7 +180,8 @@ jobs:
 
   conformance:
     name: Conformance artifacts
-    if: always()
+    # Run after failures, but do not turn superseded/cancelled runs into failures.
+    if: ${{ !cancelled() }}
     needs: [snapshots, generator, smoke]
     runs-on: ubuntu-latest
     steps:
