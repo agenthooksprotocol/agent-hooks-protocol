@@ -14,6 +14,7 @@
     "source",
     "type",
     "time",
+    "harness",
     "call",
     "tool",
     "path"
@@ -120,6 +121,9 @@
     "synthesized": {
       "type": "boolean",
       "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+    },
+    "harness": {
+      "$ref": "common.schema.json#/$defs/harness"
     }
   },
   "allOf": [

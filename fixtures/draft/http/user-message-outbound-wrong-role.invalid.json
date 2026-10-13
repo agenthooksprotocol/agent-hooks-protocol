@@ -6,6 +6,7 @@
     "event": {
       "id": "evt1",
       "source": "urn:test:harness",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "time": "2026-09-15T12:00:00Z",
       "type": "user.message.outbound",
       "message": {

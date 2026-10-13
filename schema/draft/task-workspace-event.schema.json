@@ -27,6 +27,7 @@
         "id",
         "source",
         "time",
+        "harness",
         "type",
         "task"
       ],
@@ -140,6 +141,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
@@ -150,6 +154,7 @@
         "id",
         "source",
         "time",
+        "harness",
         "type",
         "task"
       ],
@@ -263,6 +268,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
@@ -273,6 +281,7 @@
         "id",
         "source",
         "time",
+        "harness",
         "type",
         "workspace"
       ],
@@ -377,6 +386,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
@@ -387,6 +399,7 @@
         "id",
         "source",
         "time",
+        "harness",
         "type",
         "workspace"
       ],
@@ -491,6 +504,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."
@@ -501,6 +517,7 @@
         "id",
         "source",
         "time",
+        "harness",
         "type",
         "changes"
       ],
@@ -616,6 +633,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "description": "Open event envelope for extension metadata; nested protocol payload keys are closed, task state keys remain harness-defined."

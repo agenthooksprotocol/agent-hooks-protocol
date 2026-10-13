@@ -6,6 +6,7 @@
     "event": {
       "id": "evt_observe_before_001",
       "source": "https://harness.example/runtime/42",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "type": "tool.before",
       "time": "20260915T120000+0000",
       "session": {

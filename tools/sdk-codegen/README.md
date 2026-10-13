@@ -4,6 +4,14 @@
 
 Generated source belongs in each SDK repository together with a lock recording the protocol tag, schema snapshot, generator version, and exact source repository commit. `tools/generate_sdk.py` records its checkout HEAD as `sourceCommit`; commit generator changes before publishing regenerated SDK artifacts. Use `--python-sdk <root>`, `--go-sdk <root>`, or `--rust-sdk <root>` to regenerate one SDK, and append `--check` to verify identical output. Rust keeps matching locks in its root and `src/` directories.
 
+## Harness identity
+
+Every canonical event requires the shared `Harness` type with non-empty string
+`name` and `version`. Go and Python event facades expose `Harness`. Generated
+host inputs exclude `harness` for every event: the SDK constructor owns this
+identity alongside `source` and supplies it when assembling events. Adapters
+configure the originating agent harness identity, not their own identity.
+
 ## Wire codec behavior
 
 Parsing and protocol validation are separate operations. Generated parsers preserve forward-compatible data, but a successful parse does not establish that a message is valid AHP.

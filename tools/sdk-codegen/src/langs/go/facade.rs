@@ -390,7 +390,9 @@ func Milliseconds(value time.Duration) (json.Number, error) {
 }
 
 pub(crate) fn role(name: &str) -> Option<(&'static str, String)> {
-    let (package, short) = if name == "Registration" {
+    let (package, short) = if name == "Harness" {
+        ("event", "Harness".into())
+    } else if name == "Registration" {
         ("registration", "".into())
     } else if name == "Backend" {
         ("registration", "Backend".into())

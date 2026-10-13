@@ -439,7 +439,7 @@ def check_owned_host_inputs(models, event, wire) -> None:
     untouched = event.ToolBeforeInput(call_id="call", path="native", input=opaque, name="test", origin="native", native=opaque)
     assert untouched["input"] is opaque and untouched["native"] is opaque
     assert untouched.content_sources == {}
-    nested = event.SessionStartInput(session={}, trigger="startup", harness={}, permission_mode="example",
+    nested = event.SessionStartInput(session={}, trigger="startup", permission_mode="example",
         items=[{"id": "m1", "role": "user", "parts": parts},
                {"id": "m2", "role": "user", "parts": [retained]}])
     assert nested.content_sources == {"session.start.items_parts[0][1]": source,
@@ -684,14 +684,13 @@ def main() -> None:
     host_facts = {
         "session": session_event["session"],
         "trigger": session_event["trigger"],
-        "harness": session_event["harness"],
         "permission_mode": session_event["permissionMode"],
         "items": session_event["items"],
     }
     session_input = event.SessionStartInput(**host_facts)
     assert session_input == {
         "session": host_facts["session"], "trigger": host_facts["trigger"],
-        "harness": host_facts["harness"], "permissionMode": host_facts["permission_mode"],
+        "permissionMode": host_facts["permission_mode"],
         "items": host_facts["items"],
     }
     # Host adapters, not indexed compatibility binders, own source extraction.
@@ -701,7 +700,7 @@ def main() -> None:
     assert "context.compact.before.instructions" not in boundaries.CONTENT_SOURCE_SLOTS
     before_input = event.ToolBeforeInput(call_id="call", name="run", origin="native", path="/tool", input={})
     assert not hasattr(before_input, "bind_items_source")
-    sdk_fields = {"manifest", "type", "source", "protocol_version"}
+    sdk_fields = {"manifest", "type", "source", "harness", "protocol_version"}
     assert sdk_fields.isdisjoint(inspect.signature(event.SessionStartInput).parameters)
     assert inspect.signature(event.SessionStart).parameters["manifest"].default is inspect.Parameter.empty
     envelope = {key: session_event[key] for key in ("id", "source", "time")}
