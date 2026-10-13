@@ -169,7 +169,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             server=models.ExecutionEventMcpServer(id="server"), tool_name="read",
         )
         event = models.ToolBeforeEvent(
-            id="event", source="test", time="2026-01-01T00:00:00Z", path="native",
+            id="event", source="test", time="2026-01-01T00:00:00Z",
+            harness=models.Harness(name="example-harness", version="1.0.0"), path="native",
             call=models.ToolBeforeEventCall(id="call"),
             tool=models.ExecutionEventTool(name="read", origin="mcp", input={}, mcp=mcp),
         )
@@ -186,7 +187,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             hydrated = models.ToolBeforeEvent.from_dict(dict(event))
             assert max(checks.values()) == 1, checks
             checks.clear()
-            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], time=event["time"], path=event["path"], call=event.call, tool=event.tool)
+            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], harness=event.harness, time=event["time"], path=event["path"], call=event.call, tool=event.tool)
             assert reconstructed.tool.mcp.connection.gaps[0].reason == "unavailable"
         finally:
             wire._check_node_impl = original_check
@@ -216,7 +217,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         id="item", role="user", parts=[models.TextBodyPart(id="part", text="inline")], future="preserved",
     )
     compact = models.ExecutionEventContextCompactBefore(
-        id="event", source="test", time="2026-01-01T00:00:00Z", trigger="auto", items=[visible],
+        id="event", source="test", time="2026-01-01T00:00:00Z",
+        harness=models.Harness(name="example-harness", version="1.0.0"), trigger="auto", items=[visible],
     )
     assert compact.items_[0].role == "user"
     assert wire.parse_execution_event(compact)["ok"]
@@ -275,7 +277,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             'assert_type(custom.transport, str)',
             'visible = m.ModelVisibleItem(id="item", role="user", parts=[])',
             'assert_type(visible.role, str)',
-            'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", time="now", trigger="auto", items=[visible])',
+            'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", harness=m.Harness(name="example-harness", version="1.0.0"), time="now", trigger="auto", items=[visible])',
             'assert_type(compact.items_[0].role, str)',
             'm.ModelVisibleItem(id="item", role=42, parts=[])  # type: ignore[arg-type]',
             'm.ModelVisibleItem(id="item", parts=[])  # type: ignore[call-arg]',
@@ -816,6 +818,7 @@ def main() -> None:
     # comparing enum values to strings alone misses parser preflight rejection.
     occurrence = event.ToolBefore(
         id="enum-event", source="urn:example:facade", time="2026-08-24T08:51:14Z",
+        harness=event.Harness(name="example-harness", version="1.0.0"),
         call=tool.Call(id="enum-call"), tool=tool.Tool.from_dict(input.to_wire()["tool"]), path=tool.Path.NATIVE,
     )
     request = models.InterceptRequest(
