@@ -7,14 +7,18 @@ Rust interop is built before the matrix so nested stdio startup never runs Cargo
 --jobs is a maximum for runners that expose concurrency flags, capped by CPU
 affinity (or host CPU count when affinity is unavailable). Effective jobs are
 logged and recorded in summary.json. Elicitation and compaction
-currently fix their own pools at four; suites run sequentially within each
---suite-group (all by default, or the disjoint core and extended CI shards). Observation wire
+currently fix their own pools at four. Use --suite for one named suite, with
+zero-based --shard-index and positive --shard-count for lifecycle/observation.
+--suite-group remains available (all by default, or disjoint core and extended).
+--prepare-only --adapter-dir builds a reusable adapter bundle; --adapter-dir
+without --prepare-only validates and reuses it without rebuilding. Observation wire
 and chain coverage uses lifecycle's scenarios CLI. Upload reference tests supplement
 real uploads in lifecycle and elicitation. Use a Python environment with jsonschema.
 """
 from __future__ import annotations
 
 import argparse
+from contextlib import nullcontext
 import json
 import os
 from pathlib import Path
@@ -33,6 +37,8 @@ SUITE_GROUPS = {
     'extended': ('elicitation', 'observation', 'compaction', 'compaction-wire',
                  'auth', 'sender-isolation'),
 }
+SUITES = tuple(name for names in SUITE_GROUPS.values() for name in names)
+SHARDABLE_SUITES = ('lifecycle', 'observation')
 MANIFEST_COMMANDS = ('client', 'server', 'lifecycleClient', 'lifecycleServer')
 
 
@@ -59,7 +65,8 @@ def validate_manifests(root: Path) -> list[str]:
     return errors
 
 
-def suite_commands(root: Path, reports: Path, jobs: int, suite_group: str = 'all'):
+def suite_commands(root: Path, reports: Path, jobs: int, suite_group: str = 'all',
+                   suite: str | None = None, shard_index: int = 0, shard_count: int = 1):
     """Use public CLIs without narrowing language/transport/auth grids."""
     python = sys.executable
     interop = root / 'interop'
@@ -82,9 +89,17 @@ def suite_commands(root: Path, reports: Path, jobs: int, suite_group: str = 'all
         report_flag = '--report' if name == 'auth' else '--output'
         suites.append((name, [python, str(interop / script), *flags,
                               report_flag, str(reports / f'{name}.json')], root))
+    validate_partition(suite, shard_index, shard_count)
+    if suite is not None:
+        suites = [row for row in suites if row[0] == suite]
+        if suite in SHARDABLE_SUITES:
+            suites = [(name, command + ['--shard-index', str(shard_index),
+                       '--shard-count', str(shard_count), '--suite', suite], cwd)
+                      for name, command, cwd in suites]
+        return suites
     if suite_group == 'all':
         return suites
-    return [suite for suite in suites if suite[0] in SUITE_GROUPS[suite_group]]
+    return [row for row in suites if row[0] in SUITE_GROUPS[suite_group]]
 
 
 def run_command(command, cwd: Path, log: Path, timeout: int, env=None) -> dict:
@@ -134,6 +149,33 @@ def positive_int(value):
     if number < 1:
         raise argparse.ArgumentTypeError('must be positive')
     return number
+
+
+def nonnegative_int(value):
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError('must be nonnegative')
+    return number
+
+
+def validate_partition(suite, shard_index, shard_count):
+    if suite is not None and suite not in SUITES:
+        raise ValueError('unknown suite')
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError('require shard-count > 0 and 0 <= shard-index < shard-count')
+    if shard_count != 1 and suite not in SHARDABLE_SUITES:
+        raise ValueError('multiple shards require --suite lifecycle or observation')
+
+
+def reuse_adapters(directory: Path):
+    """Fail closed rather than accidentally rebuilding absent shared artifacts."""
+    results = []
+    for name in (*GO_ADAPTERS, 'rust-interop'):
+        path = directory / name
+        valid = path.is_file() and os.access(path, os.X_OK)
+        results.append({'name': name, 'status': 'passed' if valid else 'failed',
+                        'path': str(path), 'reused': True})
+    return results
 
 
 def effective_jobs(requested):
@@ -186,10 +228,23 @@ def main(argv=None):
                         help='verify checkout HEADs and record this explicit snapshot')
     parser.add_argument('--suite-group', choices=('all', *SUITE_GROUPS), default='all',
                         help='suite partition to run (default: all)')
+    parser.add_argument('--suite', choices=SUITES, help='run exactly one existing suite')
+    parser.add_argument('--shard-index', type=nonnegative_int, default=0)
+    parser.add_argument('--shard-count', type=positive_int, default=1)
+    parser.add_argument('--prepare-only', action='store_true', help='build shared adapters, without running suites')
+    parser.add_argument('--adapter-dir', type=Path, help='persistent adapter build destination or existing binaries to reuse')
     parser.add_argument('--jobs', type=positive_int, default=4)
     parser.add_argument('--timeout', type=positive_int, default=1800,
                         help='maximum seconds per suite command (default: 1800)')
     args = parser.parse_args(argv)
+    try:
+        validate_partition(args.suite, args.shard_index, args.shard_count)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.suite is not None and args.suite_group != 'all':
+        parser.error('--suite and a non-default --suite-group are mutually exclusive')
+    if args.prepare_only and args.adapter_dir is None:
+        parser.error('--prepare-only requires --adapter-dir')
     jobs = effective_jobs(args.jobs)
     print(f'Integration jobs: {jobs} effective (requested maximum: {args.jobs})', flush=True)
     reports = args.reports_dir.resolve()
@@ -201,17 +256,52 @@ def main(argv=None):
     for name, _, _ in suite_commands(ROOT, reports, jobs):
         (reports / f'{name}.json').unlink(missing_ok=True)
     results = []
-    with tempfile.TemporaryDirectory(prefix='ahp-go-adapters-') as directory:
-        prerequisites = prepare_adapters(ROOT, Path(directory), reports, args.timeout)
+    selected = suite_commands(ROOT, reports, jobs, args.suite_group, args.suite,
+                              args.shard_index, args.shard_count)
+    context = (nullcontext(str(args.adapter_dir.resolve())) if args.adapter_dir is not None
+               else tempfile.TemporaryDirectory(prefix='ahp-go-adapters-'))
+    with context as directory:
+        if args.adapter_dir is not None and not args.prepare_only:
+            prerequisites = reuse_adapters(Path(directory))
+        else:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            prerequisites = prepare_adapters(ROOT, Path(directory), reports, args.timeout)
+            if args.prepare_only and all(row['status'] == 'passed' for row in prerequisites):
+                import shutil
+                try:
+                    shutil.copy2(ROOT.parent / 'rust-sdk/target/debug/interop', Path(directory) / 'rust-interop')
+                    prerequisites = reuse_adapters(Path(directory))
+                except OSError as error:
+                    prerequisites.append({'name': 'copy-rust-interop', 'status': 'failed',
+                                          'error': str(error)})
         env = {**os.environ, 'AHP_GO_ADAPTER_DIR': directory,
-               'AHP_RUST_INTEROP': str(ROOT.parent / 'rust-sdk/target/debug/interop')}
-        if all(row['status'] == 'passed' for row in prerequisites):
-            for name, command, cwd in suite_commands(ROOT, reports, jobs, args.suite_group):
+               'AHP_RUST_INTEROP': str(Path(directory) / 'rust-interop' if args.adapter_dir is not None
+                                      else ROOT.parent / 'rust-sdk/target/debug/interop')}
+        if not args.prepare_only and all(row['status'] == 'passed' for row in prerequisites):
+            for name, command, cwd in selected:
                 result = {'name': name, **run_command(command, cwd, reports / f'{name}.log', args.timeout, env=env)}
+                if name in SHARDABLE_SUITES and args.suite is not None:
+                    try:
+                        report = json.loads((reports / f'{name}.json').read_text())
+                        result['coverage'] = report['coverage']
+                        result['scenario_sha256'] = report['scenario_sha256']
+                        result['suite'] = report['suite']
+                        result['shard_index'] = report['shard_index']
+                        result['shard_count'] = report['shard_count']
+                        if (report['suite'] != name or report['shard_index'] != args.shard_index
+                                or report['shard_count'] != args.shard_count
+                                or not report['coverage']['complete']):
+                            raise ValueError('incomplete or mismatched shard coverage')
+                    except (OSError, ValueError, KeyError, TypeError) as error:
+                        result['status'] = 'failed'
+                        result['coverage_error'] = str(error)
                 results.append(result)
                 print(f"{name}: {result['status']}", flush=True)
     failed = bool(errors) or any(row['status'] != 'passed' for row in prerequisites + results)
-    summary = {'suite_group': args.suite_group, 'requested_jobs': args.jobs, 'effective_jobs': jobs, 'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
+    summary = {'suite': args.suite, 'shard_index': args.shard_index,
+               'shard_count': args.shard_count, 'prepare_only': args.prepare_only,
+               'expected_suites': [] if args.prepare_only else [row[0] for row in selected],
+               'suite_group': args.suite_group, 'requested_jobs': args.jobs, 'effective_jobs': jobs, 'status': 'failed' if failed else 'passed', 'manifest_errors': errors,
                'prerequisites': prerequisites, 'suites': results}
     (reports / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(f"SDK integration: {summary['status']}; {len(errors)} manifest errors; reports: {reports}")

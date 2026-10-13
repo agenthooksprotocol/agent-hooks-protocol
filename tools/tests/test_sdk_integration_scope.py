@@ -1,4 +1,5 @@
 import os
+import json
 import re
 from pathlib import Path
 import subprocess
@@ -17,7 +18,7 @@ class ScopeTests(unittest.TestCase):
         cases = [('workflow_dispatch', [], True), ('pull_request', ['docs/guide.md', 'README.md'], False)]
         cases += [('pull_request', [path], True) for path in (
             'spec/draft/x', 'schema/draft/x', 'fixtures/x', 'conformance/x',
-            'interop/x', 'tools/x', '.github/workflows/sdk-integration.yml',
+            'interop/x', 'tools/x', '.github/actions/setup-sdk-check/action.yml', '.github/workflows/sdk-integration.yml',
             '.github/workflows/ci.yml', '.github/workflows/sync-sdks.yml',
         )]
         cases += [('pull_request', ['.github/workflows/sync-website-docs.yml'], False)]
@@ -36,41 +37,67 @@ class ScopeTests(unittest.TestCase):
                     self.assertIn('--no-renames', git.call_args.args[0])
                     self.assertEqual(git.call_args.args[0][-1], 'base...head')
 
-    def test_shard_deadlines_preserve_coverage_and_budget_cleanup(self):
+    def test_parallel_jobs_preserve_coverage_and_bound_deadlines(self):
         workflow = WORKFLOW.read_text()
         shards = workflow.split('  sdk-integration-shards:\n', 1)[1].split('\n  sdk-integration:\n', 1)[0]
-        job_minutes = int(re.search(r'^    timeout-minutes: (\d+)$', shards, re.M).group(1))
-        step_minutes = [int(value) for value in re.findall(r'^        timeout-minutes: (\d+)$', shards, re.M)]
-        self.assertGreaterEqual(job_minutes, sum(step_minutes) + 5)
-        self.assertLessEqual(job_minutes, 150)
-        python_step = shards.split('      - name: Install and test Python SDK\n', 1)[1].split('      - name:', 1)[0]
-        integration_step = shards.split('      - name: Run SDK integration shard\n', 1)[1].split('      - name:', 1)[0]
-        for step, deadline, budget in ((python_step, 45, 47), (integration_step, 40, 42)):
-            self.assertIn(f'timeout-minutes: {budget}', step)
-            self.assertIn(f'timeout --kill-after=30s {deadline}m', step)
-            self.assertIn('2>&1 | tee', step)
-        self.assertIn('.venv/bin/python -m unittest discover -s tests', python_step)
-        self.assertIn('--sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json"', integration_step)
-        self.assertIn('--suite-group "${{ matrix.suite-group }}"', integration_step)
-        self.assertNotIn('continue-on-error', shards)
+        self.assertIn('timeout-minutes: 15', shards)
+        self.assertIn('--timeout 600', shards)
+        self.assertIn('--adapter-dir "$GITHUB_WORKSPACE/adapters"', shards)
+        self.assertIn('--sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json"', shards)
+        self.assertNotIn('continue-on-error', workflow)
+        self.assertNotIn('Install and test Python SDK', shards)
+        rows = re.findall(r'\{suite: ([\w-]+), shard: (\d+), count: (\d+)\}', shards)
+        expected = {'lifecycle': 4, 'observation': 3, 'matrix': 1, 'catalogue': 1,
+                    'elicitation': 1, 'compaction': 1, 'compaction-wire': 1,
+                    'auth': 1, 'sender-isolation': 1}
+        self.assertEqual(len(rows), sum(expected.values()))
+        for suite, count in expected.items():
+            self.assertEqual([(int(index), int(total)) for name, index, total in rows if name == suite],
+                             [(index, count) for index in range(count)])
+        for job in ('python-tests', 'interop-unit'):
+            section = re.split(r'\n  [\w-]+:\n', workflow.split('  ' + job + ':\n', 1)[1], maxsplit=1)[0]
+            self.assertIn('timeout --kill-after=30s 10m', section)
+            self.assertIn('run_unit_shard.py', section)
+        self.assertIn('go test -count=1 -vet=off ./...', workflow)
+        self.assertIn('node --test --test-concurrency=2 --test-shard=', workflow)
+        self.assertEqual(workflow.count('tools/generate_sdk.py --all\n'), 1)
+        self.assertIn('tools/check_ci_reports.py --reports-dir reports', workflow)
+
+    def test_source_archive_preserves_all_nul_delimited_paths(self):
+        import tarfile
+        block = WORKFLOW.read_text().split('      - name: Package complete generated SDK sources\n', 1)[1]
+        script = textwrap.dedent(block.split("python3 - <<'PYCODE'\n", 1)[1].split('          PYCODE', 1)[0])
+        with patch.object(subprocess, 'check_output', return_value=b'a.py\0nested/b.py\0'), \
+                patch.object(tarfile, 'open') as archive:
+            exec(compile(script, str(WORKFLOW), 'exec'), {})
+        calls = archive.return_value.__enter__.return_value.add.call_args_list
+        self.assertEqual(len(calls), 8)
+        self.assertEqual({str(call.args[0]) for call in calls},
+                         {f'{language}-sdk/{name}' for language in ('python', 'typescript', 'go', 'rust')
+                          for name in ('a.py', 'nested/b.py')})
 
     def test_required_aggregate_accepts_only_success_or_intentional_skip(self):
-        script = textwrap.dedent(WORKFLOW.read_text().rsplit('        run: |\n', 1)[1])
-        for scope, needed, resolve, shards, expected in (
-            ('success', 'false', 'skipped', 'skipped', True),
-            ('success', 'true', 'success', 'success', True),
-            ('failure', 'false', 'skipped', 'skipped', False),
-            ('cancelled', '', 'skipped', 'skipped', False),
-            ('success', 'true', 'failure', 'skipped', False),
-            ('success', 'true', 'success', 'failure', False),
-            ('success', 'true', 'success', 'cancelled', False),
-            ('success', 'true', 'skipped', 'skipped', False),
-            ('success', '', 'skipped', 'skipped', False),
-            ('success', 'false', 'success', 'success', False),
-        ):
-            env = dict(os.environ, SCOPE_RESULT=scope, NEEDED=needed, RESOLVE_RESULT=resolve, SHARDS_RESULT=shards)
-            result = subprocess.run(['bash', '-e', '-c', script], env=env, capture_output=True)
-            self.assertEqual(result.returncode == 0, expected, (scope, needed, resolve, shards))
+        block = WORKFLOW.read_text().split('      - name: Require every SDK check to succeed\n', 1)[1]
+        script = textwrap.dedent(block.split("python3 - <<'PYCODE'\n", 1)[1].split('          PYCODE', 1)[0])
+        downstream = ('resolve-sdks', 'generate', 'build-runtime', 'python-tests',
+                      'language-tests', 'interop-unit', 'sdk-integration-shards')
+        for needed, default in (('true', 'success'), ('false', 'skipped')):
+            jobs = {name: {'result': default} for name in downstream}
+            jobs['scope'] = {'result': 'success', 'outputs': {'needed': needed}}
+            with patch.dict(os.environ, RESULTS=json.dumps(jobs)):
+                exec(compile(script, str(WORKFLOW), 'exec'), {})
+            for name in ('scope', *downstream):
+                for invalid in ('failure', 'cancelled', 'skipped' if default == 'success' else 'success'):
+                    if name == 'scope' and invalid == 'success':
+                        continue
+                    bad = json.loads(json.dumps(jobs))
+                    bad[name]['result'] = invalid
+                    with self.subTest(needed=needed, name=name, result=invalid), \
+                            patch.dict(os.environ, RESULTS=json.dumps(bad)), self.assertRaises(AssertionError):
+                        exec(compile(script, str(WORKFLOW), 'exec'), {})
+        jobs['scope']['outputs']['needed'] = ''
+        with patch.dict(os.environ, RESULTS=json.dumps(jobs)), self.assertRaises(AssertionError):
+            exec(compile(script, str(WORKFLOW), 'exec'), {})
 
 
 if __name__ == '__main__':

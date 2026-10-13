@@ -40,7 +40,7 @@ jobs:
                   'git', 'diff', '--name-only', '--no-renames', '-z',
                   os.environ['BASE'] + '...' + os.environ['HEAD'],
               ]).decode().split('\0')
-              prefixes = ('spec/', 'schema/', 'fixtures/', 'conformance/', 'interop/', 'tools/')
+              prefixes = ('spec/', 'schema/', 'fixtures/', 'conformance/', 'interop/', 'tools/', '.github/actions/')
               workflows = ('.github/workflows/sdk-integration.yml', '.github/workflows/ci.yml', '.github/workflows/sync-sdks.yml')
               needed = any(path.startswith(prefixes) or path in workflows for path in paths)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -76,172 +76,302 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  sdk-integration-shards:
+  generate:
+    name: Generate proposed SDK sources
     needs: [resolve-sdks]
-    name: SDK integration (${{ matrix.suite-group }})
-    strategy:
-      fail-fast: false
-      matrix:
-        suite-group: [core, extended]
     runs-on: ubuntu-latest
-    # Expensive step limits total 144 minutes; reserve 6 for setup/reporting.
-    timeout-minutes: 150
-    defaults:
-      run:
-        shell: bash
-        working-directory: agent-hooks-protocol
+    timeout-minutes: 10
     steps:
-      - name: Check out proposed protocol
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           path: agent-hooks-protocol
           persist-credentials: false
-      - name: Record shared SDK revision snapshot
-        env:
-          SDK_REVISIONS: ${{ needs.resolve-sdks.outputs.manifest }}
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: generate
+          sources: 'false'
+      - name: Generate and verify reproducibility once
+        working-directory: agent-hooks-protocol
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/reports"
-          printf '%s\n' "$SDK_REVISIONS" > "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
-      - name: Check out resolved python SDK
-        uses: actions/checkout@v5
-        with:
-          repository: agenthooksprotocol/python-sdk
-          ref: ${{ needs.resolve-sdks.outputs.python }}
-          path: python-sdk
-          persist-credentials: false
-      - name: Check out resolved typescript SDK
-        uses: actions/checkout@v5
-        with:
-          repository: agenthooksprotocol/typescript-sdk
-          ref: ${{ needs.resolve-sdks.outputs.typescript }}
-          path: typescript-sdk
-          persist-credentials: false
-      - name: Check out resolved go SDK
-        uses: actions/checkout@v5
-        with:
-          repository: agenthooksprotocol/go-sdk
-          ref: ${{ needs.resolve-sdks.outputs.go }}
-          path: go-sdk
-          persist-credentials: false
-      - name: Check out resolved rust SDK
-        uses: actions/checkout@v5
-        with:
-          repository: agenthooksprotocol/rust-sdk
-          ref: ${{ needs.resolve-sdks.outputs.rust }}
-          path: rust-sdk
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - uses: actions/setup-node@v5
-        with:
-          node-version: "20"
-          package-manager-cache: false
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.27.x"
-          cache: false
-      - uses: dtolnay/rust-toolchain@1.88.0
-        with:
-          components: rustfmt
-      - name: Install harness dependencies and pnpm
+          python3 tools/generate_sdk.py --all
+          python3 tools/generate_sdk.py --all --check
+      - name: Package complete generated SDK sources
         run: |
-          python3 -m pip install 'jsonschema[format]>=4.23,<5' 'ruff==0.12.12'
-          corepack enable
-          corepack prepare pnpm@10.18.3 --activate
-      - name: Regenerate SDKs from proposed protocol
-        timeout-minutes: 15
-        run: python3 tools/generate_sdk.py --all 2>&1 | tee "$GITHUB_WORKSPACE/reports/generation.log"
-      - name: Check generated artifact reproducibility
-        run: python3 tools/generate_sdk.py --all --check
-      # Each language and the harness still run after another suite fails.
-      # Explicit bash enables pipefail; tee must never mask a failing command.
-      - name: Install and test Python SDK
-        if: ${{ !cancelled() }}
-        # 304 tests took 2009s on the hosted runner; bound the process tree
-        # before Actions cancels the step, leaving time for cleanup and tee.
-        timeout-minutes: 47
+          python3 - <<'PYCODE'
+          import subprocess, tarfile
+          from pathlib import Path
+          with tarfile.open('sources.tar', 'w') as archive:
+              for language in ('python', 'typescript', 'go', 'rust'):
+                  root = Path(language + '-sdk')
+                  files = subprocess.check_output(['git', '-C', str(root), 'ls-files', '-z', '--cached', '--others', '--exclude-standard']).decode().split('\0')
+                  for name in sorted(set(files) - {''}):
+                      archive.add(root / name, arcname=str(root / name), recursive=False)
+          PYCODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-sources-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sources.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  build-runtime:
+    name: Build shared integration adapters
+    needs: [resolve-sdks, generate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: build
+      - name: Build TypeScript runtime
+        working-directory: typescript-sdk
+        run: pnpm build
+      - name: Build Rust lifecycle adapters
+        working-directory: rust-sdk
+        run: cargo build --locked --features interop --bins
+      - name: Build shared Go and Rust interop adapters
+        working-directory: agent-hooks-protocol
+        run: |
+          python3 tools/run_sdk_integration.py --prepare-only \
+            --adapter-dir "$GITHUB_WORKSPACE/adapters" \
+            --reports-dir "$GITHUB_WORKSPACE/reports" \
+            --sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
+      - name: Package runtime artifacts with executable modes
+        run: |
+          tar -cf runtime.tar adapters \
+            typescript-sdk/packages/sdk/dist \
+            typescript-sdk/packages/testing/dist \
+            typescript-sdk/packages/conformance/dist \
+            rust-sdk/target/debug/lifecycle_client \
+            rust-sdk/target/debug/lifecycle_server \
+            rust-sdk/target/debug/elicitation \
+            rust-sdk/target/debug/compaction \
+            rust-sdk/target/debug/compaction_wire
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdk-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: runtime.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  python-tests:
+    name: Python SDK tests (${{ matrix.shard }})
+    needs: [resolve-sdks, generate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: python
+      - name: Compile and run complete assigned Python test inventory
         working-directory: python-sdk
         run: |
-          timeout --kill-after=30s 45m bash -e -o pipefail -c '
-            python3 -m venv .venv
-            .venv/bin/python -m pip install -e ".[http,pydantic]" "trio>=0.29,<1" "mypy>=1.15,<2"
-            .venv/bin/python -m compileall -q src tests
-            .venv/bin/python -m unittest discover -s tests
-          ' 2>&1 | tee "$GITHUB_WORKSPACE/reports/python-sdk.log"
-      - name: Install, build and test TypeScript SDK
+          .venv/bin/python -m compileall -q src tests
+          timeout --kill-after=30s 10m .venv/bin/python ../agent-hooks-protocol/tools/run_unit_shard.py \
+            --start-directory tests --shard-index '${{ matrix.shard }}' --shard-count 6 \
+            --report "$GITHUB_WORKSPACE/reports/unit-python-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
-        timeout-minutes: 10
+        with:
+          name: sdk-report-python-${{ matrix.shard }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
+
+  language-tests:
+    name: SDK validation (${{ matrix.language }}, ${{ matrix.shard }})
+    needs: [resolve-sdks, generate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: typescript
+            shard: 1
+          - language: typescript
+            shard: 2
+          - language: go
+            shard: 1
+          - language: rust
+            shard: 1
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: ${{ matrix.language }}
+      - name: Build and test TypeScript SDK
+        if: ${{ matrix.language == 'typescript' }}
         working-directory: typescript-sdk
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
-          (set -e
-            pnpm install --frozen-lockfile
-            pnpm build
-            pnpm test
-          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/typescript-sdk.log"
-      - name: Install, build and test Go SDK
-        if: ${{ !cancelled() }}
-        timeout-minutes: 10
+          pnpm build
+          node --test --test-concurrency=2 --test-shard="$SHARD/2" packages/*/dist/test/*.test.js
+          node --test --test-concurrency=2 --test-shard="$SHARD/2" interop/*.test.mjs packages/sdk/test/*.test.mjs
+      - name: Build, vet and test Go SDK
+        if: ${{ matrix.language == 'go' }}
         working-directory: go-sdk
         run: |
-          (set -e
-            go mod download
-            go build ./...
-            go vet ./...
-            go test ./...
-          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/go-sdk.log"
+          go mod download
+          go build ./...
+          go vet ./...
+          go test -count=1 -vet=off ./...
       - name: Build and test Rust SDK
-        if: ${{ !cancelled() }}
-        timeout-minutes: 20
+        if: ${{ matrix.language == 'rust' }}
         working-directory: rust-sdk
         env:
           AHP_SCHEMA_DIR: ${{ github.workspace }}/agent-hooks-protocol/schema/draft
           AHP_INTEROP_FIXTURE_ROOT: ${{ github.workspace }}/agent-hooks-protocol/interop
         run: |
-          (set -e
-            cargo build --locked --all-targets --all-features
-            cargo test --locked --all-features
-          ) 2>&1 | tee "$GITHUB_WORKSPACE/reports/rust-sdk.log"
-      - name: Run SDK integration shard
-        if: ${{ !cancelled() }}
-        # Core made forward progress beyond the former 30-minute deadline.
-        timeout-minutes: 42
-        run: |
-          timeout --kill-after=30s 40m python3 tools/run_sdk_integration.py \
-            --sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json" \
-            --reports-dir "$GITHUB_WORKSPACE/reports" --jobs 4 --suite-group "${{ matrix.suite-group }}" \
-            2>&1 | tee "$GITHUB_WORKSPACE/reports/integration.log"
-      - name: Upload SDK integration reports
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+          cargo build --locked --all-targets --all-features
+          cargo test --locked --all-features
+
+  interop-unit:
+    name: Interop unit tests (${{ matrix.shard }})
+    needs: [resolve-sdks, build-runtime]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    steps:
+      - uses: actions/checkout@v5
         with:
-          name: sdk-integration-${{ matrix.suite-group }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: integration
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sdk-runtime
+      - name: Restore runtime artifacts
+        run: tar -xf "$RUNNER_TEMP/sdk-runtime/runtime.tar" -C "$GITHUB_WORKSPACE"
+      - name: Run assigned interop unit tests
+        working-directory: agent-hooks-protocol/interop
+        env:
+          AHP_GO_ADAPTER_DIR: ${{ github.workspace }}/adapters
+          AHP_RUST_INTEROP: ${{ github.workspace }}/adapters/rust-interop
+        run: |
+          timeout --kill-after=30s 10m python3 ../tools/run_unit_shard.py --start-directory . --pattern 'test_*.py' \
+            --shard-index '${{ matrix.shard }}' --shard-count 2 \
+            --report "$GITHUB_WORKSPACE/reports/unit-interop-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sdk-report-interop-${{ matrix.shard }}
+          path: reports/
+          if-no-files-found: error
+          retention-days: 14
+
+  sdk-integration-shards:
+    name: SDK integration (${{ matrix.suite }}, ${{ matrix.shard }})
+    needs: [resolve-sdks, build-runtime]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {suite: lifecycle, shard: 0, count: 4}
+          - {suite: lifecycle, shard: 1, count: 4}
+          - {suite: lifecycle, shard: 2, count: 4}
+          - {suite: lifecycle, shard: 3, count: 4}
+          - {suite: observation, shard: 0, count: 3}
+          - {suite: observation, shard: 1, count: 3}
+          - {suite: observation, shard: 2, count: 3}
+          - {suite: matrix, shard: 0, count: 1}
+          - {suite: catalogue, shard: 0, count: 1}
+          - {suite: elicitation, shard: 0, count: 1}
+          - {suite: compaction, shard: 0, count: 1}
+          - {suite: compaction-wire, shard: 0, count: 1}
+          - {suite: auth, shard: 0, count: 1}
+          - {suite: sender-isolation, shard: 0, count: 1}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: agent-hooks-protocol
+          persist-credentials: false
+      - uses: ./agent-hooks-protocol/.github/actions/setup-sdk-check
+        with:
+          revisions: ${{ needs.resolve-sdks.outputs.manifest }}
+          role: integration
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdk-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sdk-runtime
+      - name: Restore runtime artifacts
+        run: tar -xf "$RUNNER_TEMP/sdk-runtime/runtime.tar" -C "$GITHUB_WORKSPACE"
+      - name: Run complete assigned integration partition
+        working-directory: agent-hooks-protocol
+        run: |
+          python3 tools/run_sdk_integration.py --suite '${{ matrix.suite }}' \
+            --shard-index '${{ matrix.shard }}' --shard-count '${{ matrix.count }}' \
+            --adapter-dir "$GITHUB_WORKSPACE/adapters" --jobs 4 --timeout 600 \
+            --reports-dir "$GITHUB_WORKSPACE/reports" \
+            --sdk-revisions "$GITHUB_WORKSPACE/reports/sdk-revisions.json"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: sdk-report-integration-${{ matrix.suite }}-${{ matrix.shard }}
           path: reports/
           if-no-files-found: error
           retention-days: 14
 
   sdk-integration:
     name: SDK integration
-    needs: [scope, resolve-sdks, sdk-integration-shards]
+    needs: [scope, resolve-sdks, generate, build-runtime, python-tests, language-tests, interop-unit, sdk-integration-shards]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require every SDK integration shard to succeed
+      - name: Require every SDK check to succeed
         env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-          NEEDED: ${{ needs.scope.outputs.needed }}
-          RESOLVE_RESULT: ${{ needs.resolve-sdks.result }}
-          SHARDS_RESULT: ${{ needs.sdk-integration-shards.result }}
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          # A failed scope check must never turn into a successful skip.
-          test "$SCOPE_RESULT" = success
-          if [[ "$NEEDED" == false ]]; then
-            test "$RESOLVE_RESULT" = skipped
-            test "$SHARDS_RESULT" = skipped
-            echo 'No compatibility-relevant changes; SDK integration is not needed.'
-          else
-            test "$NEEDED" = true
-            test "$RESOLVE_RESULT" = success
-            test "$SHARDS_RESULT" = success
-          fi
+          python3 - <<'PYCODE'
+          import json, os
+          jobs = json.loads(os.environ['RESULTS'])
+          assert jobs['scope']['result'] == 'success', 'scope check failed'
+          needed = jobs['scope']['outputs']['needed']
+          assert needed in ('true', 'false'), 'missing scope decision'
+          expected = 'success' if needed == 'true' else 'skipped'
+          for name, job in jobs.items():
+              if name != 'scope':
+                  assert job['result'] == expected, f"{name}: {job['result']} (expected {expected})"
+          PYCODE
+      - uses: actions/checkout@v5
+        if: ${{ needs.scope.outputs.needed == 'true' }}
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        if: ${{ needs.scope.outputs.needed == 'true' }}
+        with:
+          pattern: sdk-report-*
+          path: reports
+      - name: Verify complete nonduplicated coverage
+        if: ${{ needs.scope.outputs.needed == 'true' }}
+        run: python3 tools/check_ci_reports.py --reports-dir reports

@@ -7,9 +7,18 @@ on:
 permissions:
   contents: read
 
+# Both triggers retain coverage for branches without PRs; matching source-branch
+# runs supersede one another instead of running duplicate checks concurrently.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/tools/sdk-codegen/target
+
 jobs:
-  conformance:
-    name: Conformance artifacts
+  snapshots:
+    name: Snapshot and tools tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -19,7 +28,23 @@ jobs:
         run: PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover tools/tests
       - name: Validate protocol snapshots
         run: PYTHONDONTWRITEBYTECODE=1 python3 tools/check_conformance.py --all
+
+  generator:
+    name: SDK generator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Cache Cargo builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/sdk-codegen/target
+          key: ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-${{ hashFiles('tools/sdk-codegen/src/**', 'tools/sdk-codegen/tests/**', 'tools/sdk-codegen/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-
       - name: Test SDK generator
         run: cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
       - name: Validate SDK generation profile
@@ -28,15 +53,101 @@ jobs:
         with:
           node-version: 20
           package-manager-cache: false
+      - name: Cache npm tooling
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node20-typescript5.9.3-prettier3.6.2
       - name: Test generated TypeScript structural constraints
         run: >-
           npx --yes --package typescript@5.9.3 --call
           'AHP_TYPESCRIPT_RUNTIME_TESTS=1 cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml langs::typescript'
-      - name: Compile generated TypeScript
+      - name: Generate smoke inputs once
         run: |
+          mkdir -p generated/ahp_python_facade
+          for entry in typescript:ahp.generated.ts python:ahp_generated.py go:ahp_generated.go rust:ahp_generated.rs; do
+            cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
+              generate --revision draft --language "${entry%%:*}" --output "generated/${entry#*:}"
+          done
+          cp generated/ahp_generated.py generated/ahp_python_facade/generated.py
           cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision draft --language typescript \
-            --output "$RUNNER_TEMP/ahp.generated.ts"
+            generate --revision draft --language python-facade --output generated/ahp_python_facade
+          AHP_PYTHON_STRUCTURAL_OUTPUT="$GITHUB_WORKSPACE/generated/ahp_python_structural" \
+            cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml \
+            original_composed_descriptors_and_union_ambiguity_are_cached
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conformance-smoke-inputs
+          path: generated
+          if-no-files-found: error
+          retention-days: 1
+
+  smoke:
+    name: Generated ${{ matrix.language }} smoke tests
+    needs: generator
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [typescript, python, go, rust]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: conformance-smoke-inputs
+          path: ${{ runner.temp }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        if: matrix.language == 'go' || matrix.language == 'rust'
+      - name: Cache Cargo builds
+        if: matrix.language == 'go' || matrix.language == 'rust'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/sdk-codegen/target
+          key: ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-${{ hashFiles('tools/sdk-codegen/src/**', 'tools/sdk-codegen/tests/**', 'tools/sdk-codegen/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-
+      - uses: actions/setup-node@v5
+        if: matrix.language == 'typescript'
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - name: Cache npm tooling
+        if: matrix.language == 'typescript'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node20-typescript5.9.3-prettier3.6.2
+      - uses: actions/setup-python@v6
+        if: matrix.language == 'python'
+        with:
+          python-version: "3.11"
+      - name: Cache Python tooling
+        if: matrix.language == 'python'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-python3.11-mypy1.20.2-ruff0.12.12
+      - uses: actions/setup-go@v6
+        if: matrix.language == 'go'
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: Cache Go tooling
+        if: matrix.language == 'go'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.27-${{ hashFiles('tools/sdk-codegen/tests/go-smoke.sh', 'tools/generate_sdk.py') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.27-
+      - name: Compile generated TypeScript
+        if: matrix.language == 'typescript'
+        run: |
           mkdir -p "$RUNNER_TEMP/ahp-codegen"
           cp tools/sdk-codegen/tests/typescript-composite-smoke.ts.in "$RUNNER_TEMP/ahp.composite-smoke.ts"
           npx --yes --package typescript@5.9.3 tsc "$RUNNER_TEMP/ahp.generated.ts" "$RUNNER_TEMP/ahp.composite-smoke.ts" \
@@ -44,45 +155,41 @@ jobs:
             --skipLibCheck --noUncheckedIndexedAccess --exactOptionalPropertyTypes
           node tools/sdk-codegen/tests/typescript-smoke.cjs \
             "$RUNNER_TEMP/ahp-codegen/ahp.generated.js" "$GITHUB_WORKSPACE"
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
       - name: Test generated Python
+        if: matrix.language == 'python'
         run: |
           python3 -m pip install mypy==1.20.2
-          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision draft --language python \
-            --output "$RUNNER_TEMP/ahp_generated.py"
           python3 tools/sdk-codegen/tests/python-smoke.py \
             "$RUNNER_TEMP/ahp_generated.py" "$GITHUB_WORKSPACE"
-          mkdir -p "$RUNNER_TEMP/ahp_python_facade"
-          cp "$RUNNER_TEMP/ahp_generated.py" "$RUNNER_TEMP/ahp_python_facade/generated.py"
-          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision draft --language python-facade \
-            --output "$RUNNER_TEMP/ahp_python_facade"
           python3 tools/sdk-codegen/tests/python-facade-smoke.py \
             "$RUNNER_TEMP/ahp_python_facade" --typing
-          AHP_PYTHON_STRUCTURAL_OUTPUT="$RUNNER_TEMP/ahp_python_structural" \
-            cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml \
-            original_composed_descriptors_and_union_ambiguity_are_cached
           python3 tools/sdk-codegen/tests/python-structural-smoke.py \
             "$RUNNER_TEMP/ahp_python_structural"
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.27.x"
       - name: Test generated Go
+        if: matrix.language == 'go'
         run: |
-          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision draft --language go \
-            --output "$RUNNER_TEMP/ahp_generated.go"
           tools/sdk-codegen/tests/go-smoke.sh \
             "$RUNNER_TEMP/ahp_generated.go" "$GITHUB_WORKSPACE"
       - name: Test generated Rust
+        if: matrix.language == 'rust'
         env:
           AHP_RUST_TOOLCHAIN: "1.88.0"
         run: |
-          cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- \
-            generate --revision draft --language rust \
-            --output "$RUNNER_TEMP/ahp_generated.rs"
           tools/sdk-codegen/tests/rust-smoke.sh \
             "$RUNNER_TEMP/ahp_generated.rs" "$GITHUB_WORKSPACE"
+
+  conformance:
+    name: Conformance artifacts
+    if: always()
+    needs: [snapshots, generator, smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all conformance jobs to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          assert all(job['result'] == 'success' for job in results.values()), results
+          PYTHON
