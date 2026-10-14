@@ -13,7 +13,7 @@ from compaction_wire_matrix import LANGUAGES, cases, check, probe, run_pair, wir
 class WireValidationTests(unittest.TestCase):
     def fixture(self):
         ref={'ref':'receiver-assigned-opaque-ref'}
-        event={'type':'context.compact.before','id':'case:before','instructions':text_parts('x','case:instructions'),'trigger':'manual'}
+        event={'harness':{'name':'example-harness','version':'1.0.0'},'type':'context.compact.before','id':'case:before','instructions':text_parts('x','case:instructions'),'trigger':'manual'}
         request={'method':'hooks/intercept','id':'case:before','params':{'event':event,'capabilities':{'modify':{'instructions':{'replace':True,'merge':False}}}}}
         reply={'jsonrpc':'2.0','id':'case:before','result':{'protocolVersion':'draft'}}
         trace={'subscription':'case-before-0','request':request,'response':reply}

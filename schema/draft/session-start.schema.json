@@ -123,22 +123,7 @@
       "minLength": 1
     },
     "harness": {
-      "type": "object",
-      "required": [
-        "name",
-        "version"
-      ],
-      "properties": {
-        "name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "version": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "additionalProperties": false
+      "$ref": "common.schema.json#/$defs/harness"
     },
     "manifest": {
       "$ref": "capabilities-response.schema.json#/allOf/1/properties/result/properties/manifest"

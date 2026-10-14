@@ -226,6 +226,24 @@
         "minimum": 0
       },
       "description": "Host-supplied counters. Omitted means unknown, not zero; SDKs do not infer values."
+    },
+    "harness": {
+      "type": "object",
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
     }
   }
 }

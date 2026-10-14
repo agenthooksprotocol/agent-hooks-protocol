@@ -1,7 +1,7 @@
 # Execution payload encoding
 
 This binding defines event payloads and execution/accounting semantics. The schemas are the canonical wire grammar.
-Common envelope fields remain `id`, URI `source`, `type`, and timestamp `time`.
+Common envelope fields are `id`, URI `source`, `type`, timestamp `time`, and `harness: {name, version}`.
 `trigger` names the session/turn initiation cause; `source` remains event identity.
 Wire timestamps use RFC 3339 syntax and calendar constraints; source uses RFC 3986
 absolute-URI grammar. Compact ISO timestamps, whitespace, invalid escapes and
@@ -19,7 +19,7 @@ conditional constraints are defined in the corresponding schema.
 
 | Event | Required fields beyond the common envelope |
 | --- | --- |
-| `session.start` | `session`, `trigger`, `harness`, `permissionMode`, `manifest`, `items` |
+| `session.start` | `session`, `trigger`, `permissionMode`, `manifest`, `items` |
 | `session.end` | `session`, `outcome`, `reason` |
 | `tool.before` | `call`, `tool`, `path` |
 | `tool.after` | `outcome`, `execution`, `call`, `tool`, `path`, `items` |

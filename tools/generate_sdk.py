@@ -78,8 +78,9 @@ for language, destination, filename in targets:
                 canonical.parent.mkdir(parents=True, exist_ok=True)
                 canonical.write_text(schema_bundle)
         if language == 'typescript':
-            for source in sorted(output.glob('*.ts')):
-                subprocess.run(['npx', '--yes', 'prettier@3.6.2', '--no-config', '--no-editorconfig', '--write', str(source)], check=True)
+            sources = sorted(output.glob('*.ts'))
+            if sources:
+                subprocess.run(['npx', '--yes', 'prettier@3.6.2', '--no-config', '--no-editorconfig', '--write', *map(str, sources)], check=True)
         elif language == 'python':
             subprocess.run([sys.executable, '-m', 'ruff', 'format', '--isolated', '--target-version', 'py311', *map(str, sorted(output.rglob('*.py')))], check=True)
         lock = {'sourceRepository': 'agenthooksprotocol/agent-hooks-protocol', 'sourceCommit': source_commit, 'schemaRevision': 'draft', 'protocolVersion': 'draft', 'generatorVersion': '0.1.0', 'language': language, 'schemaManifestSha256': manifest_hash, 'documents': manifest['documents']}

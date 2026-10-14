@@ -59,6 +59,7 @@ def envelopes(name,request,result,selection="body"):
         if selection!='omit':meta[stage]=item
         if stage=='result':meta['action']=payload.get('action','accept') if payload.get('action') in ('accept','decline','cancel') else 'accept'
         event={'id':name+':'+stage,'source':'urn:spoofed:human','time':'2026-09-15T12:00:00Z',
+            'harness':{'name':'example-harness','version':'1.0.0'},
             'type':'user.elicitation.'+stage,'session':{'id':name},'elicitation':meta}
         if stage=='result':event['parentEventId']=name+':request'
         envelope={'jsonrpc':'2.0','id':event['id'],'method':'hooks/intercept','params':{'protocolVersion':'draft','event':event,'capabilities':{'effects':[]}}}

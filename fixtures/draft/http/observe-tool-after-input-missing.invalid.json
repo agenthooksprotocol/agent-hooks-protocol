@@ -6,6 +6,7 @@
     "event": {
       "id": "evt_observe_after_003",
       "source": "https://harness.example/runtime/42",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "type": "tool.after",
       "time": "2026-08-24T08:51:15Z",
       "session": {

@@ -428,7 +428,7 @@ def transport_scenarios(scenarios, transport):
 
 
 def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,mode="none",issuer=None,suite="lifecycle",verifier=None,upload_override=None,receiver_checks=True):
-    label=f'{client_lang}->{server_lang}/{transport}/{mode}'
+    label=group_key((client_lang, server_lang, transport, mode))
     if transport=='stdio' and mode!='none':
         raise ValueError('stdio uses process trust, not HTTP authentication')
     client_cwd,client=adapters[client_lang]; server_cwd,server=adapters[server_lang]
@@ -485,16 +485,115 @@ def run_group(client_lang,server_lang,transport,adapters,scenario_file,timeout,m
         row['inapplicable']=inapplicable
         return row
 
-def main():
-    p=argparse.ArgumentParser(); p.add_argument('--root',type=Path,default=ROOT); p.add_argument('--scenarios',type=Path,default=HERE/'lifecycle-scenarios.json'); p.add_argument('--client',choices=LANGUAGES); p.add_argument('--server',choices=LANGUAGES); p.add_argument('--transport',choices=('http','stdio')); p.add_argument('--auth',choices=MODES); p.add_argument('--workers',type=int,default=4); p.add_argument('--timeout',type=int,default=90); p.add_argument('--output',type=Path,default=HERE/'lifecycle-matrix-results.json'); args=p.parse_args()
-    adapters=discover(args.root.resolve()); groups=[(c,s,t,mode) for c in ([args.client] if args.client else LANGUAGES) for s in ([args.server] if args.server else LANGUAGES) for t in ([args.transport] if args.transport else ('http','stdio')) for mode in ([args.auth] if args.auth else MODES) if t=='http' or mode=='none']
-    if not groups:p.error('no applicable groups: stdio uses --auth none')
-    results=[]
+def group_key(group):
+    client, server, transport, mode = group
+    return f'{client}->{server}/{transport}/{mode}'
+
+
+def partition_groups(client=None, server=None, transport=None, auth=None,
+                     shard_index=0, shard_count=1):
+    """Stable round-robin partition of the original complete Cartesian grid."""
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError('require shard-count > 0 and 0 <= shard-index < shard-count')
+    groups = [(c, s, t, mode)
+              for c in ([client] if client else LANGUAGES)
+              for s in ([server] if server else LANGUAGES)
+              for t in ([transport] if transport else ('http', 'stdio'))
+              for mode in ([auth] if auth else MODES)
+              if t == 'http' or mode == 'none']
+    return groups, groups[shard_index::shard_count]
+
+
+def coverage_inventory(groups, assigned, scenarios, results):
+    expected_keys = [group_key(group) for group in groups]
+    assigned_keys = [group_key(group) for group in assigned]
+    completed_keys = [row['group'] for row in results]
+    inventory = []
+    for group in groups:
+        selected, excluded = transport_scenarios(scenarios, group[2])
+        inventory.append({'group': group_key(group),
+                          'scenario_ids': [scenario['id'] for scenario in selected],
+                          'inapplicable_scenario_ids': [scenario['id'] for scenario in excluded]})
+    by_key = {row['group']: row for row in inventory}
+    scenario_complete = all(
+        row.get('scenarios') == len(by_key[row['group']]['scenario_ids'])
+        and sorted(item['id'] for item in row.get('inapplicable', []))
+            == sorted(by_key[row['group']]['inapplicable_scenario_ids'])
+        for row in results if row['group'] in by_key)
+    return {'expected_group_keys': expected_keys, 'assigned_group_keys': assigned_keys,
+            'completed_group_keys': sorted(completed_keys),
+            'expected_inventory': inventory,
+            'complete': (Counter(completed_keys) == Counter(assigned_keys)
+                         and scenario_complete and all(row['passed'] for row in results))}
+
+
+def positive_int(value):
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError('must be positive')
+    return number
+
+
+def nonnegative_int(value):
+    number = int(value)
+    if number < 0:
+        raise argparse.ArgumentTypeError('must be nonnegative')
+    return number
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser()
+    p.add_argument('--root', type=Path, default=ROOT)
+    p.add_argument('--scenarios', type=Path)
+    p.add_argument('--suite', choices=('lifecycle', 'observation'))
+    p.add_argument('--client', choices=LANGUAGES)
+    p.add_argument('--server', choices=LANGUAGES)
+    p.add_argument('--transport', choices=('http', 'stdio'))
+    p.add_argument('--auth', choices=MODES)
+    p.add_argument('--workers', type=positive_int, default=4)
+    p.add_argument('--timeout', type=positive_int, default=90)
+    p.add_argument('--shard-index', type=nonnegative_int, default=0)
+    p.add_argument('--shard-count', type=positive_int, default=1)
+    p.add_argument('--output', type=Path, default=HERE/'lifecycle-matrix-results.json')
+    args = p.parse_args(argv)
+    if args.suite is None:
+        args.suite = ('observation' if args.scenarios is not None
+                      and args.scenarios.name == 'observation-chain-scenarios.json' else 'lifecycle')
+    if args.scenarios is None:
+        args.scenarios = HERE / ('observation-chain-scenarios.json' if args.suite == 'observation'
+                                 else 'lifecycle-scenarios.json')
+    try:
+        expected, groups = partition_groups(args.client, args.server, args.transport,
+                                           args.auth, args.shard_index, args.shard_count)
+    except ValueError as error:
+        p.error(str(error))
+    if not expected:
+        p.error('no applicable groups: stdio uses --auth none')
+    adapters = discover(args.root.resolve())
+    scenarios = load(args.scenarios)['scenarios']
+    results = []
     with Issuer() as issuer, ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures=[pool.submit(run_group,c,s,t,adapters,args.scenarios.resolve(),args.timeout,mode,issuer) for c,s,t,mode in groups]
-        for f in as_completed(futures):
-            result=f.result(); results.append(result); print(('PASS ' if result['passed'] else 'FAIL ')+result['group']+(' '+ '; '.join(result['errors'][:3]) if result['errors'] else ''),flush=True)
-    summary={'scenarioCount':len(load(args.scenarios)['scenarios']),'groups':len(results),'passed':sum(r['passed'] for r in results),'scenarioExecutions':sum(r['scenarios'] for r in results if r['passed']),'receiverProbes':sum(r.get('receiverProbes',0) for r in results if r['passed']),'auth':'HTTP all selected modes; stdio process trust; independent bearer upload auth','results':sorted(results,key=lambda r:r['group'])}; write(args.output,summary)
+        futures = [pool.submit(run_group, c, s, t, adapters, args.scenarios.resolve(),
+                               args.timeout, mode, issuer) for c, s, t, mode in groups]
+        for future in as_completed(futures):
+            result = future.result()
+            results.append(result)
+            print(('PASS ' if result['passed'] else 'FAIL ') + result['group'] +
+                  (' ' + '; '.join(result['errors'][:3]) if result['errors'] else ''), flush=True)
+    coverage = coverage_inventory(expected, groups, scenarios, results)
+    summary = {'suite': args.suite, 'shard_index': args.shard_index,
+               'shard_count': args.shard_count, 'coverage': coverage,
+               'scenario_sha256': hashlib.sha256(args.scenarios.read_bytes()).hexdigest(),
+               'scenarioCount': len(scenarios), 'groups': len(results),
+               'passed': sum(r['passed'] for r in results),
+               'scenarioExecutions': sum(r['scenarios'] for r in results if r['passed']),
+               'receiverProbes': sum(r.get('receiverProbes', 0) for r in results if r['passed']),
+               'auth': 'HTTP all selected modes; stdio process trust; independent bearer upload auth',
+               'results': sorted(results, key=lambda r: r['group'])}
+    write(args.output, summary)
     print(f"{summary['passed']}/{summary['groups']} groups; {summary['scenarioExecutions']} lifecycle scenario executions")
-    return 0 if summary['passed']==summary['groups'] else 1
-if __name__=='__main__':raise SystemExit(main())
+    return 0 if coverage['complete'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

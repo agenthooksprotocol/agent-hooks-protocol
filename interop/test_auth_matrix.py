@@ -23,7 +23,7 @@ import io
 from jsonschema import Draft202012Validator
 from urllib.parse import urlencode, urlsplit
 import auth
-from matrix import equal, stop, receipt_matches
+from matrix import equal, stop, receipt_matches, load_adapter
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -151,7 +151,7 @@ def tls(identity=None):
 @contextmanager
 def server(language, mode):
     sdk = ROOT / f'{language}-sdk'
-    manifest = json.loads((sdk / 'interop/adapter.json').read_text())
+    manifest = load_adapter(sdk / 'interop/adapter.json')
     with tempfile.TemporaryDirectory(prefix='ahp-negative-auth-') as directory:
         directory = Path(directory)
         ready, config = directory / 'ready.json', directory / 'config.json'

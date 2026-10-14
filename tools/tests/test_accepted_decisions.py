@@ -25,6 +25,7 @@ class AcceptedDecisionTests(unittest.TestCase):
 
     def event(self):
         return {'id': 'event', 'source': 'urn:test', 'type': 'tool.before',
+                'harness': {'name': 'example-harness', 'version': '1.0.0'},
                 'time': '2026-09-15T12:00:00Z', 'call': {'id': 'call'},
                 'tool': {'name': 'test', 'kind': 'custom', 'input': {}, 'origin': 'native'},
                 'path': 'native'}

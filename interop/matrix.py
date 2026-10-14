@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 from collections import Counter
 import json
+import hashlib
 import os
 from pathlib import Path
 import signal
@@ -287,23 +288,85 @@ def run_group(client, server, scenarios, scenario_file, issuer, timeout):
                 output.append(dict(**base, status=status, errors=errors, results=rows))
     return output
 
-def main():
+def pair_key(pair):
+    client, server = pair
+    return f"{client['language']}->{server['language']}"
+
+
+def partition_pairs(adapters, clients=None, servers=None, shard_index=0, shard_count=1):
+    """Partition complete client/server pairs, never their scenario/auth grid."""
+    if shard_count < 1 or not 0 <= shard_index < shard_count:
+        raise ValueError('require shard-count > 0 and 0 <= shard-index < shard-count')
+    pairs = [(c, s) for c in adapters for s in adapters
+             if (not clients or c['language'] in clients)
+             and (not servers or s['language'] in servers)]
+    return pairs, pairs[shard_index::shard_count]
+
+
+def coverage_inventory(pairs, assigned, scenarios, groups):
+    scenario_ids = [scenario['id'] for scenario in scenarios]
+    combinations = [(transport, mode) for transport in ('http', 'stdio') for mode in MODES]
+    expected_keys = [pair_key(pair) for pair in pairs]
+    assigned_keys = [pair_key(pair) for pair in assigned]
+    rows_by_pair = {}
+    for row in groups:
+        key = f"{row['client']}->{row['server']}"
+        rows_by_pair.setdefault(key, []).append(row)
+    completed = []
+    for key in assigned_keys:
+        rows = rows_by_pair.get(key, [])
+        if Counter((row['transport'], row['auth']) for row in rows) != Counter(combinations):
+            continue
+        valid = True
+        for row in rows:
+            status = ('inapplicable' if row['transport'] == 'stdio' and row['auth'] != 'none'
+                      else 'passed')
+            if (row['status'] != status or row.get('errors') != []
+                    or Counter(result['id'] for result in row['results']) != Counter(scenario_ids)
+                    or any(result['status'] != status for result in row['results'])):
+                valid = False
+        if valid:
+            completed.append(key)
+    transport_inventory = [
+        {'transport': transport, 'auth': mode,
+         'status': 'inapplicable' if transport == 'stdio' and mode != 'none' else 'passed',
+         'scenario_ids': [] if transport == 'stdio' and mode != 'none' else scenario_ids,
+         'inapplicable_scenario_ids': scenario_ids if transport == 'stdio' and mode != 'none' else []}
+        for transport, mode in combinations]
+    return {'expected_group_keys': expected_keys, 'assigned_group_keys': assigned_keys,
+            'completed_group_keys': sorted(completed),
+            'expected_inventory': [{'group': key, 'scenario_ids': scenario_ids,
+                                    'inapplicable_scenario_ids': [],
+                                    'transport_auth_inventory': transport_inventory}
+                                   for key in expected_keys],
+            'complete': (Counter(completed) == Counter(assigned_keys)
+                         and set(rows_by_pair) <= set(assigned_keys))}
+
+
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--clients', nargs='+')
     parser.add_argument('--servers', nargs='+')
+    parser.add_argument('--suite', choices=('matrix',), default='matrix')
+    parser.add_argument('--shard-index', type=int, default=0)
+    parser.add_argument('--shard-count', type=int, default=1)
     parser.add_argument('--output', type=Path, default=HERE/'matrix-results.json')
     parser.add_argument('--jobs', type=int, default=4)
     parser.add_argument('--timeout', type=float, default=120)
     parser.add_argument('--relay', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--config', help=argparse.SUPPRESS)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.relay:
         relay(args.config)
         return 0
+    if args.shard_count < 1 or not 0 <= args.shard_index < args.shard_count:
+        parser.error('require shard-count > 0 and 0 <= shard-index < shard-count')
     adapters = []
     for path in sorted(HERE.parent.parent.glob('*-sdk/interop/adapter.json')):
         adapters.append(load_adapter(path))
     names = {a['language'] for a in adapters}
+    if len(names) != len(adapters):
+        parser.error('Duplicate adapter languages')
     for selected in (args.clients, args.servers):
         if selected and not set(selected) <= names:
             parser.error('Unknown language; available: ' + ', '.join(sorted(names)))
@@ -312,16 +375,22 @@ def main():
     scenarios = load(HERE/'scenarios.json')['scenarios']
     if len({s['id'] for s in scenarios}) != len(scenarios):
         parser.error('Duplicate scenario IDs')
+    expected, assigned = partition_pairs(adapters, args.clients, args.servers,
+                                         args.shard_index, args.shard_count)
     with Issuer() as issuer, concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         futures = [pool.submit(run_group, c, s, scenarios, HERE/'scenarios.json', issuer, args.timeout)
-                   for c in adapters for s in adapters
-                   if (not args.clients or c['language'] in args.clients) and (not args.servers or s['language'] in args.servers)]
+                   for c, s in assigned]
         groups = [row for future in futures for row in future.result()]
     groups.sort(key=lambda r: (r['client'], r['server'], r['transport'], r['auth']))
     summary = summarize(groups)
-    write(args.output, dict(version=1, scenarioCount=len(scenarios), summary=summary, groups=groups))
+    coverage = coverage_inventory(expected, assigned, scenarios, groups)
+    write(args.output, dict(version=1, suite=args.suite, shard_index=args.shard_index,
+                            shard_count=args.shard_count, coverage=coverage,
+                            scenario_sha256=hashlib.sha256((HERE/'scenarios.json').read_bytes()).hexdigest(),
+                            scenarioCount=len(scenarios), summary=summary, groups=groups))
     print(json.dumps(summary, sort_keys=True))
-    return int(any(r['status'] == 'failed' for r in groups))
+    return int(not coverage['complete'])
+
 
 if __name__ == '__main__':
     sys.exit(main())

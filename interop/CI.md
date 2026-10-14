@@ -4,10 +4,11 @@ Configure branch protection (or a repository ruleset) to require the **SDK
 integration** job from `.github/workflows/sdk-integration.yml`. Every pull
 request runs a cheap scope check. SDK compatibility runs when the PR changes
 `spec/`, `schema/`, `fixtures/`, `conformance/`, `interop/`, `tools/`, or the
-`ci.yml`, `sdk-integration.yml`, or `sync-sdks.yml` workflows. Manual dispatch
+`ci.yml`, `sdk-integration.yml`, or `sync-sdks.yml` workflows, or shared
+`.github/actions/` setup actions. Manual dispatch
 always runs compatibility.
 
-Documentation-only and website changes skip SDK resolution and both shards.
+Documentation-only and website changes skip SDK resolution and compatibility jobs.
 The required aggregate check still runs and succeeds only if the scope check
 succeeded and those jobs were deliberately skipped. Scope-check failures and
 required shard failures remain failures, not successful skips. Workflow-level
@@ -20,51 +21,70 @@ The proposed spec checkout is `agent-hooks-protocol/`; `python-sdk/`,
 `typescript-sdk/`, `go-sdk/`, and `rust-sdk/` are its siblings. GitHub checks out
 the pull request's proposed merge tree, not the default branch's generator.
 
-1. A single **Resolve SDK revisions** job snapshots all four SDK `main` heads
-   through the GitHub API before the matrix starts. Both shards use
-   the same immutable outputs, never separate floating-ref lookups. Repository
-   names, paths, and full 40-character SHAs are strictly validated. The runtime
-   `sdk-revisions.json` is uploaded both by the resolver and in each shard's
-   reports. The runner checks SDK checkout HEADs against that runtime manifest.
-2. Set up Python 3.11, Node 20 with pnpm 10.18.3, Go 1.27, and Rust 1.88.0 with
-   rustfmt. Install the Python harness's JSON Schema dependency.
-3. Run `python3 tools/generate_sdk.py --all` from the proposed spec. This writes
-   generated codecs, canonical schemas, and source locks into those siblings.
-4. Create the Python SDK’s `.venv` (used by its adapter commands), install and test Python; install, build, and test the pnpm workspace; build,
-   vet, and test Go; and build all Rust targets and run Rust tests with its
-   committed lockfile. TypeScript uses `pnpm install --frozen-lockfile` and the
-   repository's ordered workspace build, not guessed `dist` paths.
-5. Run `python3 tools/run_sdk_integration.py --reports-dir PATH --jobs 4 --suite-group GROUP` in each of the disjoint `core` and `extended` shards. The aggregate **SDK integration** job requires both shards to succeed; local runs may omit the group to run all suites.
-   The runner builds Go elicitation, compaction, and compaction-wire adapters
-   from the sibling sources into a fresh temporary directory, exports that
-   directory only to its test processes, and removes it on exit. Build failures
-   stop matrix execution and are recorded in `summary.json` prerequisites and
-   `build-go-*.log`; no global `/tmp/ahp-*` executable is reused. Standalone
-   elicitation/compaction matrices use `go -C <sdk> run ./cmd/<adapter>` when no
-   prepared directory is supplied. The runner also builds Rust's interop binary
-   and selects it for the matrix's client/server commands, avoiding nested Cargo
-   startup or build-lock contention inside the SDK's unchanged discovery deadline.
-   Its build result is recorded in prerequisites and `build-rust-interop.log`.
-   The runner discovers siblings relative to the spec, runs the cross-language
-   matrices and harness unit suites, writes reports, aggregates failures, and
-   must exit nonzero for missing adapters. It must not silently reduce the
-   language matrix when an SDK is incomplete.
-6. Always attempt to upload `reports/`, including revision metadata, generation
-   output, SDK build/test logs, and runner reports. Retain artifacts for 14 days.
+1. **Resolve SDK revisions** snapshots all four SDK `main` heads once. Every
+   job uses the same validated full commit SHAs and retains `sdk-revisions.json`.
+   Matrix runners verify checkout HEADs against that manifest.
+2. **Generate proposed SDK sources** regenerates all four SDKs, checks byte-for-byte
+   reproducibility, and uploads their source archive. Dependency and compiler
+   caches reuse downloads/builds, not successful test outcomes.
+3. SDK validation runs in parallel: one isolated Python retention regression plus five Python test-ID shards, two TypeScript
+   file shards, Go build/vet/tests, and Rust all-target/all-feature build/tests.
+   Python shards partition the complete discovered test inventory by test ID.
+   TypeScript preserves both existing test-file globs. Go disables its test-result
+   cache and retains the explicit full vet step.
+4. **Build shared integration adapters** builds the TypeScript workspace and
+   native Go/Rust adapters once. A tar archive preserves executable modes.
+   Consumers install runtime dependencies and reuse this run's binaries without
+   repeating native compilation or SDK unit tests.
+5. Integration suites run independently. Lifecycle has four disjoint group
+   shards; observation has three. Each retains every scenario applicable to its
+   assigned language-pair/transport/auth group. Interop unit tests have three
+   duration-balanced test-ID shards. The protocol matrix has two pair shards;
+   catalogue, elicitation, compaction, compaction-wire,
+   authentication, and sender isolation each run once. Protocol tool tests run
+   once in the separately required **Conformance artifacts** check.
+6. **SDK integration** requires every preparation, SDK-validation, and integration
+   job to succeed. It also verifies all unit-test inventories and lifecycle/
+   observation scenario inventories, requiring complete, disjoint shard coverage
+   and matching scenario hashes. Missing artifacts, skipped required jobs,
+   incomplete execution, and failed tests keep the check red.
 
-SDK steps and the runner use `!cancelled()` so one failing suite does not prevent
-other suites from producing diagnostics. There is no `continue-on-error`; Bash
-pipefail preserves failures through `tee`. A failing setup, generator, SDK build,
-SDK test, missing adapter, or matrix keeps the job red. Cancellation stops further
-work. Shard jobs have a 150-minute limit, covering the 144-minute sum of expensive
-step limits plus setup and report upload. Python SDK tests have a 45-minute
-process deadline and 47-minute Actions step limit; integration shards have
-40-minute process deadlines and 42-minute Actions step limits. Both use a
-30-second forced-kill grace period. The integration runner kills its active suite
-session on termination so detached suite processes cannot outlive that deadline.
-Other expensive steps retain their finite limits, and
-new runs cancel older runs for the same ref. Forced termination can prevent an
-artifact upload from completing even though its step uses `always()`.
+Matrix jobs use `fail-fast: false` so a failing partition does not cancel unrelated
+partitions. Reports upload unless the run is cancelled and remain available for
+14 days. Generated sources and executable bundles remain available for one day.
+SDK-validation and integration jobs have 15-minute safety limits; Python/interop
+unit processes and individual integration suites have ten-minute deadlines,
+except the isolated Python retention regression. That test retains all 4097
+operations in one session and has a 40-minute process deadline within a 45-minute
+job. Its existing SDK canonical-schema validation is the remaining end-to-end
+latency bottleneck; more CI shards cannot shorten that indivisible test.
+These limits are safeguards, not a claim of measured end-to-end latency. The
+integration runner kills its active suite process group on termination. New runs
+cancel superseded runs for the same ref.
+
+### Local partition reproduction
+
+The default runner still builds adapters and runs all suites. Existing
+`--suite-group core` and `--suite-group extended` invocations remain supported.
+For the CI layout, build the Rust lifecycle/feature binaries and TypeScript
+workspace as above, then prepare the shared interop bundle:
+
+```sh
+python3 tools/run_sdk_integration.py --prepare-only --adapter-dir /tmp/ahp-run-bin \
+  --reports-dir /tmp/ahp-build-reports --sdk-revisions /tmp/sdk-revisions.json
+python3 tools/run_sdk_integration.py --suite lifecycle --shard-index 0 --shard-count 4 \
+  --adapter-dir /tmp/ahp-run-bin --reports-dir /tmp/ahp-lifecycle-0 \
+  --sdk-revisions /tmp/sdk-revisions.json
+```
+
+Run all four lifecycle indices and all three observation indices to reproduce
+complete coverage. Reusing `--adapter-dir` fails rather than rebuilding if any
+required executable is absent. Unit test shards emit per-test durations. Interop uses
+`tools/ci-interop-durations.json`, measured from Actions run 38451541255, to
+balance expensive tests; unknown new IDs default to one second and remain in
+the full inventory. Refresh the timing hints when tests materially change.
+Python uses `--isolate-test` for its indivisible 4097-call regression, then
+distributes every other discovered test over the remaining five shards.
 
 ## Revision selection
 

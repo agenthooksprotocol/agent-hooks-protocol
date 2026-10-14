@@ -986,6 +986,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "turn",
         "trigger",
         "items"
@@ -1078,6 +1079,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       }
     },
@@ -1088,6 +1092,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "turn",
         "outcome",
         "continuationCount",
@@ -1201,6 +1206,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       }
     },
@@ -1211,6 +1219,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "turn",
         "outcome",
         "continuationCount",
@@ -1327,6 +1336,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -1362,6 +1374,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "turn",
         "item",
         "delta",
@@ -1466,6 +1479,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       }
     },
@@ -1476,6 +1492,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "model",
         "attempt",
         "params",
@@ -1566,6 +1583,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -1609,6 +1629,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "model",
         "attempt",
         "execution",
@@ -1711,6 +1732,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -1799,6 +1823,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "model",
         "attempt",
         "execution",
@@ -1914,6 +1939,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -1937,6 +1965,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "current",
         "proposed",
         "reason"
@@ -2048,6 +2077,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -2071,6 +2103,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "previous",
         "current",
         "reason"
@@ -2161,6 +2194,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -2184,6 +2220,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "call",
         "tool",
         "path",
@@ -2304,6 +2341,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -2342,6 +2382,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "call",
         "tool",
         "path",
@@ -2466,6 +2507,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       }
     },
@@ -2476,6 +2520,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "call",
         "tool",
         "path",
@@ -2591,6 +2636,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -2619,6 +2667,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "batch",
         "calls"
       ],
@@ -2799,6 +2848,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       }
     },
@@ -2809,6 +2861,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "trigger",
         "items"
       ],
@@ -2902,6 +2955,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [
@@ -2950,6 +3006,7 @@
         "source",
         "type",
         "time",
+        "harness",
         "summary",
         "removed",
         "execution"
@@ -3058,6 +3115,9 @@
         "synthesized": {
           "type": "boolean",
           "description": "True when this object identity was synthesized by the adapter; identity remains stable for its lifetime."
+        },
+        "harness": {
+          "$ref": "common.schema.json#/$defs/harness"
         }
       },
       "allOf": [

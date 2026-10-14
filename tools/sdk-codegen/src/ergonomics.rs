@@ -197,7 +197,7 @@ pub fn input_fields(ir: &Ir, fields: &[Property], event: &str) -> Result<Vec<Inp
     let mut result = Vec::new();
     let mut names = BTreeSet::new();
     for p in fields {
-        if ["type", "source", "protocolVersion"].contains(&p.wire_name.as_str())
+        if ["type", "source", "harness", "protocolVersion"].contains(&p.wire_name.as_str())
             || (event == "session.start" && p.wire_name == "manifest")
         {
             continue;
@@ -456,6 +456,19 @@ mod tests {
             };
             count += 1;
             let projected = input_fields(&ir, &fields, event).unwrap();
+            assert!(!projected.iter().any(|f| f.property.wire_name == "harness"));
+            let harness = fields
+                .iter()
+                .find(|f| f.wire_name == "harness")
+                .unwrap_or_else(|| panic!("missing harness input for {event}"));
+            assert!(harness.required, "optional harness for {event}");
+            assert!(
+                object_fields(&ir, &harness.shape)
+                    .unwrap()
+                    .iter()
+                    .filter(|p| ["name", "version"].contains(&p.wire_name.as_str()))
+                    .all(|p| p.required)
+            );
             let paths = projected
                 .iter()
                 .map(|p| p.path.clone())
@@ -466,7 +479,7 @@ mod tests {
                 "duplicate mapping for {event}"
             );
             for p in &fields {
-                if ["source", "type", "protocolVersion"].contains(&p.wire_name.as_str())
+                if ["source", "type", "harness", "protocolVersion"].contains(&p.wire_name.as_str())
                     || (event == "session.start" && p.wire_name == "manifest")
                 {
                     continue;

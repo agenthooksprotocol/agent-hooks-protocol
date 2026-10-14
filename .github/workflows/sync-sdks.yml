@@ -18,6 +18,9 @@ concurrency:
   group: sdk-sync-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TARGET_DIR: ${{ github.workspace }}/tools/sdk-codegen/target
+
 jobs:
   generate:
     name: Verify and generate SDKs
@@ -29,17 +32,46 @@ jobs:
       - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
         with:
           components: rustfmt
+      - name: Cache Cargo builds
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/sdk-codegen/target
+          key: ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-${{ hashFiles('tools/sdk-codegen/src/**', 'tools/sdk-codegen/tests/**', 'tools/sdk-codegen/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+      - name: Cache Python tooling
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-python3.11-mypy1.20.2-ruff0.12.12
       - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: 20
           package-manager-cache: false
+      - name: Cache npm tooling
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node20-typescript5.9.3-prettier3.6.2
       - uses: actions/setup-go@v6
         with:
           go-version: "1.27.x"
           cache: false
+      - name: Cache Go tooling
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.27-${{ hashFiles('tools/sdk-codegen/tests/go-smoke.sh', 'tools/generate_sdk.py') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.27-
       - name: Install Python formatter
         run: python3 -m pip install 'ruff==0.12.12'
       - name: Verify schemas and generator
@@ -51,26 +83,6 @@ jobs:
             check --revision "$revision"
       - name: Generate SDK sources and locks
         run: python3 tools/generate_sdk.py --output-dir generated
-      - name: Test generated TypeScript
-        run: |
-          npx --yes --package typescript@5.9.3 tsc generated/typescript/public.ts \
-            --outDir "$RUNNER_TEMP/typescript" --strict --target ES2022 \
-            --module commonjs --skipLibCheck --noUncheckedIndexedAccess \
-            --exactOptionalPropertyTypes
-          node tools/sdk-codegen/tests/typescript-smoke.cjs \
-            "$RUNNER_TEMP/typescript/raw.js" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/typescript/public.js"
-      - name: Test generated NodeNext package exports
-        run: >-
-          npx --yes --package typescript@5.9.3 --call
-          'bash tools/sdk-codegen/tests/typescript-nodenext-public-smoke.sh generated/typescript "$GITHUB_WORKSPACE"'
-      - name: Test generated Python
-        run: python3 tools/sdk-codegen/tests/python-smoke.py generated/python/generated.py "$GITHUB_WORKSPACE"
-      - name: Test generated Go
-        run: tools/sdk-codegen/tests/go-smoke.sh generated/go/generated.go "$GITHUB_WORKSPACE"
-      - name: Test generated Rust
-        env:
-          AHP_RUST_TOOLCHAIN: "1.88.0"
-        run: tools/sdk-codegen/tests/rust-smoke.sh generated/rust/generated.rs "$GITHUB_WORKSPACE"
       - name: Upload generated SDKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -79,9 +91,98 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  smoke:
+    name: Verify generated ${{ matrix.language }} SDK
+    needs: generate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [typescript, python, go, rust]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: generated-sdks-${{ github.sha }}
+          path: generated
+      - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+        if: matrix.language == 'go' || matrix.language == 'rust'
+      - name: Cache Cargo builds
+        if: matrix.language == 'go' || matrix.language == 'rust'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/sdk-codegen/target
+          key: ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-${{ hashFiles('tools/sdk-codegen/src/**', 'tools/sdk-codegen/tests/**', 'tools/sdk-codegen/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-
+      - uses: actions/setup-node@v5
+        if: matrix.language == 'typescript'
+        with:
+          node-version: 20
+          package-manager-cache: false
+      - name: Cache npm tooling
+        if: matrix.language == 'typescript'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node20-typescript5.9.3-prettier3.6.2
+      - uses: actions/setup-python@v6
+        if: matrix.language == 'python'
+        with:
+          python-version: "3.11"
+      - name: Cache Python tooling
+        if: matrix.language == 'python'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-python3.11-mypy1.20.2-ruff0.12.12
+      - uses: actions/setup-go@v6
+        if: matrix.language == 'go'
+        with:
+          go-version: "1.27.x"
+          cache: false
+      - name: Cache Go tooling
+        if: matrix.language == 'go'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go1.27-${{ hashFiles('tools/sdk-codegen/tests/go-smoke.sh', 'tools/generate_sdk.py') }}
+          restore-keys: |
+            ${{ runner.os }}-go1.27-
+      - name: Test generated TypeScript
+        if: matrix.language == 'typescript'
+        run: |
+          npx --yes --package typescript@5.9.3 tsc generated/typescript/public.ts \
+            --outDir "$RUNNER_TEMP/typescript" --strict --target ES2022 \
+            --module commonjs --skipLibCheck --noUncheckedIndexedAccess \
+            --exactOptionalPropertyTypes
+          node tools/sdk-codegen/tests/typescript-smoke.cjs \
+            "$RUNNER_TEMP/typescript/raw.js" "$GITHUB_WORKSPACE" "$RUNNER_TEMP/typescript/public.js"
+      - name: Test generated NodeNext package exports
+        if: matrix.language == 'typescript'
+        run: >-
+          npx --yes --package typescript@5.9.3 --call
+          'bash tools/sdk-codegen/tests/typescript-nodenext-public-smoke.sh generated/typescript "$GITHUB_WORKSPACE"'
+      - name: Test generated Python
+        if: matrix.language == 'python'
+        run: python3 tools/sdk-codegen/tests/python-smoke.py generated/python/generated.py "$GITHUB_WORKSPACE"
+      - name: Test generated Go
+        if: matrix.language == 'go'
+        run: tools/sdk-codegen/tests/go-smoke.sh generated/go/generated.go "$GITHUB_WORKSPACE"
+      - name: Test generated Rust
+        if: matrix.language == 'rust'
+        env:
+          AHP_RUST_TOOLCHAIN: "1.88.0"
+        run: tools/sdk-codegen/tests/rust-smoke.sh generated/rust/generated.rs "$GITHUB_WORKSPACE"
+
   sync:
     name: Sync ${{ matrix.language }} SDK
-    needs: generate
+    needs: [generate, smoke]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

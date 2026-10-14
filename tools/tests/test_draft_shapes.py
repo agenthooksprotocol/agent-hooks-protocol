@@ -23,6 +23,38 @@ class DraftShapeTests(unittest.TestCase):
     def request(self):
         return json.loads((ROOT / 'fixtures/draft/http/intercept-request.valid.json').read_text())
 
+    def test_every_event_requires_originating_harness(self):
+        covered = set()
+        manifest = json.loads((ROOT / 'fixtures/draft/manifest.json').read_text())
+        invalid = [None, {}, {'name': 'agent'}, {'version': '1'},
+                   {'name': '', 'version': '1'}, {'name': 'agent', 'version': ''},
+                   {'name': 1, 'version': '1'}, {'name': 'agent', 'version': 1}]
+        for case in manifest['cases']:
+            if not case['expectedValid'] or not case['path'].endswith('.json'):
+                continue
+            value = json.loads((ROOT / case['path']).read_text())
+            event = value.get('params', {}).get('event')
+            if not isinstance(event, dict) or event['type'] in covered:
+                continue
+            covered.add(event['type'])
+            with self.subTest(event=event['type']):
+                self.assertFalse(self.errors(event, 'event'))
+                for harness in invalid:
+                    bad = copy.deepcopy(event)
+                    if harness is None:
+                        del bad['harness']
+                    else:
+                        bad['harness'] = harness
+                    self.assertTrue(self.errors(bad, 'event'), harness)
+        self.assertEqual(len(covered), 32)
+
+    def test_interception_and_observation_require_harness(self):
+        for path in ['intercept-request.valid.json', 'observe-tool-before.valid.json']:
+            request = json.loads((ROOT / 'fixtures/draft/http' / path).read_text())
+            self.assertFalse(self.errors(request))
+            del request['params']['event']['harness']
+            self.assertTrue(self.errors(request))
+
     def test_request_continuation_requires_nonnegative_accounting(self):
         request = self.request()
         request['params']['event'] = json.loads((ROOT / 'fixtures/draft/http/observe-tool-after.valid.json').read_text())['params']['event']
@@ -49,6 +81,7 @@ class DraftShapeTests(unittest.TestCase):
         request = self.request()
         for event in ['task.change.after', 'turn.end', 'model.error']:
             request['params']['event'] = {'id': request['id'], 'source': 'urn:test',
+                'harness': {'name': 'example-harness', 'version': '1.0.0'},
                 'time': '2026-09-15T12:00:00Z', 'type': event,
                 'turn': {'id': 'turn'}, 'outcome': 'completed',
                 'task': {'id': 'task', 'operation': 'update', 'change': {}}}

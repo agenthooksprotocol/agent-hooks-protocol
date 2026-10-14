@@ -12,6 +12,7 @@
     "event": {
       "id": "evt_01JQ8Z2Y6YR0H8N7Q2M3X4V5W6",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "type": "tool.before",
       "time": "2026-08-24T08:51:14Z",
       "session": {
@@ -87,6 +88,7 @@ Known effect values, pending candidates, injection state, and optional host-supp
     "event": {
       "id": "evt_01JQ8Z7BEQW0X31TVPN5AZ1YJ6",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "type": "tool.after",
       "time": "2026-08-24T08:51:15Z",
       "session": {
@@ -148,6 +150,12 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 <td>Time at which the harness created the event.</td>
 </tr>
 <tr>
+<td>`harness`</td>
+<td>object</td>
+<td>REQUIRED</td>
+<td>Originating agent harness identity: non-empty string `name` and `version`.</td>
+</tr>
+<tr>
 <td>`session`</td>
 <td>object</td>
 <td>Event-specific</td>
@@ -174,6 +182,16 @@ A notification has no JSON-RPC `id` and MUST NOT receive a JSON-RPC response.
 </table>
 `id` MUST be unique across events produced by a harness. UUIDv4, UUIDv7, and suitably generated ULIDs are acceptable examples; the protocol does not require a specific algorithm.
 `source` SHOULD remain stable for the life of the harness installation. It MUST NOT contain access tokens, user secrets, raw prompts, or other sensitive data.
+<a id="AHP-CORE-005"></a>
+**AHP-CORE-005 — MUST.** Every event contains `harness` with non-empty string `name` and `version` identifying the originating agent harness.
+
+An adapter MUST report the originating harness, not its own identity. The version
+identifies the harness product version; it is not the AHP protocol version and
+need not use semantic versioning. This metadata is not authentication or
+capability negotiation. Backends MUST NOT infer capabilities from it. The field
+is required for both interception and observation, including events received
+without a preceding `session.start`.
+
 ### Session object
 <table>
 <tr>

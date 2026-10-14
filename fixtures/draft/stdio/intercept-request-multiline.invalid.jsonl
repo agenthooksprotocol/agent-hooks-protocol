@@ -7,6 +7,7 @@
     "event": {
       "id": "evt_stdio_bad_framing",
       "source": "urn:uuid:5b7de29e-a9e0-41a8-bf26-d94b05f0656d",
+      "harness": {"name": "example-harness", "version": "1.0.0"},
       "type": "tool.before",
       "time": "2026-08-24T08:51:14Z",
       "session": {

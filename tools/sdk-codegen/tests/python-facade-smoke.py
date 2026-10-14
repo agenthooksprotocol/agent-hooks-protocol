@@ -169,7 +169,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             server=models.ExecutionEventMcpServer(id="server"), tool_name="read",
         )
         event = models.ToolBeforeEvent(
-            id="event", source="test", time="2026-01-01T00:00:00Z", path="native",
+            id="event", source="test", time="2026-01-01T00:00:00Z",
+            harness=models.Harness(name="example-harness", version="1.0.0"), path="native",
             call=models.ToolBeforeEventCall(id="call"),
             tool=models.ExecutionEventTool(name="read", origin="mcp", input={}, mcp=mcp),
         )
@@ -186,7 +187,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             hydrated = models.ToolBeforeEvent.from_dict(dict(event))
             assert max(checks.values()) == 1, checks
             checks.clear()
-            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], time=event["time"], path=event["path"], call=event.call, tool=event.tool)
+            reconstructed = models.ToolBeforeEvent(id=event["id"], source=event["source"], harness=event.harness, time=event["time"], path=event["path"], call=event.call, tool=event.tool)
             assert reconstructed.tool.mcp.connection.gaps[0].reason == "unavailable"
         finally:
             wire._check_node_impl = original_check
@@ -216,7 +217,8 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
         id="item", role="user", parts=[models.TextBodyPart(id="part", text="inline")], future="preserved",
     )
     compact = models.ExecutionEventContextCompactBefore(
-        id="event", source="test", time="2026-01-01T00:00:00Z", trigger="auto", items=[visible],
+        id="event", source="test", time="2026-01-01T00:00:00Z",
+        harness=models.Harness(name="example-harness", version="1.0.0"), trigger="auto", items=[visible],
     )
     assert compact.items_[0].role == "user"
     assert wire.parse_execution_event(compact)["ok"]
@@ -275,7 +277,7 @@ def check_structured_consumers(directory: Path, models, wire) -> None:
             'assert_type(custom.transport, str)',
             'visible = m.ModelVisibleItem(id="item", role="user", parts=[])',
             'assert_type(visible.role, str)',
-            'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", time="now", trigger="auto", items=[visible])',
+            'compact = m.ExecutionEventContextCompactBefore(id="event", source="test", harness=m.Harness(name="example-harness", version="1.0.0"), time="now", trigger="auto", items=[visible])',
             'assert_type(compact.items_[0].role, str)',
             'm.ModelVisibleItem(id="item", role=42, parts=[])  # type: ignore[arg-type]',
             'm.ModelVisibleItem(id="item", parts=[])  # type: ignore[call-arg]',
@@ -439,7 +441,7 @@ def check_owned_host_inputs(models, event, wire) -> None:
     untouched = event.ToolBeforeInput(call_id="call", path="native", input=opaque, name="test", origin="native", native=opaque)
     assert untouched["input"] is opaque and untouched["native"] is opaque
     assert untouched.content_sources == {}
-    nested = event.SessionStartInput(session={}, trigger="startup", harness={}, permission_mode="example",
+    nested = event.SessionStartInput(session={}, trigger="startup", permission_mode="example",
         items=[{"id": "m1", "role": "user", "parts": parts},
                {"id": "m2", "role": "user", "parts": [retained]}])
     assert nested.content_sources == {"session.start.items_parts[0][1]": source,
@@ -684,14 +686,13 @@ def main() -> None:
     host_facts = {
         "session": session_event["session"],
         "trigger": session_event["trigger"],
-        "harness": session_event["harness"],
         "permission_mode": session_event["permissionMode"],
         "items": session_event["items"],
     }
     session_input = event.SessionStartInput(**host_facts)
     assert session_input == {
         "session": host_facts["session"], "trigger": host_facts["trigger"],
-        "harness": host_facts["harness"], "permissionMode": host_facts["permission_mode"],
+        "permissionMode": host_facts["permission_mode"],
         "items": host_facts["items"],
     }
     # Host adapters, not indexed compatibility binders, own source extraction.
@@ -701,7 +702,7 @@ def main() -> None:
     assert "context.compact.before.instructions" not in boundaries.CONTENT_SOURCE_SLOTS
     before_input = event.ToolBeforeInput(call_id="call", name="run", origin="native", path="/tool", input={})
     assert not hasattr(before_input, "bind_items_source")
-    sdk_fields = {"manifest", "type", "source", "protocol_version"}
+    sdk_fields = {"manifest", "type", "source", "harness", "protocol_version"}
     assert sdk_fields.isdisjoint(inspect.signature(event.SessionStartInput).parameters)
     assert inspect.signature(event.SessionStart).parameters["manifest"].default is inspect.Parameter.empty
     envelope = {key: session_event[key] for key in ("id", "source", "time")}
@@ -817,6 +818,7 @@ def main() -> None:
     # comparing enum values to strings alone misses parser preflight rejection.
     occurrence = event.ToolBefore(
         id="enum-event", source="urn:example:facade", time="2026-08-24T08:51:14Z",
+        harness=event.Harness(name="example-harness", version="1.0.0"),
         call=tool.Call(id="enum-call"), tool=tool.Tool.from_dict(input.to_wire()["tool"]), path=tool.Path.NATIVE,
     )
     request = models.InterceptRequest(

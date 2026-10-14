@@ -288,6 +288,17 @@
       "profile": "base",
       "text": "Within the exact advertised target and operation authority, list replacement substitutes the whole list, list merge appends in order without deduplication, and object merge is shallow only when the target and supplied value are objects; accepted modifications chain serially with whole-response atomic acceptance.",
       "textSha256": "68335e7380d400b594219927b935dabbeae35d0a15fbdc29bc586feb35bc495f"
+    },
+    {
+      "id": "AHP-CORE-005",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/events.md",
+      "anchor": "AHP-CORE-005",
+      "section": "Common event fields",
+      "profile": "base",
+      "text": "Every event contains `harness` with non-empty string `name` and `version` identifying the originating agent harness.",
+      "textSha256": "276606913b642aa4fe809b0ed6eab5c5b29e9c16ac0085a7305499ab32b790a7"
     }
   ]
 }

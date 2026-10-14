@@ -29,6 +29,7 @@ const canonicalTrigger: string = canonicalCompact.trigger;
 const canonicalExtras: JsonValue | undefined = canonicalCompact.vendorExtra;
 const compactWithOpaqueExtras: ExecutionEventContextCompactBefore = {
  id: 'compact', type: 'context.compact.before', source: 'test', time: 'now',
+ harness: {name: 'agent', version: '1'},
  trigger: 'manual', items: [], vendorExtra: {nested: [true, null, 'opaque']},
 };
 // @ts-expect-error canonical compact-before is not a boolean

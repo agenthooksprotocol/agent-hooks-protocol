@@ -19,7 +19,11 @@ A conformance claim records:
 5. A harness validates portable registration before use and sends an event to a backend only for an exact event-name subscription whose mode matches the delivery method.
 6. A harness preserves event identity across retries.
 7. A backend returns a defined JSON-RPC error for unsupported request semantics and sends no response to a notification.
-8. No successful AHP result weakens host authorization, permission, approval, or sandbox controls.
+8. Every event includes `harness` with non-empty string `name` and `version`,
+   including observation and interception without a preceding `session.start`.
+   Adapters report the originating harness rather than adapter identity; this
+   metadata is not authentication or capability negotiation.
+9. No successful AHP result weakens host authorization, permission, approval, or sandbox controls.
 
 A Base Protocol claim is incomplete without a capability-profile claim and at least one transport-binding claim.
 
