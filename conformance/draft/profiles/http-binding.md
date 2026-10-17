@@ -36,3 +36,29 @@ Deployment-specific workload/federation and client-certificate tests MAY supply
 additional security evidence, but MUST NOT be reported as portable AHP
 authentication variants. Their HTTP/TLS or credential-provider configuration is
 outside AHP; the general security and timing requirements still apply.
+
+## Registration header coverage
+
+A conforming harness MUST demonstrate AHP-REG-003 through its public registration
+API and a local request receiver, not only a low-level HTTP constructor:
+
+- Literal metadata, empty strings, absent/empty maps, env/ref sources, ignored
+  source extensions, no interpolation, and per-dispatch secret rotation.
+- Invalid names, case-insensitive duplicates, every reserved exact name/prefix,
+  malformed source objects, and non-ASCII/control values rejected before I/O.
+- Missing/empty/unsupported/failed sources and invalid resolved values producing
+  zero event requests, without exposing values in errors or logs.
+- Deadline/cancellation during resolution, one resolution per dispatch, reuse
+  across already-permitted auth retries, and both interception failure policies.
+- Interception and observation delivery, with best-effort observation errors.
+- Case-insensitive merging of programmatic defaults and registration values,
+  registration precedence, and protection against injected-client overrides.
+- No forwarding to same-origin or cross-origin redirects, authentication or
+  capability discovery, token exchange, uploads, or another backend.
+- Finite aggregate limits with explicit errors rather than truncation, and
+  browser/CORS failures surfaced rather than silently dropping headers.
+
+The registration fixtures exercise schema-representable structure only. Reserved
+names, case-folded duplicates, full-string validation, resolution, redaction,
+and request isolation require runtime evidence; passing schema fixtures alone
+does not establish header support.

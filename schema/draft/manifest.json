@@ -246,7 +246,9 @@
       "schema/draft/intercept-response.schema.json#/$defs/WorkspaceChangeBeforeEffect": "WorkspaceChangeBeforeEffect",
       "schema/draft/intercept-response.schema.json#/$defs/WorkspaceChangeBeforeInterceptResponse": "WorkspaceChangeBeforeInterceptResponse",
       "schema/draft/mcp-elicitation.schema.json#/$defs/FormAnswerValue": "FormAnswerValue",
-      "schema/draft/common.schema.json#/$defs/harness": "Harness"
+      "schema/draft/common.schema.json#/$defs/harness": "Harness",
+      "schema/draft/registration.schema.json#/$defs/httpHeaderSource": "HttpHeaderSource",
+      "schema/draft/registration.schema.json#/$defs/httpHeaderValue": "HttpHeaderValue"
     }
   },
   "documents": [
@@ -344,7 +346,7 @@
     },
     {
       "path": "schema/draft/registration.schema.json",
-      "sha256": "f8271c7d8d0e38fd970fc443d49f39427b0e88527a3f69b908efc983501abedb"
+      "sha256": "92dda763bb92c543b6ba3f35ee05506461c94015b38768bb3336692934fd661c"
     },
     {
       "path": "schema/draft/schema.json",

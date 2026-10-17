@@ -289,3 +289,13 @@ bindings share logical messages; evidence for one deployment binding does not
 establish the others. External approval remains bounded by interception: there is
 no defer or reverse-resolution channel, and mandatory approval must fail closed.
 Late approval cannot authorize a later attempt.
+
+### Registration header isolation
+
+[HTTP registration headers](base/registration.md#AHP-REG-003) are trusted,
+endpoint-bound event configuration, not capability output or a new identity
+mechanism. Authentication exclusively supplies `Authorization`. Header sources
+MUST NOT be selected by challenges, discovery documents, or redirects. Event
+header values MUST NOT enter authentication discovery, token requests, upload
+requests, or shared client defaults. Failed resolution MUST NOT cause fallback
+to another identity or delivery with missing configured headers.
