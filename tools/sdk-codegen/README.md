@@ -51,6 +51,16 @@ TypeScript uses structural unions and quoted wire-property names. Parentheses pr
 
 Runtime loop indexes, schema-descriptor `variants`, generic parameters, and underscore-prefixed Python implementation hints are not public naming defects. Whole-output regression gates also inspect public declarations, enum arms, facade methods, parameters, and aliases.
 
+### HTTP registration header order in Go
+
+`HttpTransport.headers` is an order-sensitive configuration map under AHP-REG-003.
+The Go decoder reads its original JSON member sequence and collapses
+case-insensitive duplicates before constructing the public map, retaining the
+last member's spelling and value. Earlier source references are absent from the
+typed configuration and cannot reach runtime resolution. This intentional
+normalization is the exception to unchanged configuration round-trips; ordinary
+maps and unknown extension properties retain their existing behavior.
+
 ### Go nullability and presence
 
 A conservatively recognized `null | T` is `Nullable[T]`; an optional nullable property is `Optional[Nullable[T]]`. These dimensions are independent:
