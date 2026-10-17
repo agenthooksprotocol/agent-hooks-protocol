@@ -494,16 +494,24 @@ impl<'a> Generator<'a> {
                 "\tif raw, ok := fields[{}]; ok {{",
                 go_string(&field.wire_name)?
             )?;
+            // AHP-REG-003 assigns meaning to header member order. Ordinary Go
+            // maps discard it, so collapse case-insensitive duplicates while
+            // the original JSON token order is still available.
+            let decoder = if name == "HttpTransport" && field.wire_name == "headers" {
+                "decodeHTTPHeaders"
+            } else {
+                "decodeValidatedJSON"
+            };
             if field.required {
                 writeln!(
                     declaration,
-                    "\t\tif err := decodeValidatedJSON(raw, &decoded.{}); err != nil {{",
+                    "\t\tif err := {decoder}(raw, &decoded.{}); err != nil {{",
                     field.field_name
                 )?;
             } else {
                 writeln!(
                     declaration,
-                    "\t\tdecoded.{}.Present = true\n\t\tif err := decodeValidatedJSON(raw, &decoded.{}.Value); err != nil {{",
+                    "\t\tdecoded.{}.Present = true\n\t\tif err := {decoder}(raw, &decoded.{}.Value); err != nil {{",
                     field.field_name, field.field_name
                 )?;
             }
@@ -1235,6 +1243,55 @@ func validateModelJSON(schema *schemaNode, input []byte) error {
 			return fmt.Errorf("%s: %s: %s", diagnostic.Path, diagnostic.Code, diagnostic.Message)
 		}
 	}
+	return nil
+}
+
+// decodeHTTPHeaders collapses case-insensitive duplicates in source member
+// order before hydrating the winning values. Preserve the winner's spelling.
+// This prevents later map iteration or JSON sorting from changing precedence.
+func decodeHTTPHeaders[T any](input []byte, target *map[string]T) error {
+	decoder := json.NewDecoder(bytes.NewReader(input))
+	start, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	if start != json.Delim('{') {
+		return fmt.Errorf("headers must be a JSON object")
+	}
+	fields := make(map[string]json.RawMessage)
+	names := make(map[string]string)
+	for decoder.More() {
+		token, err := decoder.Token()
+		if err != nil {
+			return err
+		}
+		name, ok := token.(string)
+		if !ok {
+			return fmt.Errorf("header name must be a string")
+		}
+		var raw json.RawMessage
+		if err := decoder.Decode(&raw); err != nil {
+			return err
+		}
+		folded := strings.ToLower(name)
+		if previous, ok := names[folded]; ok {
+			delete(fields, previous)
+		}
+		names[folded] = name
+		fields[name] = raw
+	}
+	if _, err := decoder.Token(); err != nil {
+		return err
+	}
+	decoded := make(map[string]T, len(fields))
+	for name, raw := range fields {
+		var child T
+		if err := decodeValidatedJSON(raw, &child); err != nil {
+			return err
+		}
+		decoded[name] = child
+	}
+	*target = decoded
 	return nil
 }
 

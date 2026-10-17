@@ -299,6 +299,17 @@
       "profile": "base",
       "text": "Every event contains `harness` with non-empty string `name` and `version` identifying the originating agent harness.",
       "textSha256": "276606913b642aa4fe809b0ed6eab5c5b29e9c16ac0085a7305499ab32b790a7"
+    },
+    {
+      "id": "AHP-REG-003",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/base/registration.md",
+      "anchor": "AHP-REG-003",
+      "section": "HTTP registration headers",
+      "profile": "http",
+      "text": "HTTP registration headers MUST follow the configuration, resolution, validation, request construction, endpoint isolation, and failure rules in this section.",
+      "textSha256": "c4d4ed5f30bab0fd59563bad28a4fd9e57cd6d43e043a278316b24d69d847c58"
     }
   ]
 }

@@ -17,7 +17,8 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         self.store = checker.SchemaStore(self.snapshot)
         self.validator = checker.SubsetValidator(self.store)
         text = (ROOT / 'spec/draft/base/registration.md').read_text()
-        self.config = json.loads(re.findall(r'```json\n(.*?)\n```', text, re.S)[-1])
+        example = text.split('### Endpoint discovery example', 1)[1]
+        self.config = json.loads(re.findall(r'```json\n(.*?)\n```', example, re.S)[0])
 
     def errors(self, value):
         path = self.snapshot.schema_dir / 'registration.schema.json'

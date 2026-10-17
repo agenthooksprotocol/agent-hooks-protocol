@@ -1,0 +1,34 @@
+{
+  "protocolVersion": "draft",
+  "hooks": [
+    {
+      "id": "com.example.policy",
+      "transport": {
+        "type": "http",
+        "url": "https://policy.example.com/agent-hooks",
+        "headers": {
+          "X-Test": {
+            "valueEnv": ""
+          }
+        }
+      },
+      "authentication": {
+        "type": "bearer",
+        "tokenEnv": "AHP_POLICY_TOKEN"
+      },
+      "subscriptions": [
+        {
+          "events": [
+            "tool.before"
+          ],
+          "mode": "intercept",
+          "timeoutMs": 750,
+          "failurePolicy": "fail-closed",
+          "content": {
+            "default": "metadata"
+          }
+        }
+      ]
+    }
+  ]
+}

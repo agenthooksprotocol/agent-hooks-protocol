@@ -88,10 +88,31 @@ distributes every other discovered test over the remaining five shards.
 
 ## Revision selection
 
-Compatibility runs use the latest SDK `main` commits observed at the start of
-the resolver job. The resolver contains the fixed four SDK repository names
+By default, compatibility runs use the latest SDK `main` commits observed at
+the start of the resolver job. The resolver contains the fixed four SDK repository names
 and sibling paths. Each run generates its own `sdk-revisions.json`; the runtime
 artifact records the exact commits used by every shard.
+
+### Coordinated proposed SDK revisions
+
+A coordinated protocol/SDK PR may supply `tools/sdk-revisions.json` using the
+same version-1 manifest format. The resolver validates exactly four approved
+repositories and sibling paths, full lowercase 40-character commit IDs, and
+that GitHub can resolve each commit in its declared repository. Invalid or
+unavailable proposed revisions fail the run; they never fall back to `main`.
+Without this file, the existing `main` resolution behavior is unchanged. The
+validated manifest is retained in the same run artifact and consumed by every
+shard; no checks, fixtures, or success conditions are bypassed.
+
+Use the manifest while dependent SDK changes are under review. After those
+changes land, remove it and run compatibility against SDK `main` before merging
+the protocol PR. Use commit IDs, not branch names, and update them when the SDK
+changes. To validate a proposed manifest locally:
+
+```sh
+python3 tools/resolve_sdk_revisions.py --proposed tools/sdk-revisions.json \
+  --output /tmp/sdk-revisions.json
+```
 
 The workflow uses a read-only token, ordinary `pull_request`, and non-persistent
 checkout credentials. Proposed code executes only on GitHub-hosted runners.

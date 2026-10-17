@@ -33,7 +33,7 @@ Reviewers can ask for changes, additional evidence, or an AHP proposal. Approval
 
 ## Coordinating spec and SDK changes
 
-Spec pull requests must pass the required SDK integration check against SDK `main` commits resolved once at the start of each run. Documentation-only and website changes skip the SDK matrix; manual dispatch always runs it. Every shard uses the same immutable revision snapshot, retained in the workflow artifacts. See [SDK integration](interop/CI.md) for revision selection, checks, and reproduction with an explicit snapshot.
+Spec pull requests must pass the required SDK integration check against SDK `main` commits resolved once at the start of each run by default. Coordinated protocol/SDK changes may explicitly pin the four proposed SDK commits as documented in [SDK integration](interop/CI.md#coordinated-proposed-sdk-revisions); remove those pins and rerun against `main` after the dependencies land. Documentation-only and website changes skip the SDK matrix; manual dispatch always runs it. Every shard uses the same immutable revision snapshot, retained in the workflow artifacts. See [SDK integration](interop/CI.md) for revision selection, checks, and reproduction with an explicit snapshot.
 
 ## Working with protocol snapshots
 

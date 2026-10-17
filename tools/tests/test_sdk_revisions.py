@@ -40,6 +40,57 @@ class RevisionTests(unittest.TestCase):
             with patch.object(resolver, 'api', return_value={'object': obj}), self.assertRaises(ValueError):
                 resolver.resolve()
 
+    def test_proposed_snapshot_checks_exact_commits_without_main_lookup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'proposed.json'
+            path.write_text(json.dumps(self.manifest))
+            with patch.object(resolver, 'api', return_value={'sha': 'a' * 40}) as api, redirect_stdout(io.StringIO()):
+                self.assertEqual(resolver.resolve_proposed(path), self.manifest)
+            self.assertEqual([call.args[0] for call in api.call_args_list], [
+                f'repos/agenthooksprotocol/{language}-sdk/git/commits/' + 'a' * 40
+                for language in resolver.LANGUAGES
+            ])
+
+    def test_proposed_manifest_rejects_untrusted_or_mutable_entries_before_network(self):
+        invalid = [None, [], {}, {'version': 1, 'sdks': []}]
+        for field, value in [('repository', 'other/repo'), ('path', '../outside'),
+                             ('revision', 'main'), ('revision', 'a' * 39),
+                             ('revision', 'A' * 40), ('revision', None)]:
+            manifest = copy.deepcopy(self.manifest)
+            manifest['sdks']['rust'][field] = value
+            invalid.append(manifest)
+        for change in ('missing', 'extra', 'entry'):
+            manifest = copy.deepcopy(self.manifest)
+            if change == 'missing':
+                del manifest['sdks']['rust']
+            elif change == 'extra':
+                manifest['sdks']['other'] = {}
+            else:
+                manifest['sdks']['rust'] = None
+            invalid.append(manifest)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'proposed.json'
+            for manifest in invalid:
+                path.write_text(json.dumps(manifest))
+                with self.subTest(manifest=manifest), patch.object(resolver, 'api') as api:
+                    with self.assertRaises(ValueError):
+                        resolver.resolve_proposed(path)
+                    api.assert_not_called()
+
+    def test_failed_proposed_resolution_does_not_publish_or_fall_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / 'proposed.json'
+            output = Path(directory) / 'resolved.json'
+            source.write_text(json.dumps(self.manifest))
+            for reply in ({'sha': 'b' * 40}, {}):
+                with patch.object(sys, 'argv', ['resolver', '--proposed', str(source), '--output', str(output)]), patch.object(resolver, 'api', return_value=reply), patch.object(resolver, 'resolve') as main:
+                    with self.assertRaises(ValueError):
+                        resolver.main()
+                    self.assertFalse(output.exists())
+                    main.assert_not_called()
+            with patch.object(resolver, 'api', side_effect=RuntimeError('unavailable')), self.assertRaises(RuntimeError):
+                resolver.resolve_proposed(source)
+
     def test_runner_records_explicit_snapshot_and_rejects_wrong_checkout(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

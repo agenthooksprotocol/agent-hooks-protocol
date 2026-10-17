@@ -17,7 +17,7 @@
     },
     "auth": {
       "$ref": "registration.schema.json#/$defs/authentication",
-      "description": "Independent endpoint binding. Omission uses standard OAuth protected-resource discovery; never inherit event credentials."
+      "description": "Independent endpoint binding. Omission uses standard OAuth protected-resource discovery unless backend transport.headers configures Authorization. Backend headers apply to uploads; event authentication credentials are not inherited implicitly."
     },
     "timeoutMs": {
       "type": "integer",

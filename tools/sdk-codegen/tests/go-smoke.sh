@@ -119,6 +119,36 @@ func sharedEventType(request InterceptRequest, observation ObserveNotification) 
     return event
 }
 
+func TestRegistrationHeaderOrderSurvivesTypedDecode(t *testing.T) {
+	for _, headers := range []string{
+		`{"x-key":"first","X-Key":"last"}`,
+		`{"X-Key":"first","x-key":"last"}`,
+		`{"x-key":{"valueEnv":"MUST_NOT_RESOLVE"},"X-Key":"last"}`,
+		`{"X-Key":{"valueRef":"must-not-resolve"},"x-key":"last"}`,
+	} {
+		t.Run(headers, func(t *testing.T) {
+			transportJSON := `{"type":"http","url":"https://example.test/events","headers":` + headers + `}`
+			var transport HttpTransport
+			if err := json.Unmarshal([]byte(transportJSON), &transport); err != nil { t.Fatal(err) }
+			if !transport.Headers.Present || len(transport.Headers.Value) != 1 { t.Fatalf("headers not deduplicated: %#v", transport.Headers) }
+			for _, value := range transport.Headers.Value {
+				if !value.String.Present || value.String.Value != "last" || value.HttpHeaderSource.Present { t.Fatalf("earlier value/source survived: %#v", value) }
+			}
+			// Exercise the ordinary Registration decoder, not a Raw transport escape hatch.
+			input := `{"protocolVersion":"draft","hooks":[{"id":"com.example.headers","transport":` + transportJSON + `,"subscriptions":[{"events":["tool.before"],"mode":"intercept","timeoutMs":1000,"failurePolicy":"fail-closed","content":{"default":"metadata"}}]}]}`
+			var registration Registration
+			if err := json.Unmarshal([]byte(input), &registration); err != nil { t.Fatal(err) }
+			encoded, err := json.Marshal(registration)
+			if err != nil { t.Fatal(err) }
+			var output struct { Hooks []struct { Transport struct { Headers map[string]any } } }
+			if err := json.Unmarshal(encoded, &output); err != nil { t.Fatal(err) }
+			got := output.Hooks[0].Transport.Headers
+			if len(got) != 1 { t.Fatalf("typed registration lost precedence: %s", encoded) }
+			for _, value := range got { if value != "last" { t.Fatalf("overridden source could reach runtime resolution: %s", encoded) } }
+		})
+	}
+}
+
 func TestSharedEventAndContentReferenceContracts(t *testing.T) {
     for _, key := range []string{"size", "sha256"} {
         for _, value := range []any{nil, 0, "hash"} {
@@ -337,7 +367,10 @@ func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
         var encoded []byte
         var err error
         if binding == "registration-json" {
-            parsed := ParseRegistration(inputJSON(t, original))
+            // Header precedence is defined by source order, not map/sorted JSON order.
+            raw, readErr := os.ReadFile(filepath.Join(os.Getenv("AHP_REPOSITORY"), entry["path"].(string)))
+            if readErr != nil { t.Fatal(readErr) }
+            parsed := ParseRegistration(raw)
             if !parsed.OK { t.Fatalf("canonical fixture %s: %+v", entry["id"], parsed.Diagnostics) }
             encoded, err = EncodeRegistration(parsed.Value)
         } else {
@@ -346,6 +379,11 @@ func TestCanonicalPositiveFixturesAndSuppliedExecution(t *testing.T) {
             encoded, err = EncodeWireMessage(parsed.Value)
         }
         roundTrip := encodedObject(t, encoded, err)
+        if entry["id"] == "registration.http-headers-duplicates.valid" {
+            // AHP-REG-003 intentionally collapses earlier case variants, including sources.
+            transport := original["hooks"].([]any)[0].(map[string]any)["transport"].(map[string]any)
+            transport["headers"] = map[string]any{"x-key": "last", "authorization": "Bearer abc123"}
+        }
         if !bytes.Equal(inputJSON(t, roundTrip), inputJSON(t, original)) { t.Fatalf("fixture %s changed on round-trip", entry["id"]) }
     }
     wire := fixture(t, "fixtures/draft/http/model-response-intercept-supplied-stop.valid.json")

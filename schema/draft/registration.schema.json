@@ -84,11 +84,21 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https?://"
+        },
+        "headers": {
+          "type": "object",
+          "description": "Backend event and upload headers, merged last case-insensitively. Runtime precedence, native HTTP validation, and OAuth suppression are defined by AHP-REG-003.",
+          "propertyNames": {
+            "pattern": "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/httpHeaderValue"
+          }
         }
       }
     },
     "authentication": {
-      "description": "Explicit endpoint-bound client identity preset. Omission on HTTP enables standard OAuth protected-resource discovery, not anonymous-only delivery. Runtime trust policy and discovery are defined in spec/draft/capability-auth.md.",
+      "description": "Explicit endpoint-bound client identity preset. Omission on HTTP enables standard OAuth protected-resource discovery unless transport.headers explicitly configures Authorization. Runtime trust policy and discovery are defined in spec/draft/capability-auth.md.",
       "anyOf": [
         {
           "type": "object",
@@ -559,6 +569,44 @@
           "minimum": 1
         }
       }
+    },
+    "httpHeaderSource": {
+      "type": "object",
+      "properties": {
+        "valueEnv": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "valueRef": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "valueEnv"
+          ]
+        },
+        {
+          "required": [
+            "valueRef"
+          ]
+        }
+      ]
+    },
+    "httpHeaderValue": {
+      "anyOf": [
+        {
+          "type": "string",
+          "not": {
+            "pattern": "[\r\n\u0000]"
+          }
+        },
+        {
+          "$ref": "#/$defs/httpHeaderSource"
+        }
+      ]
     }
   }
 }

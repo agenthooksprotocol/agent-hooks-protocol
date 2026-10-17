@@ -137,7 +137,8 @@ A stdio transport contains:
 An HTTP transport contains:
 - `type`: exact value `http`
 - `url`: absolute endpoint URL
-Authentication supports the configured endpoint bindings in [capabilities and authentication](../capability-auth.md#authentication-bindings). Bearer authentication uses exactly one of `tokenEnv` or `tokenRef`; credentials are never literal values. Upload authentication is configured independently.
+- `headers`: optional configured HTTP fields shared by events and backend uploads; see [HTTP registration headers](#AHP-REG-003)
+Authentication supports the configured endpoint bindings in [capabilities and authentication](../capability-auth.md#authentication-bindings). Bearer authentication bindings use exactly one of `tokenEnv` or `tokenRef`; those bindings never contain literal credentials. Explicit `headers` may contain literals and override authentication headers. Upload authentication bindings are configured independently; backend headers apply to uploads as well.
 ### Native harness configuration
 A harness MAY translate this registration model into its native configuration format. It may still claim protocol conformance if the resulting order, subscriptions, timeout, failure, transport, and credential semantics are equivalent.
 
@@ -180,3 +181,92 @@ reference is not a URL or a secret value. Resolution failure MUST NOT switch to
 OAuth; an event secret is not a substitute. An explicit OAuth preset can constrain
 issuer, resource, client, flow, and scopes without requiring every registration to
 predeclare OAuth before encountering an endpoint challenge.
+
+### HTTP registration headers
+
+<a id="AHP-REG-003"></a>
+**AHP-REG-003 — MUST.** HTTP registration headers MUST follow the configuration, resolution, validation, request construction, endpoint isolation, and failure rules in this section.
+
+`transport.headers` is an optional map on an HTTP backend transport. Omission and
+an empty map preserve existing behavior. Each value is a literal string or an
+object containing exactly one recognized source, `valueEnv` or `valueRef`.
+`valueEnv` names a harness environment variable; `valueRef` is a nonempty opaque
+secret reference. Unknown source-object fields are ignored. An object containing
+neither recognized source or both is invalid.
+
+```json
+{
+  "type": "http",
+  "url": "https://policy.example/hooks",
+  "headers": {
+    "Authorization": "Bearer abc123",
+    "Cookie": "session=example",
+    "X-Api-Key": { "valueEnv": "AHP_API_KEY" },
+    "X-Gateway-Token": { "valueRef": "example/gateway" }
+  }
+}
+```
+
+This is a transport fragment with synthetic example credentials. Literal strings,
+including API keys, cookies, and Authorization values, are permitted and used
+without interpolation or an added authentication scheme. References resolve the
+complete header value, not a token to which `Bearer ` is automatically prefixed.
+Implementations MUST reuse existing environment/secret helpers and resolvers where
+applicable, including their deadline, cancellation, and redacted-error handling;
+this field does not introduce a separate secret-management framework. Failed or
+unavailable referenced values MUST fail the operation rather than send a request
+with missing headers or fall back to another credential. Resolution uses the
+existing operation budget; it MUST NOT start a fresh deadline.
+
+#### Validation and precedence
+
+Names MUST be valid HTTP field names. Every valid field name is permitted,
+including `Authorization`, `Cookie`, `Origin`, and protocol/default header names;
+there is no AHP header denylist. Values MUST be strings accepted by the native
+HTTP library's field-value validation. Implementations MUST reject CR, LF, and NUL
+injection, but MUST NOT impose a printable-ASCII-only restriction: legal non-ASCII
+values are accepted where the native library supports them. Existing native
+transport limits apply; this feature adds no header-size policy.
+
+Names are compared case-insensitively. When configured properties differ only in
+case, the last property in configuration iteration order MUST win; values MUST
+NOT be joined or rejected as ambiguous. Apply this deduplication before resolving
+sources so that only the winning configured value is used. For serialized JSON,
+iteration order follows the member order presented by the configuration; parsers
+that discard order MUST preserve it for this map to implement this rule.
+
+Build transport, client-default, protocol, and authentication headers first, then
+apply the resolved configured headers LAST through a case-insensitive API.
+Configured values MUST override earlier values, including `Authorization` and
+`Content-Type`. Native HTTP rejection of an invalid or unsupported request remains
+an operation failure, not a reason to silently omit configured headers.
+
+The presence of a configured `Authorization` name, in any casing and with any
+source, MUST suppress OAuth discovery, acquisition, challenge handling, and retry
+flows for that operation, even when an authentication configuration also exists.
+Resolve the explicit header normally; failure MUST NOT fall back to OAuth or
+another identity. A challenge to this explicit value is handled as an operation
+failure, not an invitation to acquire or retry with another token.
+
+#### Uploads, isolation, and existing transport behavior
+
+The same backend header configuration MUST apply to interception/observation
+requests AND that backend's content uploads. Upload operations MUST resolve/reuse
+the same configuration through the existing secret helpers and upload operation
+budget, then merge configured values LAST over upload defaults and authentication.
+Configured `Authorization` suppresses upload OAuth discovery, acquisition,
+challenge handling, and retry flows as well. This explicit backend-wide
+configuration is distinct from implicitly reusing event authentication tokens.
+
+Header configuration MUST NOT change pre-feature redirect behavior or native
+sensitive-header handling. It neither disables all redirects nor authorizes
+blanket forwarding to redirect targets. Existing event and upload redirect
+policies continue to apply.
+
+Configured headers MUST NOT be installed as global defaults on unrelated clients
+or sent to discovery/token endpoints or other backends. Existing failure policies,
+observation delivery errors, deadlines, cancellation, and diagnostic redaction
+apply. Header values, including literal credentials, MUST NOT leak through errors,
+logs, event payloads, or metadata. Schema acceptance validates configuration shape,
+not native HTTP support or OAuth/upload behavior. Older implementations may ignore
+`headers`; deployments requiring it must select supporting implementations.

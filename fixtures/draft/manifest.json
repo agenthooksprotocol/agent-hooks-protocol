@@ -2185,6 +2185,237 @@
         "AHP-CORE-005"
       ],
       "sha256": "355689dc9ef1a2eb79da2e5eaeb108466f5402b41e586c4d20fcb7ce0578c832"
+    },
+    {
+      "id": "registration.http-headers-metadata.valid",
+      "path": "fixtures/draft/registration/http-headers-metadata.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "42f25eea276dbd6cecf0e6e02e42976d8497636034659d7639b6b7a99385b4e7"
+    },
+    {
+      "id": "registration.http-headers-empty.valid",
+      "path": "fixtures/draft/registration/http-headers-empty.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "066a27ac2ed988c9469ef2ec9fc6755a460b2f8dd90483e5de743f9519129b7e"
+    },
+    {
+      "id": "registration.http-headers-array.invalid",
+      "path": "fixtures/draft/registration/http-headers-array.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "a23d1982db95c78fed97412a8a6058691fddb2bdf465f28b38756cbd33556add"
+    },
+    {
+      "id": "registration.http-headers-number.invalid",
+      "path": "fixtures/draft/registration/http-headers-number.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "1f42cda833a01a6d8ddb02b9dd24892310dc3d70794d90ebb1cc8b0b19b4bdef"
+    },
+    {
+      "id": "registration.http-headers-null.invalid",
+      "path": "fixtures/draft/registration/http-headers-null.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "fb22e0be6eb0e228701203b1cb2373a6a7d2760d3d9788628f0e153b3e3c3c9c"
+    },
+    {
+      "id": "registration.http-headers-value-array.invalid",
+      "path": "fixtures/draft/registration/http-headers-value-array.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "70877bcfdf54fc231ba2d5b5c750aa4ee05c5b59d82da84552fcd870caa31c8b"
+    },
+    {
+      "id": "registration.http-headers-source-empty.invalid",
+      "path": "fixtures/draft/registration/http-headers-source-empty.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "c42f3e211264825a6208ae08cb01bcd1a9fcfcdd92a3d51803c40b731b22748f"
+    },
+    {
+      "id": "registration.http-headers-source-both.invalid",
+      "path": "fixtures/draft/registration/http-headers-source-both.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "7ee10d0478b9eeba4f786019f1242a9c9e8d30a8bc4e2d28f3a158498bd043c8"
+    },
+    {
+      "id": "registration.http-headers-source-unknown.invalid",
+      "path": "fixtures/draft/registration/http-headers-source-unknown.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "9c4f4d932801611e40e69e64c6201672b80d4a2a80efe74df0ce1f56200ce420"
+    },
+    {
+      "id": "registration.http-headers-env-empty.invalid",
+      "path": "fixtures/draft/registration/http-headers-env-empty.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "f16e0d833e36cc779806c75fa7e6dc2bbd2580453e3d9f071fb53a1a3f0e6705"
+    },
+    {
+      "id": "registration.http-headers-env-name.invalid",
+      "path": "fixtures/draft/registration/http-headers-env-name.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "9677805bb7a5b46fdb4103fd4f1db9cbe5e72339233fff70d8b4518e06d11124"
+    },
+    {
+      "id": "registration.http-headers-ref-empty.invalid",
+      "path": "fixtures/draft/registration/http-headers-ref-empty.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "ddd10b5870e505e5635eedb42d643605b34c847ed6633c63a8e5c8992e714c40"
+    },
+    {
+      "id": "registration.http-headers-name-empty.invalid",
+      "path": "fixtures/draft/registration/http-headers-name-empty.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "88a823634ed135d38d3593fe88ef9a6d7e7c448a6542d275202ae7f87af98788"
+    },
+    {
+      "id": "registration.http-headers-name-space.invalid",
+      "path": "fixtures/draft/registration/http-headers-name-space.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "5b4871fde8529999d8423c7bbafac9f87304fb2478f12f073562331d03e039f1"
+    },
+    {
+      "id": "registration.http-headers-name-nonascii.invalid",
+      "path": "fixtures/draft/registration/http-headers-name-nonascii.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "31359b6f180dfb46bd0d216b9eb3ee799881ca344aa96846381900844aba3761"
+    },
+    {
+      "id": "registration.http-headers-value-cr.invalid",
+      "path": "fixtures/draft/registration/http-headers-value-cr.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "845546999871cefcb1767e38f7764c763889d852529a7670b411df27e9fecfdc"
+    },
+    {
+      "id": "registration.http-headers-value-lf.invalid",
+      "path": "fixtures/draft/registration/http-headers-value-lf.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "faa68bcc27a27b602f7678f30571a50ef00834a8cb9147028deb8da50c4e7353"
+    },
+    {
+      "id": "registration.http-headers-value-nul.invalid",
+      "path": "fixtures/draft/registration/http-headers-value-nul.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "5d89c3acba783f92c422887720a353ad1bae54253d1aef994044725105813a73"
+    },
+    {
+      "id": "registration.http-headers-value-tab.valid",
+      "path": "fixtures/draft/registration/http-headers-value-tab.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "92b97faf12b9d25ed5a8b5d561ad7371712264b5bfc1d7946fe0d14a0d41786d"
+    },
+    {
+      "id": "registration.http-headers-value-nonascii.valid",
+      "path": "fixtures/draft/registration/http-headers-value-nonascii.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "a7aacd957202881bac3bcace10388693ccd49cdfff9cdb8a4d16e99f371041a0"
+    },
+    {
+      "id": "registration.http-headers-duplicates.valid",
+      "path": "fixtures/draft/registration/http-headers-duplicates.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "1c3e84e2c263b0dcbeb0cc8e271eaaa8831c872feba247046565687c706a01d9"
     }
   ]
 }
