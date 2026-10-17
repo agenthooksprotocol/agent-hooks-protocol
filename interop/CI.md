@@ -104,17 +104,10 @@ Without this file, the existing `main` resolution behavior is unchanged. The
 validated manifest is retained in the same run artifact and consumed by every
 shard; no checks, fixtures, or success conditions are bypassed.
 
-The current manifest coordinates AHP-0002 with TypeScript SDK PR #38, Python SDK
-PR #41, Go SDK PR #39, and Rust SDK PR #44. In particular, Rust commit
-`56648e0eabfe427e78cf2a49e8addbb3286ca1c9` selects the test adapter's mTLS crypto
-provider explicitly. The previous main snapshot panicked before Rust mTLS server
-readiness because rustls could not select a provider. These pins validate the
-proposed implementation set, not compatibility with current SDK `main`.
-
-Keep the manifest only while this coordinated dependency is under review.
-After the SDK changes land, remove it and require a fresh successful run against
-resolved `main` before completing the protocol PR. Update all intended pins
-explicitly when SDK heads change; do not use moving branch names. Locally:
+Use the manifest while dependent SDK changes are under review. After those
+changes land, remove it and run compatibility against SDK `main` before merging
+the protocol PR. Use commit IDs, not branch names, and update them when the SDK
+changes. To validate a proposed manifest locally:
 
 ```sh
 python3 tools/resolve_sdk_revisions.py --proposed tools/sdk-revisions.json \
