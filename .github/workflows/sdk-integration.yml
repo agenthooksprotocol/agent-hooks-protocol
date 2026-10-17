@@ -67,7 +67,12 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/resolve_sdk_revisions.py --output "$RUNNER_TEMP/sdk-revisions.json"
+        run: |
+          args=()
+          if [ -f tools/sdk-revisions.json ]; then
+            args+=(--proposed tools/sdk-revisions.json)
+          fi
+          python3 tools/resolve_sdk_revisions.py "${args[@]}" --output "$RUNNER_TEMP/sdk-revisions.json"
       - name: Upload resolved SDK revisions
         uses: actions/upload-artifact@v4
         with:
