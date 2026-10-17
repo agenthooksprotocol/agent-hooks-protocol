@@ -2195,7 +2195,7 @@
       "requirements": [
         "AHP-REG-003"
       ],
-      "sha256": "8671ed5f756ef35a5171e36a885b67d6ff6081fcd2f2b851a630a113a42dab22"
+      "sha256": "42f25eea276dbd6cecf0e6e02e42976d8497636034659d7639b6b7a99385b4e7"
     },
     {
       "id": "registration.http-headers-empty.valid",
@@ -2385,37 +2385,37 @@
       "sha256": "5d89c3acba783f92c422887720a353ad1bae54253d1aef994044725105813a73"
     },
     {
-      "id": "registration.http-headers-value-tab.invalid",
-      "path": "fixtures/draft/registration/http-headers-value-tab.invalid.json",
+      "id": "registration.http-headers-value-tab.valid",
+      "path": "fixtures/draft/registration/http-headers-value-tab.valid.json",
       "binding": "registration-json",
       "schema": "schema/draft/registration.schema.json",
-      "expectedValid": false,
+      "expectedValid": true,
       "requirements": [
         "AHP-REG-003"
       ],
       "sha256": "92b97faf12b9d25ed5a8b5d561ad7371712264b5bfc1d7946fe0d14a0d41786d"
     },
     {
-      "id": "registration.http-headers-value-del.invalid",
-      "path": "fixtures/draft/registration/http-headers-value-del.invalid.json",
+      "id": "registration.http-headers-value-nonascii.valid",
+      "path": "fixtures/draft/registration/http-headers-value-nonascii.valid.json",
       "binding": "registration-json",
       "schema": "schema/draft/registration.schema.json",
-      "expectedValid": false,
-      "requirements": [
-        "AHP-REG-003"
-      ],
-      "sha256": "15651ad0ad91cf8e66024989ba8b40c9a19bf386138ba43ffac28c82ee99e599"
-    },
-    {
-      "id": "registration.http-headers-value-nonascii.invalid",
-      "path": "fixtures/draft/registration/http-headers-value-nonascii.invalid.json",
-      "binding": "registration-json",
-      "schema": "schema/draft/registration.schema.json",
-      "expectedValid": false,
+      "expectedValid": true,
       "requirements": [
         "AHP-REG-003"
       ],
       "sha256": "a7aacd957202881bac3bcace10388693ccd49cdfff9cdb8a4d16e99f371041a0"
+    },
+    {
+      "id": "registration.http-headers-duplicates.valid",
+      "path": "fixtures/draft/registration/http-headers-duplicates.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-003"
+      ],
+      "sha256": "1c3e84e2c263b0dcbeb0cc8e271eaaa8831c872feba247046565687c706a01d9"
     }
   ]
 }

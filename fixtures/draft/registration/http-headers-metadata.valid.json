@@ -18,7 +18,13 @@
           "X-Extended": {
             "valueEnv": "AHP_TEST_KEY",
             "future": true
-          }
+          },
+          "Authorization": "Bearer abc123",
+          "Cookie": "session=example",
+          "X-Literal-Api-Key": "example-key",
+          "Origin": "https://example.test",
+          "Content-Type": "application/custom",
+          "AHP-Example": "override"
         }
       },
       "authentication": {

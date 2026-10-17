@@ -137,7 +137,8 @@ A stdio transport contains:
 An HTTP transport contains:
 - `type`: exact value `http`
 - `url`: absolute endpoint URL
-Authentication supports the configured endpoint bindings in [capabilities and authentication](../capability-auth.md#authentication-bindings). Bearer authentication uses exactly one of `tokenEnv` or `tokenRef`; credentials are never literal values. Upload authentication is configured independently.
+- `headers`: optional configured HTTP fields shared by events and backend uploads; see [HTTP registration headers](#AHP-REG-003)
+Authentication supports the configured endpoint bindings in [capabilities and authentication](../capability-auth.md#authentication-bindings). Bearer authentication bindings use exactly one of `tokenEnv` or `tokenRef`; those bindings never contain literal credentials. Explicit `headers` may contain literals and override authentication headers. Upload authentication bindings are configured independently; backend headers apply to uploads as well.
 ### Native harness configuration
 A harness MAY translate this registration model into its native configuration format. It may still claim protocol conformance if the resulting order, subscriptions, timeout, failure, transport, and credential semantics are equivalent.
 
@@ -186,113 +187,86 @@ predeclare OAuth before encountering an endpoint challenge.
 <a id="AHP-REG-003"></a>
 **AHP-REG-003 — MUST.** HTTP registration headers MUST follow the configuration, resolution, validation, request construction, endpoint isolation, and failure rules in this section.
 
+`transport.headers` is an optional map on an HTTP backend transport. Omission and
+an empty map preserve existing behavior. Each value is a literal string or an
+object containing exactly one recognized source, `valueEnv` or `valueRef`.
+`valueEnv` names a harness environment variable; `valueRef` is a nonempty opaque
+secret reference. Unknown source-object fields are ignored. An object containing
+neither recognized source or both is invalid.
 
 ```json
 {
   "type": "http",
   "url": "https://policy.example/hooks",
   "headers": {
-    "X-Tenant-Id": "engineering",
-    "X-Api-Key": { "valueEnv": "AHP_POLICY_API_KEY" },
-    "X-Gateway-Token": { "valueRef": "secrets/policy-gateway" }
+    "Authorization": "Bearer abc123",
+    "Cookie": "session=example",
+    "X-Api-Key": { "valueEnv": "AHP_API_KEY" },
+    "X-Gateway-Token": { "valueRef": "example/gateway" }
   }
 }
 ```
 
-This object is a backend's `transport`, not a complete registration. `headers` is
-optional; omission and `{}` preserve existing behavior. Each map entry is either:
+This is a transport fragment with synthetic example credentials. Literal strings,
+including API keys, cookies, and Authorization values, are permitted and used
+without interpolation or an added authentication scheme. References resolve the
+complete header value, not a token to which `Bearer ` is automatically prefixed.
+Implementations MUST reuse existing environment/secret helpers and resolvers where
+applicable, including their deadline, cancellation, and redacted-error handling;
+this field does not introduce a separate secret-management framework. Failed or
+unavailable referenced values MUST fail the operation rather than send a request
+with missing headers or fall back to another credential. Resolution uses the
+existing operation budget; it MUST NOT start a fresh deadline.
 
-- A string used verbatim for **non-secret** metadata. No environment expansion,
-  `${...}` substitution, shell evaluation, or whitespace trimming occurs.
-- An object containing exactly one recognized source: `valueEnv` (environment
-  variable name) or `valueRef` (nonempty opaque secret-provider reference).
+#### Validation and precedence
 
-Literal credentials are prohibited, including API keys and cookies; SDKs cannot
-reliably infer whether an arbitrary string is secret, so documentation and harness
-configuration policy must enforce this distinction. The source model mirrors
-`authentication.tokenEnv` / `authentication.tokenRef`, but resolves a complete header value rather
-than automatically adding a `Bearer ` prefix. Bearer tokens belong in `authentication`,
-not in this map. Header configuration neither disables nor replaces existing
-OAuth discovery when `authentication` is omitted.
+Names MUST be valid HTTP field names. Every valid field name is permitted,
+including `Authorization`, `Cookie`, `Origin`, and protocol/default header names;
+there is no AHP header denylist. Values MUST be strings accepted by the native
+HTTP library's field-value validation. Implementations MUST reject CR, LF, and NUL
+injection, but MUST NOT impose a printable-ASCII-only restriction: legal non-ASCII
+values are accepted where the native library supports them. Existing native
+transport limits apply; this feature adds no header-size policy.
 
-A harness-owned resolver receives backend identity, exact destination, event
-purpose, source name/reference, and the dispatch deadline/cancellation context.
-It returns a string, not a new authentication identity. Resolve once per dispatch
-and reuse the resolved set on any already-permitted challenged retry; resolve
-again for the next dispatch so rotation is possible. A resolver may cache under
-its own explicit policy but must keep bindings endpoint-scoped. Environment
-lookup uses the harness environment, not the stdio child `env` setting.
+Names are compared case-insensitively. When configured properties differ only in
+case, the last property in configuration iteration order MUST win; values MUST
+NOT be joined or rejected as ambiguous. Apply this deduplication before resolving
+sources so that only the winning configured value is used. For serialized JSON,
+iteration order follows the member order presented by the configuration; parsers
+that discard order MUST preserve it for this map to implement this rule.
 
-Missing, empty, unsupported, or failed referenced values fail the dispatch before
-an event request is sent. No fallback to a literal, another secret, or a request
-with fewer headers is allowed. Empty literal metadata strings are permitted.
-Resolution is cancellable and included in the existing operation deadline.
+Build transport, client-default, protocol, and authentication headers first, then
+apply the resolved configured headers LAST through a case-insensitive API.
+Configured values MUST override earlier values, including `Authorization` and
+`Content-Type`. Native HTTP rejection of an invalid or unsupported request remains
+an operation failure, not a reason to silently omit configured headers.
 
-### Names, values, and precedence
+The presence of a configured `Authorization` name, in any casing and with any
+source, MUST suppress OAuth discovery, acquisition, challenge handling, and retry
+flows for that operation, even when an authentication configuration also exists.
+Resolve the explicit header normally; failure MUST NOT fall back to OAuth or
+another identity. A challenge to this explicit value is handled as an operation
+failure, not an invitation to acquire or retry with another token.
 
-1. Validate names as nonempty ASCII HTTP field-name tokens, using
-   `^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$`. Names are case-insensitive. Reject two map
-   keys that differ only by ASCII case, even if their values match; never join them.
-   Registration parsers should reject duplicate identical JSON keys when possible.
-2. Values must contain only ASCII space through tilde (`U+0020`–`U+007E`), including
-   values returned by resolvers. Reject CR, LF, NUL, tabs, DEL, non-ASCII characters,
-   arrays, numbers, and null. This intentionally portable subset avoids differing
-   library encodings; applications can use an agreed ASCII encoding for metadata.
-3. Reject configuration of `Authorization`, `Proxy-*`, `Cookie`, `Set-Cookie`,
-   `Host`, `Content-Type`, `Accept`, `Content-Length`, `Content-Encoding`,
-   `Connection`, `Keep-Alive`, `Transfer-Encoding`, `TE`, `Trailer`, `Upgrade`,
-   `Expect`, `Origin`, `Referer`, `Sec-*`, and `AHP-*`, case-insensitively. These are
-   authentication, browser/security, framing, or reserved protocol concerns.
-   `*` denotes a prefix, not a valid configured wildcard name. Reject reserved
-   names even when no auth provider or protocol default would currently set them.
-4. Build each request from validated configured metadata, then apply mandatory
-   protocol and authentication headers through a case-insensitive header API.
-   Authentication exclusively supplies `Authorization`. Never concatenate a
-   configured value with a transport-owned value.
-5. For SDK APIs that also accept programmatic headers/default HTTP clients, merge
-   non-reserved defaults first and registration values second, comparing names
-   case-insensitively; registration wins. Reject ambiguous duplicates within either
-   input. Apply the same reserved-name/value rules to user-supplied additional
-   headers on the registration path. Reject a conflict rather than let an injected
-   client silently replace auth or framing fields. Low-level transport APIs used
-   outside registration are not retroactively redefined by this registration contract.
+#### Uploads, isolation, and existing transport behavior
 
-No arbitrary per-header size is standardized here: existing transport/harness
-limits still apply, and implementations must enforce finite aggregate header
-limits. A limit failure is an explicit delivery error, not truncation.
+The same backend header configuration MUST apply to interception/observation
+requests AND that backend's content uploads. Upload operations MUST resolve/reuse
+the same configuration through the existing secret helpers and upload operation
+budget, then merge configured values LAST over upload defaults and authentication.
+Configured `Authorization` suppresses upload OAuth discovery, acquisition,
+challenge handling, and retry flows as well. This explicit backend-wide
+configuration is distinct from implicitly reusing event authentication tokens.
 
-### Endpoint isolation and failures
+Header configuration MUST NOT change pre-feature redirect behavior or native
+sensitive-header handling. It neither disables all redirects nor authorizes
+blanket forwarding to redirect targets. Existing event and upload redirect
+policies continue to apply.
 
-Configured headers apply only to event POSTs (interceptions and observations) to
-the configured HTTP transport URL, including auth retries that are already safe
-under AHP's replay rules. They do not apply to OAuth/protected-resource discovery,
-issuer metadata, token exchange, content uploads, or another backend, even at the
-same origin. Do not attach them to a shared HTTP client's global defaults.
-
-With a nonempty header map, redirects are not automatically followed, including
-same-origin redirects. A redirect is an operational delivery failure; configure
-the final trusted URL explicitly. This stricter-than-origin scope prevents secret
-leakage to another path or downgrade and avoids replay of event bodies. Harness
-extensions must not weaken this portable behavior. No credential or metadata is
-forwarded to a redirect target. With no headers, existing redirect policy remains
-unchanged. Upload configuration and authentication remain independent.
-
-Static invalid configuration fails backend initialization/registration before
-network I/O. Resolution/runtime validation failures prevent that event request;
-existing interception failure policy decides whether the harness operation
-continues or is denied. Observations report their existing best-effort delivery
-error. Neither outcome authorizes sending a partial or unauthenticated fallback
-request. Header failures create no additional retry mechanism.
-
-Diagnostics may identify a backend and offending header name, but must not include
-values, secret contents, or the full header map. Treat even literal metadata as
-potentially sensitive in logging/tracing; redact all configured values. Real secret
-references never enter event payloads, error bodies, or generated fixtures;
-conformance fixtures use synthetic reference names only.
-
-
-Unknown fields in source objects MUST be ignored, but exactly one recognized
-source is required. Header-map keys are field names, not ignorable extensions.
-Runtime validation MUST match full strings, including rejecting final newlines.
-Older implementations may ignore `headers`; schema acceptance is not feature
-negotiation. Deployments requiring headers MUST select a supporting implementation.
+Configured headers MUST NOT be installed as global defaults on unrelated clients
+or sent to discovery/token endpoints or other backends. Existing failure policies,
+observation delivery errors, deadlines, cancellation, and diagnostic redaction
+apply. Header values, including literal credentials, MUST NOT leak through errors,
+logs, event payloads, or metadata. Schema acceptance validates configuration shape,
+not native HTTP support or OAuth/upload behavior. Older implementations may ignore
+`headers`; deployments requiring it must select supporting implementations.

@@ -7,7 +7,14 @@
         "type": "http",
         "url": "https://policy.example.com/agent-hooks",
         "headers": {
-          "X-Test": "a\u007fb"
+          "X-Key": {
+            "valueEnv": "UNUSED"
+          },
+          "x-key": "last",
+          "AUTHORIZATION": {
+            "valueRef": "unused"
+          },
+          "authorization": "Bearer abc123"
         }
       },
       "authentication": {

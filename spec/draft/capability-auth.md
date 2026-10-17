@@ -77,7 +77,8 @@ mandatory policy rather than silently degrade.
 optional independent `auth` object. It configures non-text, non-JSON media attachment uploads, not retrieval or
 ordinary text delivery.
 There is no backend `contentReceiver` compatibility alias. Absent upload
-credentials MUST NOT inherit event credentials. A credential MAY be configured
+credentials MUST NOT implicitly inherit event authentication credentials.
+Explicit backend header configuration also applies to uploads as specified below. A credential MAY be configured
 for both endpoints only when its resource and permissions cover both. See
 [the binary upload binding](content-upload.md) for framing and confirmation.
 
@@ -91,14 +92,15 @@ or a negotiation protocol. `hooks/capabilities` is not an authentication bootstr
 
 Remote HTTP MUST use TLS with receiver validation. Plain HTTP is reserved for an
 explicitly trusted local test/process boundary, never an implicit downgrade.
-Secret values MUST NOT occur in registration, events, native metadata, logs, denial
-reasons, or JSON-RPC error data. Credential references name deployment-managed
+Secret values MUST NOT occur in events, native metadata, logs, denial reasons,
+or JSON-RPC error data. Authentication bindings use secret references; explicit
+`transport.headers` may contain literal credentials. Credential references name deployment-managed
 secrets, not portable secret values. Payload identifiers and upload references
 MUST NOT grant authority.
 
 ### HTTP without an explicit binding
 
-When endpoint authentication is absent, the client MUST attempt the configured
+When endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
 endpoint without an HTTP credential, subject to local policy and TLS identity
 selection below. Absence does not mean anonymous-only: a successful response may
 be accepted, but an OAuth-protected endpoint MUST be handled using the protected
@@ -145,7 +147,9 @@ authorization fails operationally; clients MUST NOT silently switch identities.
 
 ### Explicit endpoint bindings
 
-An explicit binding takes precedence over automatic HTTP discovery. Failure to
+Configured `Authorization` takes precedence over bindings and suppresses OAuth
+discovery, acquisition, challenge handling, and retries as specified below.
+Otherwise, an explicit binding takes precedence over automatic HTTP discovery. Failure to
 resolve or use it MUST NOT trigger an automatic switch to OAuth, another binding,
 or unauthenticated delivery. Discovery within an explicit OAuth preset MUST obey
 its issuer, resource, scope, and client constraints.
@@ -182,7 +186,8 @@ deadline, cancellation, and no-downgrade requirements in this section.
 
 Event and upload endpoints apply these rules independently, including discovery,
 explicit binding precedence, and token/cache resource boundaries. An absent upload
-binding MUST NOT inherit event credentials. Reuse requires explicit client policy
+binding MUST NOT implicitly inherit event authentication credentials. Explicit
+backend header configuration also applies to uploads. Other reuse requires explicit client policy
 and independently validated resource and permission coverage for both endpoints.
 
 ### Failure and timing
@@ -290,12 +295,16 @@ establish the others. External approval remains bounded by interception: there i
 no defer or reverse-resolution channel, and mandatory approval must fail closed.
 Late approval cannot authorize a later attempt.
 
-### Registration header isolation
+### Registration header precedence and isolation
 
-[HTTP registration headers](base/registration.md#AHP-REG-003) are trusted,
-endpoint-bound event configuration, not capability output or a new identity
-mechanism. Authentication exclusively supplies `Authorization`. Header sources
-MUST NOT be selected by challenges, discovery documents, or redirects. Event
-header values MUST NOT enter authentication discovery, token requests, upload
-requests, or shared client defaults. Failed resolution MUST NOT cause fallback
-to another identity or delivery with missing configured headers.
+[HTTP registration headers](base/registration.md#AHP-REG-003) are explicit backend
+configuration shared by event and content-upload requests. Configured values
+merge last over defaults and authentication, including `Authorization`.
+The presence of configured `Authorization`, regardless of casing/source or a
+coexisting authentication binding, suppresses OAuth discovery, acquisition,
+challenge handling, and retry flows for both event and upload operations.
+Resolution failures MUST fail the operation rather than fall back to OAuth.
+Existing secret helpers, operation budgets, and redaction rules apply.
+Configured headers MUST NOT be attached globally to unrelated clients, discovery
+or token endpoints, or other backends. Existing redirect policies and native
+sensitive-header handling remain unchanged.

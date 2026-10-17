@@ -8,12 +8,12 @@
 
 The harness sends each JSON-RPC message as the body of a new HTTP `POST` request.
 Requirements:
-- Request and response bodies MUST use `Content-Type: application/json`.
+- Request and response bodies MUST use `Content-Type: application/json` by default; explicit configured request headers take precedence as specified below.
 - The body MUST contain one JSON-RPC object, not a batch.
 - A successful `hooks/intercept` or `hooks/capabilities` response MUST use HTTP status `200` and contain the correlated JSON-RPC response.
 - A successfully accepted observe notification MUST use `202 Accepted` or `204 No Content` and no response body.
 - HTTP 401 can initiate the bounded OAuth discovery/authentication procedure below. An unresolved challenge and any status other than the successes specified above are operational failures.
-- Redirects MUST NOT be followed unless explicitly enabled for the configured endpoint. With a nonempty registration header map, redirects MUST NOT be followed even when explicitly enabled.
+- Redirects MUST NOT be followed unless explicitly enabled for the configured endpoint.
 This protocol revision does not use SSE, streaming responses, or a corresponding HTTP `GET` endpoint.
 ### TLS
 Remote endpoints MUST use `https`. Plain `http` MAY be used only for loopback addresses or explicitly controlled local development environments.
@@ -21,7 +21,7 @@ Implementations MUST validate server certificates using platform trust policy un
 ### Authentication
 Event and capability-discovery endpoints follow
 [authentication bindings](../../capability-auth.md#authentication-bindings).
-Without an explicit HTTP binding, clients attempt the endpoint and handle standard
+Without an explicit HTTP binding or configured `Authorization`, clients attempt the endpoint and handle standard
 OAuth protected-resource discovery; absence does not mean anonymous-only delivery.
 Explicit `bearer` and `oauth` bindings remain endpoint-bound client policy.
 Deployment-specific TLS identity selection can precede HTTP discovery and is
@@ -31,12 +31,12 @@ fallback or automatic replacement of an explicit binding. For interception, the
 configured failure policy determines whether the underlying harness operation
 continues or is denied. Payload correlation fields never grant authority.
 Upload endpoints apply authentication and discovery independently and MUST NOT
-inherit event credentials. See [content uploads](../../content-upload.md).
+inherit event authentication credentials implicitly. Explicit backend header configuration also applies to uploads. See [content uploads](../../content-upload.md).
 
-### Configured event headers
+### Configured backend headers
 
-HTTP implementations MUST enforce [HTTP registration headers](../registration.md#AHP-REG-003)
-for interception and observation POSTs. These headers MUST NOT be attached to
-capability or authentication discovery, token exchange, or content uploads.
-Authentication exclusively owns `Authorization`; configured headers do not
-replace or disable the authentication procedure above.
+[HTTP registration headers](../registration.md#AHP-REG-003) apply to event requests
+and the backend's content uploads. Merge configured values last, including
+protocol and authentication overrides. Configured `Authorization` suppresses
+OAuth discovery, acquisition, challenge handling, and retries on both paths.
+Existing redirect policies and native sensitive-header handling are unchanged.
