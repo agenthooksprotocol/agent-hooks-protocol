@@ -23,6 +23,18 @@ class DraftShapeTests(unittest.TestCase):
     def request(self):
         return json.loads((ROOT / 'fixtures/draft/http/intercept-request.valid.json').read_text())
 
+    def test_header_injection_pattern_uses_json_not_regex_unicode_escapes(self):
+        path = self.snapshot.schema_dir / 'registration.schema.json'
+        schema = self.store.load(path)['$defs']['httpHeaderValue']['anyOf'][0]
+        # Go's RE2 rejects regex \\u escapes. JSON decoding must produce the
+        # actual control characters, which all four native regex engines accept.
+        pattern = schema['not']['pattern']
+        self.assertEqual(pattern, '[\r\n\0]')
+        for value in ['Bearer abc123', 'session=example', 'café', 'a\tb']:
+            self.assertFalse(self.validator.validate(value, schema, path))
+        for value in ['a\rb', 'a\nb', 'a\0b']:
+            self.assertTrue(self.validator.validate(value, schema, path))
+
     def test_every_event_requires_originating_harness(self):
         covered = set()
         manifest = json.loads((ROOT / 'fixtures/draft/manifest.json').read_text())
