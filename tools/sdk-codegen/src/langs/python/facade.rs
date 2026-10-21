@@ -531,6 +531,22 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
             event.event,
         )?;
     }
+    // Only top-level families are legal wire wildcards (e.g. tool.*, not
+    // tool.permission.*). Derive them from canonical event tags, not class names.
+    event_source.push_str("ALL: Final[Literal[\"*\"]] = \"*\"\n");
+    let families = catalogue
+        .iter()
+        .filter_map(|event| event.event.split_once('.').map(|(family, _)| family))
+        .collect::<std::collections::BTreeSet<_>>();
+    for family in families {
+        writeln!(
+            event_source,
+            "{}_ALL: Final[Literal[\"{}.*\"]] = \"{}.*\"",
+            family.to_uppercase(),
+            family,
+            family,
+        )?;
+    }
     files.get_mut("effect.py").unwrap().insert_str(
         HEADER.len(),
         "from ._grants import EffectName as EffectName\n",

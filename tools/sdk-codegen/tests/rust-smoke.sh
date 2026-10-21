@@ -544,4 +544,19 @@ for contextual in \
   grep -q 'error\[E0308\]' "$temporary/blocked.log"
   grep -q 'expected `EventType`, found `&str`' "$temporary/blocked.log"
 done
+# Typed subscription selectors exclude observation-only events, including in tuples.
+for invalid in \
+  'subscription::intercept(event::SessionEnd);' \
+  'subscription::intercept(event::select((event::ToolBefore, event::SessionEnd)));' \
+  'subscription::intercept(event::EventType::ToolBefore);' \
+  'Configuration::new().subscribe(subscription::intercept(event::ToolBefore));'; do
+  printf 'use agenthooksprotocol::{Configuration, event, subscription}; fn main() { %s }\n' "$invalid" \
+    > "$temporary/consumer/examples/blocked.rs"
+  if "${cargo_command[@]}" check --quiet --manifest-path "$temporary/consumer/Cargo.toml" \
+      --example blocked > "$temporary/blocked.log" 2>&1; then
+    echo "invalid subscription construction compiled: $invalid" >&2
+    exit 1
+  fi
+  grep -q 'error\[E0277\]' "$temporary/blocked.log"
+done
 echo "generated Rust codec smoke tests passed"

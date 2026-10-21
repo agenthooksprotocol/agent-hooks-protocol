@@ -45,6 +45,40 @@ mod tests {
     }
 
     #[test]
+    fn wildcard_selectors_are_canonical_top_level_families() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let source = &files["event.py"];
+        assert!(source.contains("ALL: Final[Literal[\"*\"]] = \"*\""));
+        let catalogue = crate::capability_ergonomics::catalogue(&ir).unwrap();
+        let families = catalogue.iter()
+            .filter_map(|event| event.event.split_once('.').map(|(family, _)| family))
+            .collect::<std::collections::BTreeSet<_>>();
+        for family in &families {
+            assert!(source.contains(&format!(
+                "{}_ALL: Final[Literal[\"{}.*\"]] = \"{}.*\"",
+                family.to_uppercase(), family, family,
+            )));
+        }
+        assert_eq!(source.lines().filter(|line| line.contains("_ALL: Final[")).count(), families.len());
+        assert!(!source.contains("TOOL_PERMISSION_ALL"));
+        assert!(!source.contains("UNKNOWN_ALL"));
+        // Execute only the generated selectors: no SDK imports are needed.
+        let selectors = source.lines().filter(|line| line.contains(": Final[Literal["))
+            .collect::<Vec<_>>().join("\n");
+        let script = format!("from typing import Final, Literal\n{selectors}\n{}", r#"
+assert ALL == "*"
+assert TOOL_ALL == "tool.*"
+assert [TOOL_BEFORE, TOOL_AFTER] == ["tool.before", "tool.after"]
+assert [ALL, TOOL_ALL] == ["*", "tool.*"]
+assert "TOOL_PERMISSION_ALL" not in globals()
+assert "UNKNOWN_ALL" not in globals()
+"#);
+        let result = std::process::Command::new("python3").args(["-c", &script]).output().unwrap();
+        assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    }
+
+    #[test]
     fn native_subscription_durations_are_exact_and_unambiguous() {
         let source = format!(
             "from datetime import timedelta as _timedelta\n_UNSET = object()\ndef convert(timeout=_UNSET, timeout_ms=_UNSET):\n{}        return timeout_ms\n{}",

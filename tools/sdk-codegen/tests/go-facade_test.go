@@ -1000,3 +1000,23 @@ func TestGeneratedTypedSubscription(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestGeneratedTypedWildcardSelections(t *testing.T) {
+	selectors := event.Select(event.ToolBefore, event.ToolAfter, event.ToolAll, event.All)
+	sub := subscription.NewIntercept(selectors, 750*time.Millisecond, subscription.FailOpen, content.Metadata())
+	selectors[0] = event.All
+	raw, err := json.Marshal(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"events":["tool.before","tool.after","tool.*","*"]`) {
+		t.Fatalf("selectors lost order or ownership: %s", raw)
+	}
+	original := []event.Type{event.ToolBefore}
+	copied := event.Select(original...)
+	original[0] = event.All
+	if copied[0] != event.ToolBefore {
+		t.Fatal("Select retained caller slice")
+	}
+
+}

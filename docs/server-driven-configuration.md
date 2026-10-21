@@ -30,7 +30,7 @@ Existing explicit registration continues to work against both old and new backen
 
 ## Security and operation
 
-Adopting defaults may disclose more content than a metadata-only local configuration. Local disclosure and credential authorization boundaries still apply. Discovery cannot replace event connection/authentication settings, transfer event credentials to an upload destination, or grant per-request effects. Responses are validated and correlated before installation. Discovery is bounded, cancellation-aware, and runs no session/model/tool. Concurrent admission shares a completed configuration snapshot.
+Adopting defaults may disclose more content than a metadata-only local configuration. Local disclosure boundaries still apply. Any discovered upload requires explicit client authorization of the complete detached configuration before admission, including destinations with no auth block because client-configured backend headers may carry credentials. Missing, denied, or failed authorization skips the backend before upload secrets are resolved or headers forwarded. Explicit local subscriptions retain their existing behavior. Discovery cannot replace event connection/authentication settings, transfer event credentials to an upload destination, or grant per-request effects. Responses are validated and correlated before installation. Discovery is bounded, cancellation-aware, and runs no session/model/tool. Concurrent admission shares a completed configuration snapshot.
 
 ## Delivery
 

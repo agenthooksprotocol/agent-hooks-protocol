@@ -321,6 +321,17 @@
       "profile": "base",
       "text": "Explicit client subscriptions take precedence in full; only omitted subscriptions trigger backend configuration discovery, and an unsuccessful discovery or an empty supported subscription set skips that backend.",
       "textSha256": "f4c9eb725b9371ab8a16a37e7853e3eebddd099ad10d56b2a3799c1ef58a43d0"
+    },
+    {
+      "id": "AHP-REG-005",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/server-driven-configuration.md",
+      "anchor": "AHP-REG-005",
+      "section": "Connection and trust boundaries",
+      "profile": "base",
+      "text": "Before admitting discovered configuration containing any upload settings, the client obtains explicit local authorization for that configuration; absent, denied, or failed authorization skips the backend without resolving upload credentials or forwarding configured headers to the advertised upload destination.",
+      "textSha256": "ca1c43fdc9de28e2528f81292accee27730eba69c1f500f10b90efa93e0819a0"
     }
   ]
 }

@@ -280,8 +280,39 @@ fn subscription_configuration_uses_explicit_native_policy() {
 }
 
 #[test]
-#[should_panic(expected = "subscription timeout must be whole milliseconds")]
-fn subscription_timeout_rejects_fractional_milliseconds() {
-    agenthooksprotocol::subscription::intercept(agenthooksprotocol::event::ToolBefore)
-        .timeout(std::time::Duration::from_nanos(1));
+fn subscription_timeout_rejects_invalid_durations_without_panicking() {
+    use agenthooksprotocol::{Configuration, event, content, subscription};
+    use std::time::Duration;
+    for duration in [Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1500)] {
+        assert!(subscription::intercept(event::ToolBefore).try_timeout(duration).is_err());
+        let config = Configuration::new().subscribe(subscription::intercept(event::ToolBefore)
+            .timeout(duration).fail_closed().content(content::Selection::metadata()));
+        let value = serde_json::to_value(config).unwrap();
+        assert_eq!(value["subscriptions"][0]["timeoutMs"], 0);
+        assert!(serde_json::from_value::<Configuration>(value).is_err());
+    }
+    assert!(subscription::intercept(event::ToolBefore).try_timeout(Duration::from_millis(1)).is_ok());
+}
+
+#[test]
+fn canonical_selectors_support_wildcards_families_and_tuples() {
+    use agenthooksprotocol::{Configuration, event, content, subscription};
+    use std::time::Duration;
+    let config = Configuration::new()
+        .subscribe(subscription::intercept(event::select((event::ToolBefore, event::ToolAfter)))
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::intercept(event::tool::ALL)
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::intercept(event::ALL)
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::observe(event::select((event::ToolBefore, event::SessionEnd)))
+            .content(content::Selection::metadata()));
+    let value = serde_json::to_value(config).unwrap();
+    assert_eq!(value["subscriptions"][0]["events"], json!(["tool.before", "tool.after"]));
+    assert_eq!(value["subscriptions"][1]["events"], json!(["tool.*"]));
+    assert_eq!(value["subscriptions"][2]["events"], json!(["*"]));
+    assert_eq!(value["subscriptions"][3]["events"], json!(["tool.before", "session.end"]));
+    assert!(serde_json::from_value::<Configuration>(value).is_ok());
+    // Runtime enum remains separate from the subscription selector markers.
+    assert_eq!(event::EventType::ToolBefore.as_str(), "tool.before");
 }

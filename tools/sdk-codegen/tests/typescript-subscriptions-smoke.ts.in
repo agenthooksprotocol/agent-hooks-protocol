@@ -1,6 +1,15 @@
 import {content, duration, events, subscription} from './public';
 import type {Configuration, InterceptOptions, Subscription} from './public';
 
+// Every canonical family receives a typed wildcard namespace.
+for (const value of Object.values(events)) {
+  if (typeof value === 'string' && value !== '*') {
+    const family = value.split('.')[0]!;
+    const alias = (events as unknown as Record<string, {readonly all: string}>)[family];
+    if (alias?.all !== `${family}.*`) throw new Error('missing canonical wildcard alias');
+  }
+}
+
 const options: InterceptOptions = {
   events: [events.toolBefore], timeout: duration.milliseconds(750),
   failurePolicy: 'fail-open', content: content.metadata(),
@@ -24,10 +33,19 @@ rejects(() => subscription.intercept({...options, events: [events.toolBefore, ev
 // @ts-expect-error observation-only selectors cannot author intercept subscriptions
 rejects(() => subscription.intercept({...options, events: [events.sessionEnd], timeout: duration.milliseconds(1)}));
 rejects(() => subscription.observe({events: ['INVALID.*'], content: content.metadata()}));
-subscription.intercept({...options, events: ['tool.*'], timeout: duration.milliseconds(1), failurePolicy: 'fail-closed'});
+const family = subscription.intercept({...options, events: [events.tool.all], failurePolicy: 'fail-closed'});
+const all = subscription.intercept({...options, events: [events.all]});
+const multiple = subscription.intercept({...options, events: [events.toolBefore, events.toolAfter]});
+const observeFamily = subscription.observe({events: [events.session.all], content: content.metadata()});
+if (family.events[0] !== 'tool.*' || all.events[0] !== '*' || multiple.events.length !== 2 || observeFamily.events[0] !== 'session.*') throw new Error('invalid typed selectors');
+rejects(() => subscription.intercept({...options, events: [events.tool.all, events.tool.all]}));
 
 // Compile-only negative authoring checks.
 function invalidTypes(): void {
+  // @ts-expect-error canonical family names only
+  subscription.intercept({...options, events: [events.nonexistent.all]});
+  // @ts-expect-error families are namespaces, not selectors
+  subscription.intercept({...options, events: [events.tool]});
   // @ts-expect-error observation-only selectors cannot author intercept subscriptions
   subscription.intercept({...options, events: [events.sessionEnd]});
   // @ts-expect-error unrecognized standard event

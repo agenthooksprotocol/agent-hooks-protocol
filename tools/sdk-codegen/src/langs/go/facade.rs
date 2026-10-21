@@ -183,6 +183,36 @@ const FailClosed FailurePolicy = "fail-closed"
             }
         }
     }
+    // Derive family selectors from canonical event literals, never a parallel catalogue.
+    let families = g
+        .objects
+        .iter()
+        .filter(|(name, fields)| {
+            name.ends_with("Event") && fields.iter().any(|f| f.wire_name == "source")
+        })
+        .filter_map(|(_, fields)| fields.iter().find(|f| f.wire_name == "type"))
+        .filter_map(|field| literal(&g, &field.shape))
+        .filter_map(|value| {
+            value
+                .as_str()
+                .and_then(|tag| tag.split_once('.'))
+                .map(|(family, _)| family.to_owned())
+        })
+        .collect::<BTreeSet<_>>();
+    events.push_str("// All selects all events supported by the subscription delivery mode.\nconst All Type = \"*\"\n");
+    for family in families {
+        let name = format!("{}All", go_identifier(&family));
+        anyhow::ensure!(
+            !g.objects.contains_key(&format!("{name}Event")),
+            "event selector name collision: {name}"
+        );
+        writeln!(
+            events,
+            "// {name} selects supported events in the {family} family.\nconst {name} Type = {:?}",
+            format!("{family}.*")
+        )?;
+    }
+    events.push_str("// Select copies typed selectors in order for a subscription. Canonical validation rejects an empty selection.\nfunc Select(events ...Type) []Type { return append([]Type{}, events...) }\n");
     packages.insert("event".into(), events);
     let mut tool = String::new();
     let mut tool_fields = g.objects["ExecutionEventTool"].clone();
@@ -2270,6 +2300,40 @@ mod tests {
         assert!(source.contains("func WithInputMetadata(value string) InputOption"));
         assert!(source.contains("Metadata: config.Metadata"));
         assert!(!source.contains("WithInputKind"));
+    }
+    #[test]
+    fn typed_wildcards_and_multi_selection_follow_canonical_events() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let source = &files["event/generated.go"];
+        assert!(source.contains("const All Type = \"*\""));
+        assert!(source.contains("const ToolAll Type = \"tool.*\""));
+        assert!(source.contains("func Select(events ...Type) []Type"));
+        assert!(!source.contains("const UnknownAll"));
+        let mut g = Generator::new(&ir);
+        for n in &ir.types {
+            g.emit_named(&g.named_name(&n.name), &n.source, &n.shape)
+                .unwrap();
+        }
+        for (name, fields) in &g.objects {
+            if !name.ends_with("Event") || !fields.iter().any(|f| f.wire_name == "source") {
+                continue;
+            }
+            let Some(serde_json::Value::String(tag)) = fields
+                .iter()
+                .find(|f| f.wire_name == "type")
+                .and_then(|f| literal(&g, &f.shape))
+            else {
+                continue;
+            };
+            let Some((family, _)) = tag.split_once('.') else {
+                continue;
+            };
+            assert!(source.contains(&format!(
+                "const {}All Type = \"{family}.*\"",
+                go_identifier(family)
+            )));
+        }
     }
     #[test]
     fn configuration_helpers_and_optional_backend_constructors() {

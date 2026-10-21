@@ -663,6 +663,12 @@ def main() -> None:
             if p.kind == inspect.Parameter.KEYWORD_ONLY
             and p.default == inspect.Parameter.empty
         }
+        # Native-duration constructors require exactly one of two alternative
+        # inputs; Python signatures cannot mark that relationship as required.
+        # Exercise the legacy wire-unit branch here; dedicated duration tests
+        # cover timedelta, conflicting inputs, and omission of both arguments.
+        if {"timeout", "timeout_ms"} <= signature.parameters.keys():
+            required["timeout_ms"] = 1
         try:
             value = constructor(**required, vendor_field={"future": [1, None]})
         except ValueError as error:

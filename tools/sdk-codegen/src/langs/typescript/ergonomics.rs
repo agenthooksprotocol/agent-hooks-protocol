@@ -139,6 +139,14 @@ pub(super) fn emit(ir: &Ir, out: &mut String) -> Result<()> {
         let key = chars.next().unwrap().to_lowercase().to_string() + chars.as_str();
         writeln!(out, "{key}: {event:?},")?;
     }
+    out.push_str("all: '*' as const,\n");
+    let families = inventory
+        .iter()
+        .filter_map(|(event, _, _)| event.split_once('.').map(|(family, _)| family))
+        .collect::<std::collections::BTreeSet<_>>();
+    for family in families {
+        writeln!(out, "{family:?}: {{ all: \"{family}.*\" }},")?;
+    }
     out.push_str("} as const;\n");
     out.push_str("\n/** Out-of-band source binding produced by canonical host-input projection. */\nexport interface ContentSourceBinding<S> { readonly path: readonly (string | number)[]; readonly source: S }\n");
     if ir
