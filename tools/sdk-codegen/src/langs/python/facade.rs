@@ -506,6 +506,31 @@ pub fn emit(ir: &Ir) -> Result<BTreeMap<String, String>> {
         )?;
     }
     ergonomic_modules(&mut files, &renderer, &shapes)?;
+    if shapes.contains_key("InterceptSubscription") {
+        let models = files.get_mut("_models/__init__.py").unwrap();
+        let future = "from __future__ import annotations\n";
+        let offset = models
+            .find(future)
+            .map_or(HEADER.len(), |i| i + future.len());
+        models.insert_str(offset, "from datetime import timedelta as _timedelta\n");
+    }
+    if shapes.contains_key("Configuration") {
+        files.insert(
+            "configuration.py".into(),
+            format!("{HEADER}from ._models import Configuration as Configuration\n\n__all__ = [\"Configuration\"]\n"),
+        );
+    }
+    let event_source = files.get_mut("event.py").unwrap();
+    event_source.push_str("\nfrom typing import Final, Literal\n");
+    for event in &catalogue {
+        writeln!(
+            event_source,
+            "{}: Final[Literal[{:?}]] = {:?}",
+            snake_case(&event.name).to_uppercase(),
+            event.event,
+            event.event,
+        )?;
+    }
     files.get_mut("effect.py").unwrap().insert_str(
         HEADER.len(),
         "from ._grants import EffectName as EffectName\n",
@@ -911,6 +936,7 @@ fn constructor(
     ir: &Ir,
     validate: bool,
 ) -> Result<()> {
+    let duration_alias = name == "InterceptSubscription";
     let base = if validate {
         "_WireModel"
     } else {
@@ -936,7 +962,10 @@ fn constructor(
             .constructor_default
             .clone()
             .or_else(|| literal(ir, &p.shape));
-        let optional = !p.required || default.is_some() || p.wire_name == "protocolVersion";
+        let optional = !p.required
+            || default.is_some()
+            || p.wire_name == "protocolVersion"
+            || (duration_alias && p.wire_name == "timeoutMs");
         let mut parameter_type = annotation(ir, &p.shape, &field_hint(name, &p.wire_name)?, "")?;
         if !validate {
             let input = crate::ergonomics::InputField {
@@ -968,7 +997,13 @@ fn constructor(
             if optional { " = _UNSET" } else { "" }
         )?;
     }
+    if duration_alias {
+        write!(out, "timeout: _timedelta = _UNSET, ")?;
+    }
     writeln!(out, "**extra: Any) -> None:")?;
+    if duration_alias {
+        out.push_str(DURATION_ALIAS);
+    }
     for (p, param) in fields.iter().zip(&params) {
         if p.wire_name != *param {
             writeln!(
@@ -1615,4 +1650,19 @@ def _hydrate(annotation: Any, value: Any, path: str, cache: dict[Any, Any]) -> A
         return value if isinstance(value, annotation) else annotation._hydrate_validated(value, path, cache)
     return value
 
+"#;
+
+// Convert without floating point so long durations remain exact. Preserve the
+// explicit millisecond constructor while rejecting ambiguous or lossy inputs.
+const DURATION_ALIAS: &str = r#"        if timeout is not _UNSET:
+            if timeout_ms is not _UNSET:
+                raise TypeError("Specify either timeout or timeout_ms, not both")
+            if not isinstance(timeout, _timedelta):
+                raise TypeError("timeout must be a datetime.timedelta")
+            microseconds = ((timeout.days * 86400 + timeout.seconds) * 1000000 + timeout.microseconds)
+            if microseconds <= 0 or microseconds % 1000:
+                raise ValueError("timeout must be positive whole milliseconds")
+            timeout_ms = microseconds // 1000
+        elif timeout_ms is _UNSET:
+            raise TypeError("Missing required keyword: timeout or timeout_ms")
 "#;

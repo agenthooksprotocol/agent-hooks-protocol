@@ -76,10 +76,12 @@ A portable registration document is a JSON object with an ordered `hooks` array.
 </tr>
 <tr>
 <td>`subscriptions`</td>
-<td>REQUIRED</td>
-<td>Non-empty array of event subscriptions.</td>
+<td>OPTIONAL</td>
+<td>Non-empty array of explicit event subscriptions. Omission selects server-driven configuration discovery; an explicit empty array is invalid.</td>
 </tr>
 </table>
+See [server-driven configuration](../server-driven-configuration.md) for backend-provided defaults, explicit client precedence, and initialization admission.
+
 ### Subscription fields
 <table>
 <tr>

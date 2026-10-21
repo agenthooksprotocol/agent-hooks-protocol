@@ -1,6 +1,86 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subscription_configuration_ergonomics_preserve_explicit_apis() {
+        let ir = draft();
+        let files = emit(&ir).unwrap();
+        let models = &files["_models/__init__.py"];
+        let intercept = models
+            .split("class InterceptSubscription(")
+            .nth(1)
+            .unwrap()
+            .split("\nclass ")
+            .next()
+            .unwrap();
+        assert!(intercept.contains("timeout: _timedelta = _UNSET"));
+        assert!(intercept.contains("timeout_ms: int = _UNSET"));
+        assert!(intercept.contains("self[\"timeoutMs\"] = timeout_ms"));
+        assert!(intercept.contains("Specify either timeout or timeout_ms, not both"));
+        assert!(models.contains("from datetime import timedelta as _timedelta"));
+        assert!(
+            files["subscription.py"]
+                .contains("from ._models.subscription import Intercept as Intercept")
+        );
+        for event in crate::capability_ergonomics::catalogue(&ir).unwrap() {
+            assert!(files["event.py"].contains(&format!(
+                "{}: Final[Literal[{:?}]] = {:?}",
+                snake_case(&event.name).to_uppercase(),
+                event.event,
+                event.event
+            )));
+        }
+        if ir.types.iter().any(|named| named.name == "Configuration") {
+            assert!(
+                files["configuration.py"]
+                    .contains("from ._models import Configuration as Configuration")
+            );
+            assert!(models.contains("class Configuration("));
+        }
+        assert!(
+            !files.contains_key("content.py"),
+            "runtime content helpers remain SDK-owned"
+        );
+    }
+
+    #[test]
+    fn native_subscription_durations_are_exact_and_unambiguous() {
+        let source = format!(
+            "from datetime import timedelta as _timedelta\n_UNSET = object()\ndef convert(timeout=_UNSET, timeout_ms=_UNSET):\n{}        return timeout_ms\n{}",
+            DURATION_ALIAS,
+            r#"
+assert convert(_timedelta(milliseconds=750)) == 750
+assert convert(timeout_ms=750) == 750
+assert convert(_timedelta(days=999999999)) == 999999999 * 86400000
+for args, error in [
+    ({}, TypeError),
+    ({"timeout": _timedelta(milliseconds=1), "timeout_ms": 1}, TypeError),
+    ({"timeout": 750}, TypeError),
+    ({"timeout": None}, TypeError),
+    ({"timeout": _timedelta(0)}, ValueError),
+    ({"timeout": _timedelta(milliseconds=-1)}, ValueError),
+    ({"timeout": _timedelta(microseconds=1500)}, ValueError),
+]:
+    try:
+        convert(**args)
+    except error:
+        pass
+    else:
+        raise AssertionError(args)
+"#
+        );
+        let result = std::process::Command::new("python3")
+            .args(["-c", &source])
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+
     fn draft() -> Ir {
         crate::compiler::compile(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."),

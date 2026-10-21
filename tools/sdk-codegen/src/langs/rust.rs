@@ -4,6 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(crate) mod capabilities;
 #[path = "rust/ergonomics.rs"]
 mod ergonomics;
+#[path = "rust/subscriptions.rs"]
+mod subscriptions;
 use std::fmt::Write;
 
 use anyhow::{Context, Result};
@@ -279,6 +281,15 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
         public_exports.insert("capability".into());
     }
     declarations.push_str(&capability_api);
+    subscriptions::emit(ir, &mut declarations)?;
+    if ir
+        .types
+        .iter()
+        .any(|named| named.name == "InterceptSubscription")
+        && !boundary_inventory(ir).is_empty()
+    {
+        public_exports.extend(["event", "content", "subscription"].map(str::to_owned));
+    }
     public_exports.extend(context.type_names.values().cloned());
     public_exports.extend(context.helper_names.values().flatten().cloned());
     public_exports.extend(
@@ -336,6 +347,16 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
                 .or_default()
                 .insert(context.type_name(&named.name));
         }
+        if named.name == "Configuration" {
+            modules
+                .entry("server".into())
+                .or_default()
+                .insert(context.type_name(&named.name));
+            modules
+                .entry("client".into())
+                .or_default()
+                .insert(context.type_name(&named.name));
+        }
         if named.name.starts_with("Capabilities")
             || named.name.starts_with("Initialize")
             || named.name.ends_with("Request")
@@ -363,10 +384,11 @@ fn emit_with_defaults(ir: &Ir, defaults: BTreeMap<(String, String), Value>) -> R
     }
     public_exports.extend(modules.keys().cloned());
     for (module, names) in modules {
+        let extra = subscriptions::module_exports(ir, &module);
         writeln!(
             output,
             "/// Models grouped by protocol domain.\npub mod {module} {{\n    pub use super::{{{}}};\n}}\n",
-            names.into_iter().collect::<Vec<_>>().join(", ")
+            names.into_iter().collect::<Vec<_>>().join(", ") + &extra
         )?;
     }
 
@@ -665,7 +687,12 @@ impl<'a> EmitContext<'a> {
                 .defaults
                 .get(&(name.to_owned(), property.wire_name.clone()));
             let literal = self.is_literal(&property.shape, &mut BTreeSet::new());
-            let value = if let Some(default) = default {
+            let value = if name == "Configuration" && field == "subscriptions" {
+                "Vec::new()".to_owned()
+            } else if name == "Backend" && field == "subscriptions" && !property.required {
+                arguments.push(format!("{field}: impl Into<{ty}>"));
+                format!("Presence::Present({field}.into())")
+            } else if let Some(default) = default {
                 let json = serde_json::to_string(default)?;
                 format!(
                     "serde_json::from_str::<{ty}>({json:?}).expect(\"schema default matches generated type\")"
@@ -819,6 +846,18 @@ impl<'a> EmitContext<'a> {
     }
 
     fn ensure_helper(&mut self, hint: &str, shape: &Shape) -> Result<String> {
+        // Shared schema metadata can promote an existing inline union to a named
+        // public model. Reuse it rather than defining a conflicting second type.
+        let canonical = if hint == "Configuration subscriptions item" {
+            "BackendSubscriptionsItem".to_owned()
+        } else {
+            type_identifier(hint)
+        };
+        if let Some(shape_named) = self.named_shapes.get(canonical.as_str()) {
+            if serde_json::to_value(shape_named)? == serde_json::to_value(shape)? {
+                return Ok(canonical);
+            }
+        }
         let name = unique_type_identifier(hint, &mut self.used_type_names)?;
         let declaration = self.emit_declaration(&name, shape)?;
         writeln!(self.helpers, "/// Inline schema model.")?;

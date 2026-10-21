@@ -252,7 +252,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	if !result.OK {
 		t.Fatalf("mathematically integral exponent was rejected: %+v", result.Diagnostics)
 	}
-	typedSubscription := result.Value.Hooks[0].Subscriptions[0].InterceptSubscription
+	typedSubscription := result.Value.Hooks[0].Subscriptions.Value[0].InterceptSubscription
 	if !typedSubscription.Present || typedSubscription.Value.TimeoutMs.String() != "1e3" {
 		t.Fatal("typed integer did not preserve its JSON number spelling")
 	}

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "configuration-1",
+  "method": "hooks/configuration",
+  "params": {
+    "protocolVersion": "draft"
+  }
+}

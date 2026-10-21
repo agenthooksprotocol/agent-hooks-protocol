@@ -107,3 +107,13 @@ message-list target. Contextual fixtures declare host-only `editContext` and
 `tool.after` output edits target canonical `items` messages. Contextual output
 fixtures cover replacement, ordered append, and rejection of objects and bare
 parts; no native JSON output property is inferred.
+
+## Server-driven configuration
+
+- A client with explicit subscriptions uses them unchanged even if discovery is unsupported, failing, or advertises different defaults.
+- Omitted subscriptions trigger bounded configuration discovery before event admission. Explicit empty subscriptions remain invalid.
+- Request/result protocol versions and JSON-RPC correlation are validated before any route is installed.
+- Unsupported event/mode matches are removed without changing other settings; no supported subscriptions skips the backend.
+- Authentication failures, malformed responses, and timeouts skip discovery-configured backends; cancellation propagates.
+- Discovery runs no session, model, or tool. It cannot replace client connection/authentication configuration or per-request effect authority.
+- Concurrent initial use sees one completed configuration snapshot, not partially admitted routes.

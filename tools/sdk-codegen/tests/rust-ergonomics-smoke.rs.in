@@ -256,3 +256,32 @@ fn contextual_response_parsing_and_staging_use_typed_events() {
     assert_eq!(event, EventType::ToolBefore);
     assert!(serde_json::from_str::<EventType>(r#""unknown.event""#).is_err());
 }
+
+#[test]
+fn subscription_configuration_uses_explicit_native_policy() {
+    use agenthooksprotocol::{Configuration, content, event, subscription};
+    use std::time::Duration;
+    let configuration = Configuration::new()
+        .subscribe(subscription::intercept(event::ToolBefore)
+            .timeout(Duration::from_millis(750)).fail_open()
+            .content(content::Selection::metadata()))
+        .subscribe(subscription::observe(event::ToolAfter)
+            .content(content::Selection::metadata()));
+    let value = serde_json::to_value(&configuration).unwrap();
+    assert_eq!(value["subscriptions"][0]["timeoutMs"], 750);
+    assert_eq!(value["subscriptions"][0]["failurePolicy"], "fail-open");
+    assert_eq!(value["subscriptions"][0]["content"], json!({"default":"metadata"}));
+    assert_eq!(value["subscriptions"][1]["mode"], "observe");
+    assert!(serde_json::from_value::<Configuration>(value).is_ok());
+    let closed: agenthooksprotocol::BackendSubscriptionsItem = subscription::intercept(event::ToolBefore)
+        .content(content::Selection::metadata()).fail_closed()
+        .timeout(Duration::MAX - Duration::from_nanos(999_999)).into();
+    assert_eq!(serde_json::to_value(closed).unwrap()["failurePolicy"], "fail-closed");
+}
+
+#[test]
+#[should_panic(expected = "subscription timeout must be whole milliseconds")]
+fn subscription_timeout_rejects_fractional_milliseconds() {
+    agenthooksprotocol::subscription::intercept(agenthooksprotocol::event::ToolBefore)
+        .timeout(std::time::Duration::from_nanos(1));
+}

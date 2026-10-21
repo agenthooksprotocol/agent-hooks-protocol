@@ -310,6 +310,17 @@
       "profile": "http",
       "text": "HTTP registration headers MUST follow the configuration, resolution, validation, request construction, endpoint isolation, and failure rules in this section.",
       "textSha256": "c4d4ed5f30bab0fd59563bad28a4fd9e57cd6d43e043a278316b24d69d847c58"
+    },
+    {
+      "id": "AHP-REG-004",
+      "status": "active",
+      "level": "MUST",
+      "document": "spec/draft/server-driven-configuration.md",
+      "anchor": "AHP-REG-004",
+      "section": "Discovery",
+      "profile": "base",
+      "text": "Explicit client subscriptions take precedence in full; only omitted subscriptions trigger backend configuration discovery, and an unsuccessful discovery or an empty supported subscription set skips that backend.",
+      "textSha256": "f4c9eb725b9371ab8a16a37e7853e3eebddd099ad10d56b2a3799c1ef58a43d0"
     }
   ]
 }

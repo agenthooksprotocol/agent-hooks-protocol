@@ -3,6 +3,7 @@ use std::fmt::Write;
 pub(crate) mod capabilities;
 mod ergonomics;
 pub mod facade;
+mod subscriptions;
 
 use anyhow::Result;
 
@@ -78,6 +79,7 @@ pub fn emit(ir: &Ir) -> Result<String> {
         )?;
     }
     ergonomics::emit(ir, &mut output)?;
+    subscriptions::emit(ir, &mut output)?;
     output.push_str(&crate::capability_ergonomics::typescript(ir)?);
     Ok(output)
 }

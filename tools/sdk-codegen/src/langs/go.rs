@@ -794,6 +794,19 @@ impl<'a> Generator<'a> {
                 }
             }
             Shape::Union { .. } => {
+                // Configuration and registration share one public subscription value.
+                // Reuse only the exact union, retaining canonical schema validation.
+                if hint == "ConfigurationSubscriptionsItem" {
+                    let shared = self
+                        .decoder_shapes
+                        .get("BackendSubscriptionsItem")
+                        .context("Configuration requires the backend subscription union")?;
+                    anyhow::ensure!(
+                        serde_json::to_value(shared)? == serde_json::to_value(shape)?,
+                        "Configuration and Backend subscription unions must match"
+                    );
+                    return Ok("BackendSubscriptionsItem".into());
+                }
                 let name = self.allocate_type_name(hint);
                 self.emit_union(&name, None, shape)?;
                 name

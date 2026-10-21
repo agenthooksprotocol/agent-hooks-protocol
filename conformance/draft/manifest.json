@@ -7,7 +7,7 @@
     {
       "id": "base",
       "path": "conformance/draft/profiles/base.md",
-      "sha256": "103709210d5939c5c35880ca6800891870bfd2d5224fdc8458e9bae40944b258",
+      "sha256": "cc2930918a1bb9a360ef4525f14e867bb94513a80ee5629da1047d69b8856f4c",
       "roles": [
         "harness",
         "backend"
@@ -26,7 +26,8 @@
         "AHP-CONTENT-001",
         "AHP-CONTENT-002",
         "AHP-EDIT-001",
-        "AHP-CORE-005"
+        "AHP-CORE-005",
+        "AHP-REG-004"
       ]
     },
     {

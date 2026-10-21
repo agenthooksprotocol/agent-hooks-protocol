@@ -1,0 +1,43 @@
+import {content, duration, events, subscription} from './public';
+import type {Configuration, InterceptOptions, Subscription} from './public';
+
+const options: InterceptOptions = {
+  events: [events.toolBefore], timeout: duration.milliseconds(750),
+  failurePolicy: 'fail-open', content: content.metadata(),
+};
+const intercept = subscription.intercept(options);
+const observe = subscription.observe({events: [events.sessionEnd], content: content.body()});
+const configuration: Configuration = {subscriptions: [intercept, observe]};
+const entries = configuration.subscriptions;
+const knownEntries: Subscription[] = [intercept, observe];
+void knownEntries;
+if (entries.length !== 2 || intercept.timeoutMs !== 750 || intercept.mode !== 'intercept' || intercept.content.default !== 'metadata') throw new Error('invalid subscription projection');
+if ('timeout' in intercept || 'timeoutMs' in observe || observe.mode !== 'observe') throw new Error('invalid wire options');
+if (content.omit().default !== 'omit') throw new Error('invalid omit selection');
+function rejects(action: () => unknown): void {
+  try { action(); } catch { return; }
+  throw new Error('expected validation failure');
+}
+for (const invalid of [0, -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) rejects(() => duration.milliseconds(invalid));
+rejects(() => subscription.intercept({...options, events: [], timeout: duration.milliseconds(1)}));
+rejects(() => subscription.intercept({...options, events: [events.toolBefore, events.toolBefore], timeout: duration.milliseconds(1)}));
+// @ts-expect-error observation-only selectors cannot author intercept subscriptions
+rejects(() => subscription.intercept({...options, events: [events.sessionEnd], timeout: duration.milliseconds(1)}));
+rejects(() => subscription.observe({events: ['INVALID.*'], content: content.metadata()}));
+subscription.intercept({...options, events: ['tool.*'], timeout: duration.milliseconds(1), failurePolicy: 'fail-closed'});
+
+// Compile-only negative authoring checks.
+function invalidTypes(): void {
+  // @ts-expect-error observation-only selectors cannot author intercept subscriptions
+  subscription.intercept({...options, events: [events.sessionEnd]});
+  // @ts-expect-error unrecognized standard event
+  subscription.observe({events: ['not.a.standard.event'], content: content.metadata()});
+  // @ts-expect-error durations must use duration.milliseconds
+  const numeric: InterceptOptions = {events: [events.toolBefore], timeout: 750, failurePolicy: 'fail-open', content: content.metadata()};
+  // @ts-expect-error failure policy is a closed authoring choice
+  const policy: InterceptOptions = {events: [events.toolBefore], timeout: duration.milliseconds(750), failurePolicy: 'maybe', content: content.metadata()};
+  // @ts-expect-error content is required
+  subscription.observe({events: [events.toolBefore]});
+  void numeric; void policy;
+}
+void invalidTypes;

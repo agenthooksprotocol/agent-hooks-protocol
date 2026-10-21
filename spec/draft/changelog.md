@@ -1,5 +1,13 @@
 # Changelog
 
+
+## Unpublished draft: server-driven configuration
+
+- Add `hooks/configuration` for backend subscription defaults, independently of harness capability discovery.
+- Omitted client subscriptions discover defaults during initialization/admission; explicit non-empty subscriptions retain precedence and existing validation.
+- Failed discovery and empty supported subscription sets skip the backend without server-needs negotiation.
+- Generate common configuration models and language-native subscription declaration helpers for clients and backends.
+
 This file records unpublished draft changes and changes between protocol snapshots.
 
 ## Unpublished draft: canonical inline messages

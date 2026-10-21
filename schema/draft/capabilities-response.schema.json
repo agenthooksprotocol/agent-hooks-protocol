@@ -625,8 +625,17 @@
             }
           },
           "not": {
-            "required": [
-              "effects"
+            "anyOf": [
+              {
+                "required": [
+                  "configuration"
+                ]
+              },
+              {
+                "required": [
+                  "effects"
+                ]
+              }
             ]
           }
         }

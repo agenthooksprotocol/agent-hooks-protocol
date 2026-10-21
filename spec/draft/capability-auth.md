@@ -47,7 +47,7 @@ manifest is not proof that an effect was actually applied.
 
 ## Registration
 
-Subscriptions and their identifiers remain harness-local configuration. JSON-RPC
+Resolved subscriptions and their identifiers remain harness-local configuration. A backend may supply subscription defaults through [server-driven configuration](server-driven-configuration.md); explicit client subscriptions replace them completely. JSON-RPC
 IDs correlate pending requests; neither those IDs nor caller-supplied metadata
 authorize uploads. Upload authorization derives from independently configured
 credentials and receiver policy.

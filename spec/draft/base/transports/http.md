@@ -10,7 +10,7 @@ The harness sends each JSON-RPC message as the body of a new HTTP `POST` request
 Requirements:
 - Request and response bodies MUST use `Content-Type: application/json` by default; explicit configured request headers take precedence as specified below.
 - The body MUST contain one JSON-RPC object, not a batch.
-- A successful `hooks/intercept` or `hooks/capabilities` response MUST use HTTP status `200` and contain the correlated JSON-RPC response.
+- A successful `hooks/intercept`, `hooks/capabilities`, or `hooks/configuration` response MUST use HTTP status `200` and contain the correlated JSON-RPC response.
 - A successfully accepted observe notification MUST use `202 Accepted` or `204 No Content` and no response body.
 - HTTP 401 can initiate the bounded OAuth discovery/authentication procedure below. An unresolved challenge and any status other than the successes specified above are operational failures.
 - Redirects MUST NOT be followed unless explicitly enabled for the configured endpoint.
