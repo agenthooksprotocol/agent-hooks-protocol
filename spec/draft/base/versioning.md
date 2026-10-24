@@ -9,7 +9,7 @@
 **AHP-RPC-002 — MUST.** An interception that expects a decision uses a `hooks/intercept` request; one-way observation uses a `hooks/observe` notification.
 
 AHP uses [JSON-RPC 2.0](https://www.jsonrpc.org/specification). All messages MUST be UTF-8 encoded.
-This protocol revision defines three methods:
+This protocol revision defines four methods:
 <table>
 <tr>
 <td>Method</td>
@@ -34,6 +34,12 @@ This protocol revision defines three methods:
 <td>Request</td>
 <td>Harness capability discovery</td>
 <td>Read the manifest independently of session creation; see [discovery](../capability-auth.md).</td>
+</tr>
+<tr>
+<td>`hooks/configuration`</td>
+<td>Request</td>
+<td>Optional backend configuration discovery</td>
+<td>Read backend subscription defaults; see [server-driven configuration](../server-driven-configuration.md).</td>
 </tr>
 </table>
 Batch JSON-RPC messages MUST NOT be used in this protocol revision.

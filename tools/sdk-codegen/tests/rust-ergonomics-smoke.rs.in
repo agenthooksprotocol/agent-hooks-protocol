@@ -256,3 +256,63 @@ fn contextual_response_parsing_and_staging_use_typed_events() {
     assert_eq!(event, EventType::ToolBefore);
     assert!(serde_json::from_str::<EventType>(r#""unknown.event""#).is_err());
 }
+
+#[test]
+fn subscription_configuration_uses_explicit_native_policy() {
+    use agenthooksprotocol::{Configuration, content, event, subscription};
+    use std::time::Duration;
+    let configuration = Configuration::new()
+        .subscribe(subscription::intercept(event::ToolBefore)
+            .timeout(Duration::from_millis(750)).fail_open()
+            .content(content::Selection::metadata()))
+        .subscribe(subscription::observe(event::ToolAfter)
+            .content(content::Selection::metadata()));
+    let value = serde_json::to_value(&configuration).unwrap();
+    assert_eq!(value["subscriptions"][0]["timeoutMs"], 750);
+    assert_eq!(value["subscriptions"][0]["failurePolicy"], "fail-open");
+    assert_eq!(value["subscriptions"][0]["content"], json!({"default":"metadata"}));
+    assert_eq!(value["subscriptions"][1]["mode"], "observe");
+    assert!(serde_json::from_value::<Configuration>(value).is_ok());
+    let closed: agenthooksprotocol::BackendSubscriptionsItem = subscription::intercept(event::ToolBefore)
+        .content(content::Selection::metadata()).fail_closed()
+        .timeout(Duration::MAX - Duration::from_nanos(999_999)).into();
+    assert_eq!(serde_json::to_value(closed).unwrap()["failurePolicy"], "fail-closed");
+}
+
+#[test]
+fn subscription_timeout_rejects_invalid_durations_without_panicking() {
+    use agenthooksprotocol::{Configuration, event, content, subscription};
+    use std::time::Duration;
+    for duration in [Duration::ZERO, Duration::from_nanos(1), Duration::from_micros(1500)] {
+        assert!(subscription::intercept(event::ToolBefore).try_timeout(duration).is_err());
+        let config = Configuration::new().subscribe(subscription::intercept(event::ToolBefore)
+            .timeout(duration).fail_closed().content(content::Selection::metadata()));
+        let value = serde_json::to_value(config).unwrap();
+        assert_eq!(value["subscriptions"][0]["timeoutMs"], 0);
+        assert!(serde_json::from_value::<Configuration>(value).is_err());
+    }
+    assert!(subscription::intercept(event::ToolBefore).try_timeout(Duration::from_millis(1)).is_ok());
+}
+
+#[test]
+fn canonical_selectors_support_wildcards_families_and_tuples() {
+    use agenthooksprotocol::{Configuration, event, content, subscription};
+    use std::time::Duration;
+    let config = Configuration::new()
+        .subscribe(subscription::intercept(event::select((event::ToolBefore, event::ToolAfter)))
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::intercept(event::tool::ALL)
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::intercept(event::ALL)
+            .timeout(Duration::from_millis(1)).fail_open().content(content::Selection::metadata()))
+        .subscribe(subscription::observe(event::select((event::ToolBefore, event::SessionEnd)))
+            .content(content::Selection::metadata()));
+    let value = serde_json::to_value(config).unwrap();
+    assert_eq!(value["subscriptions"][0]["events"], json!(["tool.before", "tool.after"]));
+    assert_eq!(value["subscriptions"][1]["events"], json!(["tool.*"]));
+    assert_eq!(value["subscriptions"][2]["events"], json!(["*"]));
+    assert_eq!(value["subscriptions"][3]["events"], json!(["tool.before", "session.end"]));
+    assert!(serde_json::from_value::<Configuration>(value).is_ok());
+    // Runtime enum remains separate from the subscription selector markers.
+    assert_eq!(event::EventType::ToolBefore.as_str(), "tool.before");
+}

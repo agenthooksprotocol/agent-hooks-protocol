@@ -107,3 +107,21 @@ message-list target. Contextual fixtures declare host-only `editContext` and
 `tool.after` output edits target canonical `items` messages. Contextual output
 fixtures cover replacement, ordered append, and rejection of objects and bare
 parts; no native JSON output property is inferred.
+
+## Server-driven configuration
+
+- A client with explicit subscriptions uses them unchanged even if discovery is unsupported, failing, or advertises different defaults.
+- Omitted subscriptions trigger bounded configuration discovery before event admission. Explicit empty subscriptions remain invalid.
+- Request/result protocol versions and JSON-RPC correlation are validated before any route is installed.
+- Unsupported event/mode matches are removed without changing other settings; no supported subscriptions skips the backend.
+- Authentication failures, malformed responses, and timeouts skip discovery-configured backends; cancellation propagates.
+- Discovery runs no session, model, or tool. It cannot replace client connection/authentication configuration or per-request effect authority.
+- Concurrent initial use sees one completed configuration snapshot, not partially admitted routes.
+
+### Discovered upload authorization
+
+- Advertise an upload destination with an `auth` reference to a local environment variable or secret. Without explicit local authorization, skip the backend before secret-provider calls, upload traffic, or event delivery.
+- Advertise an upload destination without `auth`, and configure a sensitive backend header. Without authorization, skip the backend and prove that the header never reaches the advertised destination.
+- Repeat with authorization denial and callback failure. Both skip the backend without credential resolution or traffic; cancellation remains cancellation.
+- Authorize the complete detached configuration and verify that the accepted destination and settings are the ones used. Mutating the authorization callback's copy must not alter admitted routing or credentials.
+- Retain existing behavior for explicit local subscriptions, even if discovery or the authorization callback would fail. Neither operation is required for explicit configuration.

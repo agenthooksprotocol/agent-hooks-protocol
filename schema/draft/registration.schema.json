@@ -463,8 +463,7 @@
       "type": "object",
       "required": [
         "id",
-        "transport",
-        "subscriptions"
+        "transport"
       ],
       "properties": {
         "id": {

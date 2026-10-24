@@ -147,6 +147,11 @@ mod tests {
                 .replace("'./generated'", "'./public'"),
         )
         .unwrap();
+        std::fs::write(
+            directory.join("subscriptions.ts"),
+            include_str!("../../../tests/typescript-subscriptions-smoke.ts.in"),
+        )
+        .unwrap();
         let compiled = std::process::Command::new("tsc")
             .current_dir(&directory)
             .args([
@@ -163,6 +168,7 @@ mod tests {
                 "types.ts",
                 "public-api.ts",
                 "typed-capabilities.ts",
+                "subscriptions.ts",
             ])
             .output()
             .expect("TypeScript smoke requires tsc");
@@ -171,6 +177,16 @@ mod tests {
             "{}{}",
             String::from_utf8_lossy(&compiled.stdout),
             String::from_utf8_lossy(&compiled.stderr)
+        );
+        let subscriptions = std::process::Command::new("node")
+            .arg(directory.join("js/subscriptions.js"))
+            .output()
+            .expect("subscription smoke requires node");
+        assert!(
+            subscriptions.status.success(),
+            "{}{}",
+            String::from_utf8_lossy(&subscriptions.stdout),
+            String::from_utf8_lossy(&subscriptions.stderr)
         );
         let tested = std::process::Command::new("node")
             .arg(repository.join("tools/sdk-codegen/tests/typescript-smoke.cjs"))

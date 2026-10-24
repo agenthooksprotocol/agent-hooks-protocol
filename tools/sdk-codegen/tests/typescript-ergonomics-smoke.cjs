@@ -17,7 +17,15 @@ console.log('generated TypeScript ergonomics passed');
 assert.equal('contentSlots' in sdk, false);
 
 assert.equal(sdk.events.toolBefore, 'tool.before');
-assert.equal(Object.keys(sdk.events).length, 32);
+assert.equal(Object.values(sdk.events).filter(value => typeof value === 'string' && value !== '*').length, 32);
+assert.equal(sdk.events.all, '*');
+assert.equal(sdk.events.tool.all, 'tool.*');
+for (const value of Object.values(sdk.events)) {
+  if (typeof value === 'string' && value !== '*') {
+    const family = value.split('.')[0];
+    assert.equal(sdk.events[family].all, `${family}.*`);
+  }
+}
 
 assert.equal(sdk.effectNames.deny, 'deny');
 assert.equal(sdk.supports({effects: ['deny']}, sdk.effectNames.deny), true);

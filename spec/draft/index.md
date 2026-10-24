@@ -21,6 +21,7 @@ This is the canonical, language-neutral Agent Hooks Protocol specification. The 
 - [Observation delivery](observation-disposition.md)
 - [Canonical inline messages, content selection, and attachment uploads](content-upload.md)
 - [Capabilities, registration, and authentication](capability-auth.md)
+- [Server-driven configuration](server-driven-configuration.md)
 - [Design rationale and references](rationale.md)
 - [Open questions](open-questions.md)
 - [Changelog](changelog.md)

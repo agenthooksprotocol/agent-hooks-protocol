@@ -35,6 +35,20 @@
             "extensions": {
               "$ref": "extensions.schema.json"
             }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "manifest"
+                ]
+              },
+              {
+                "required": [
+                  "configuration"
+                ]
+              }
+            ]
           }
         }
       }

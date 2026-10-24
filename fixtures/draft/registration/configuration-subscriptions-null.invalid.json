@@ -1,0 +1,13 @@
+{
+  "protocolVersion": "draft",
+  "hooks": [
+    {
+      "id": "com.example.policy",
+      "transport": {
+        "type": "http",
+        "url": "https://policy.example/hooks"
+      },
+      "subscriptions": null
+    }
+  ]
+}

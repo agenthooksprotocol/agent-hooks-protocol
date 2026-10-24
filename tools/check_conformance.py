@@ -239,7 +239,7 @@ def valid_uri(value: str) -> bool:
 def valid_datetime(value: str) -> bool:
     """Validate RFC 3339 dates and potential leap seconds without an IERS table."""
     if re.fullmatch(
-        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt][0-9]{2}:[0-9]{2}:(?:[0-5][0-9]|60)"
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:(?:[0-5][0-9]|60)"
         r"(?:\.[0-9]+)?(?:[Zz]|[+-][0-9]{2}:[0-9]{2})", value
     ) is None:
         return False

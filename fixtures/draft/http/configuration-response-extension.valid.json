@@ -1,0 +1,23 @@
+{
+  "jsonrpc": "2.0",
+  "id": "configuration-1",
+  "result": {
+    "protocolVersion": "draft",
+    "configuration": {
+      "subscriptions": [
+        {
+          "events": [
+            "tool.before"
+          ],
+          "mode": "intercept",
+          "timeoutMs": 750,
+          "failurePolicy": "fail-open",
+          "content": {
+            "default": "metadata"
+          }
+        }
+      ],
+      "future": "ignored"
+    }
+  }
+}

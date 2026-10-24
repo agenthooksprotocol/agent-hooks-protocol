@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/configuration-response.schema.json",
+  "title": "AHP Configuration Response (Draft)",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/successResponse"
+    },
+    {
+      "type": "object",
+      "required": [
+        "result"
+      ],
+      "properties": {
+        "result": {
+          "type": "object",
+          "required": [
+            "protocolVersion",
+            "configuration"
+          ],
+          "properties": {
+            "protocolVersion": {
+              "$ref": "common.schema.json#/$defs/protocolVersion"
+            },
+            "configuration": {
+              "$ref": "configuration.schema.json"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "manifest"
+                ]
+              },
+              {
+                "required": [
+                  "effects"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$comment": "Mutable AHP draft. "
+}

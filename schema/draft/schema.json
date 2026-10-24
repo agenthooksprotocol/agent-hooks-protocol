@@ -25,6 +25,12 @@
     },
     {
       "$ref": "capabilities-response.schema.json"
+    },
+    {
+      "$ref": "configuration-request.schema.json"
+    },
+    {
+      "$ref": "configuration-response.schema.json"
     }
   ]
 }

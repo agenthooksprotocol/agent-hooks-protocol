@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agenthooksprotocol.org/schemas/draft/configuration.schema.json",
+  "title": "AHP Configuration (Draft)",
+  "$comment": "Mutable AHP draft. Shared subscription configuration. This is not a backend connection or authentication configuration.",
+  "type": "object",
+  "required": [
+    "subscriptions"
+  ],
+  "properties": {
+    "subscriptions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "registration.schema.json#/$defs/interceptSubscription"
+          },
+          {
+            "$ref": "registration.schema.json#/$defs/observeSubscription"
+          }
+        ]
+      }
+    }
+  }
+}

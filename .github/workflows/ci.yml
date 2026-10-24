@@ -45,10 +45,6 @@ jobs:
           key: ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-${{ hashFiles('tools/sdk-codegen/src/**', 'tools/sdk-codegen/tests/**', 'tools/sdk-codegen/Cargo.toml') }}
           restore-keys: |
             ${{ runner.os }}-cargo-1.88.0-${{ hashFiles('tools/sdk-codegen/Cargo.lock') }}-
-      - name: Test SDK generator
-        run: cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml
-      - name: Validate SDK generation profile
-        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision draft
       - uses: actions/setup-node@v5
         with:
           node-version: 20
@@ -58,6 +54,12 @@ jobs:
         with:
           path: ~/.npm
           key: ${{ runner.os }}-node20-typescript5.9.3-prettier3.6.2
+      - name: Test SDK generator
+        run: >-
+          npx --yes --package typescript@5.9.3 --call
+          'cargo test --locked --manifest-path tools/sdk-codegen/Cargo.toml'
+      - name: Validate SDK generation profile
+        run: cargo run --locked --manifest-path tools/sdk-codegen/Cargo.toml -- check --revision draft
       - name: Test generated TypeScript structural constraints
         run: >-
           npx --yes --package typescript@5.9.3 --call

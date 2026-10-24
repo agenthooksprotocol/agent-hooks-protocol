@@ -2416,6 +2416,123 @@
         "AHP-REG-003"
       ],
       "sha256": "1c3e84e2c263b0dcbeb0cc8e271eaaa8831c872feba247046565687c706a01d9"
+    },
+    {
+      "id": "http.configuration-request.valid",
+      "path": "fixtures/draft/http/configuration-request.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-request.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "7862d4309e9ed3896c0ac4e769aad0a148de8c862301e4ca58c53cf05fb08ca9",
+      "aggregateExpectedValid": true
+    },
+    {
+      "id": "http.configuration-response.valid",
+      "path": "fixtures/draft/http/configuration-response.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-response.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "94ac61f431a0e79c3635295e02a62678ff46bf6a0ac7dbf0f8372d18a4d77b5c",
+      "aggregateExpectedValid": true
+    },
+    {
+      "id": "registration.configuration-discovery.valid",
+      "path": "fixtures/draft/registration/configuration-discovery.valid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "c84fd371510dec6e4c82e2b3140651b0a02d4c926dc6585b56d638ad3635f9f0"
+    },
+    {
+      "id": "registration.configuration-subscriptions-empty.invalid",
+      "path": "fixtures/draft/registration/configuration-subscriptions-empty.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "59fdad721ca719217a271ea19a99cc4456005860559adffdd24c2021993aacac"
+    },
+    {
+      "id": "registration.configuration-subscriptions-null.invalid",
+      "path": "fixtures/draft/registration/configuration-subscriptions-null.invalid.json",
+      "binding": "registration-json",
+      "schema": "schema/draft/registration.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "4289f27c8481738fd103714a9ecf89cde4e1c693730590326538bb45f589777f"
+    },
+    {
+      "id": "http.configuration-response-empty.invalid",
+      "path": "fixtures/draft/http/configuration-response-empty.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-response.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "675dbbcb6d77354e3cf3ba787b374e7b61599656700da82969787374700d66d9",
+      "aggregateExpectedValid": false
+    },
+    {
+      "id": "http.configuration-request-version.invalid",
+      "path": "fixtures/draft/http/configuration-request-version.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-request.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "46daec38d68bfb3818e651265d86b989dcb6eecf790e1adfb443e08423f17641",
+      "aggregateExpectedValid": false
+    },
+    {
+      "id": "http.configuration-response-wildcard.valid",
+      "path": "fixtures/draft/http/configuration-response-wildcard.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-response.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "afd3091933d3279c694cf6e677ef3906a1ec0cba7b9b0a19087a665f7e9f6688",
+      "aggregateExpectedValid": true
+    },
+    {
+      "id": "http.configuration-response-observe-policy.invalid",
+      "path": "fixtures/draft/http/configuration-response-observe-policy.invalid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-response.schema.json",
+      "expectedValid": false,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "e5bafad05c994e76c85fafe6e54ecab35ff768d5f6c575646fbb28299d645ff8",
+      "aggregateExpectedValid": false
+    },
+    {
+      "id": "http.configuration-response-extension.valid",
+      "path": "fixtures/draft/http/configuration-response-extension.valid.json",
+      "binding": "http-json",
+      "schema": "schema/draft/configuration-response.schema.json",
+      "expectedValid": true,
+      "requirements": [
+        "AHP-REG-004"
+      ],
+      "sha256": "4926fb2c2ab14de073144ac959441ba0244e3e82a60d6a47f39a31de4a745f06",
+      "aggregateExpectedValid": true
     }
   ]
 }

@@ -252,7 +252,7 @@ func TestGeneratedCodecsPreserveInputSemantics(t *testing.T) {
 	if !result.OK {
 		t.Fatalf("mathematically integral exponent was rejected: %+v", result.Diagnostics)
 	}
-	typedSubscription := result.Value.Hooks[0].Subscriptions[0].InterceptSubscription
+	typedSubscription := result.Value.Hooks[0].Subscriptions.Value[0].InterceptSubscription
 	if !typedSubscription.Present || typedSubscription.Value.TimeoutMs.String() != "1e3" {
 		t.Fatal("typed integer did not preserve its JSON number spelling")
 	}
@@ -730,11 +730,11 @@ package negative
 import "github.com/agenthooksprotocol/go-sdk/event"
 func subscribes(selected event.Type) {}
 var dynamic string = "tool.before"
-func invalid() { subscribes(dynamic); event.ResponseForRequest(dynamic, nil); event.StageResponseForRequest(dynamic, nil, nil) }
+func invalid() { subscribes(dynamic); event.ResponseForRequest(dynamic, nil); event.StageResponseForRequest(dynamic, nil, nil); event.Select(dynamic) }
 EOF
 if (cd "$tmp" && go test ./negative >"$tmp/negative.log" 2>&1); then
   echo "dynamic string crossed typed event boundary" >&2
   exit 1
 fi
-[[ $(grep -Ec 'cannot use dynamic.*event.Type' "$tmp/negative.log") -eq 3 ]]
+[[ $(grep -Ec 'cannot use dynamic.*event.Type' "$tmp/negative.log") -eq 4 ]]
 echo "generated Go codec smoke tests passed"

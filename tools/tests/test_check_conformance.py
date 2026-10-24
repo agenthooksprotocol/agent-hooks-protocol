@@ -39,6 +39,8 @@ class DatetimeValidationTests(unittest.TestCase):
             "2017-01-01T00:59:60Z",
             "2016-02-30T23:59:60Z",
             "2016-12-31T24:00:00Z",
+            "2016-12-31T24:00:00+01:00",
+            "2016-12-31T23:60:00Z",
             "2016-12-31T23:59:60+00:60",
             "2016-12-31T23:59:60+24:00",
             "2016-12-31 23:59:60Z",
@@ -106,7 +108,7 @@ class SnapshotCheckerTests(unittest.TestCase):
 
         self.assertEqual([], result.errors)
         self.assertEqual(
-            (30, 177, 28, 5),
+            (33, 187, 30, 5),
             (
                 result.schema_count,
                 result.fixture_count,
