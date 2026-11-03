@@ -330,8 +330,8 @@
       "anchor": "AHP-REG-005",
       "section": "Connection and trust boundaries",
       "profile": "base",
-      "text": "Before admitting discovered configuration containing any upload settings, the client obtains explicit local authorization for that configuration; absent, denied, or failed authorization skips the backend without resolving upload credentials or forwarding configured headers to the advertised upload destination.",
-      "textSha256": "ca1c43fdc9de28e2528f81292accee27730eba69c1f500f10b90efa93e0819a0"
+      "text": "A client admits discovered upload settings as it admits any other discovered subscription setting, without a separate approval, except that discovered configuration whose upload `auth` names a local secret reference (`tokenEnv`, `tokenRef`, or `clientSecretRef`) skips the backend without resolving that reference.",
+      "textSha256": "b4304033ae283c181e7e07361e542cfdd2e8c631bed9d1316542cd9644e6f335"
     }
   ]
 }
