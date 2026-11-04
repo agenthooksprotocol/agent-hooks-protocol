@@ -118,10 +118,9 @@ parts; no native JSON output property is inferred.
 - Discovery runs no session, model, or tool. It cannot replace client connection/authentication configuration or per-request effect authority.
 - Concurrent initial use sees one completed configuration snapshot, not partially admitted routes.
 
-### Discovered upload authorization
+### Discovered uploads
 
-- Advertise an upload destination with an `auth` reference to a local environment variable or secret. Without explicit local authorization, skip the backend before secret-provider calls, upload traffic, or event delivery.
-- Advertise an upload destination without `auth`, and configure a sensitive backend header. Without authorization, skip the backend and prove that the header never reaches the advertised destination.
-- Repeat with authorization denial and callback failure. Both skip the backend without credential resolution or traffic; cancellation remains cancellation.
-- Authorize the complete detached configuration and verify that the accepted destination and settings are the ones used. Mutating the authorization callback's copy must not alter admitted routing or credentials.
-- Retain existing behavior for explicit local subscriptions, even if discovery or the authorization callback would fail. Neither operation is required for explicit configuration.
+- Advertise an upload destination without `auth`, and configure a backend header. Admit the backend with no separate approval, and verify that the advertised destination is used and receives the header.
+- Advertise an upload destination whose `auth` uses OAuth with no `clientSecretRef`. Admit the backend.
+- Advertise an upload destination whose `auth` names `tokenEnv`, `tokenRef`, or `clientSecretRef`. Skip the backend before secret-provider calls, upload traffic, or event delivery.
+- Retain existing behavior for explicit local subscriptions, including local secret references in `upload.auth`. Discovery is not required for explicit configuration.
