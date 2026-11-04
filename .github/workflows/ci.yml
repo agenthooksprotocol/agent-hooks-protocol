@@ -2,13 +2,14 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
 
-# Both triggers retain coverage for branches without PRs; matching source-branch
-# runs supersede one another instead of running duplicate checks concurrently.
+# Pull requests and main each run once. A newer run for the same branch supersedes
+# an older one; push stays on main so it cannot cancel a pull request's run.
 concurrency:
   group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
