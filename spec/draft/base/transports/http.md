@@ -12,7 +12,7 @@ Requirements:
 - The body MUST contain one JSON-RPC object, not a batch.
 - A successful `hooks/intercept`, `hooks/capabilities`, or `hooks/configuration` response MUST use HTTP status `200` and contain the correlated JSON-RPC response.
 - A successfully accepted observe notification MUST use `202 Accepted` or `204 No Content` and no response body.
-- HTTP 401 can initiate the bounded OAuth discovery/authentication procedure below. An unresolved challenge and any status other than the successes specified above are operational failures.
+- HTTP 401, or a Bearer HTTP 403 challenge with `error="insufficient_scope"`, can initiate bounded authentication/locally permitted scope step-up. This does not authorize effectful replay or automatic consent. Other 403 responses, unresolved challenges, and any status other than the successes specified above are operational failures. See the [SDK authentication lifecycle](../../sdk-auth-lifecycle.md).
 - Redirects MUST NOT be followed unless explicitly enabled for the configured endpoint.
 This protocol revision does not use SSE, streaming responses, or a corresponding HTTP `GET` endpoint.
 ### TLS

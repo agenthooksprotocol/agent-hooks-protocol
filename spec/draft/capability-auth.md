@@ -100,9 +100,11 @@ MUST NOT grant authority.
 
 ### HTTP without an explicit binding
 
-When endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
+On first contact when endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
 endpoint without an HTTP credential, subject to local policy and TLS identity
-selection below. Absence does not mean anonymous-only: a successful response may
+selection below. A previously validated, independently locally approved binding
+may supply a stored credential preemptively; absent portable configuration does
+not require repeating anonymous first contact on every delivery. Absence does not mean anonymous-only: a successful response may
 be accepted, but an OAuth-protected endpoint MUST be handled using the protected
 resource discovery procedure in [MCP 2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),
 [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728.html), and authorization-server
@@ -160,7 +162,15 @@ its issuer, resource, scope, and client constraints.
 * `oauth`: an optional preset configures HTTPS `issuer`, protected `resource`,
   `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. It uses the
   standards-based discovery and validation above; it is not required merely to
-  encounter an OAuth-protected endpoint.
+  encounter an OAuth-protected endpoint. A trusted explicit preset may discover
+  its configured issuer directly; protected-resource metadata is not a prerequisite
+  for using that preset.
+
+### SDK lifecycle and recovery
+
+[SDK authentication lifecycle](sdk-auth-lifecycle.md) defines shared host-facing
+recovery values, grant/binding storage identities, cache and interaction behavior.
+These are SDK contracts, not additional AHP wire fields or replay permissions.
 
 ### Deployment-specific authentication
 
