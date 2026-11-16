@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-FIXTURE = ROOT / "interop/fixtures/sdk-auth-lifecycle.json"
+FIXTURE = ROOT / "conformance/draft/sdk-auth-lifecycle.json"
 
 
 def frame(prefix, fields):

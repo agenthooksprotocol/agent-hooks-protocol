@@ -5,7 +5,7 @@ It adds no AHP wire fields, JSON-RPC methods, portable credential values or
 permission to replay deliveries. The [endpoint authentication requirements](capability-auth.md)
 and their HTTP failure/deadline/isolation rules continue to apply. Public API
 spelling follows each language; the semantic recovery values and storage-key
-material below are shared. [Golden vectors](../../interop/fixtures/sdk-auth-lifecycle.json)
+material below are shared. [Golden vectors](../../conformance/draft/sdk-auth-lifecycle.json)
 cover these SDK-only decisions.
 
 ## Recovery values
