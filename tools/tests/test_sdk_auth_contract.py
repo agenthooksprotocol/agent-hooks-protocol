@@ -61,6 +61,8 @@ class SDKAuthContractTests(unittest.TestCase):
                 inherited = row.get("previous_granted", row["requested"]) if row.get("exchange") == "refresh" else row["requested"]
                 granted = set(response.get("scope", " ".join(inherited)).split())
                 accepted = granted <= set(row["allowed"])
+                if row.get("exchange") == "refresh":
+                    accepted = accepted and granted <= set(row["previous_granted"])
                 self.assertEqual(accepted, row["accepted"])
                 self.assertEqual(accepted and set(row["required"]) <= granted, row["usable"])
                 self.assertTrue(row["refresh_preserved"])
