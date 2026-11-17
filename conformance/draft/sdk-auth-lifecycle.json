@@ -899,7 +899,7 @@
     },
     {
       "id": "dcr-failed-marker-bounds-registration",
-      "expect": "a repeated invalid_client or invalid_configuration registration outcome persists a failed marker with failure time and attempt count; until the exponential backoff (default 1 minute doubling to 1 hour) elapses no path but host prepare sends a registration request, across operations and processes; prepare, success or a request digest change clears it"
+      "expect": "every failed registration outcome and a repeated invalid_client persist or update a failed marker with failure time, attempt count and next attempt time; until it elapses (default 1 minute doubling to 1 hour) no path but host prepare sends a registration request, across operations and processes; prepare, success or a request digest change clears it"
     },
     {
       "id": "dcr-response-validation-invalid-configuration",
@@ -923,7 +923,7 @@
     },
     {
       "id": "cc-proactive-reregistration-before-expiry",
-      "expect": "a successful client-credentials acquisition whose client_secret_expires_at is within the renewal margin re-registers under coordination, so the scheduled expiry causes no outage"
+      "expect": "a successful client-credentials acquisition whose client_secret_expires_at is within min(0.1 x (client_secret_expires_at - local registered_at), 1 hour) re-registers under coordination, so the scheduled expiry causes no outage; client_id_issued_at is not relied on"
     },
     {
       "id": "marker-blocks-only-registration",
@@ -932,6 +932,22 @@
     {
       "id": "stale-callback-does-not-delete-new-registration",
       "expect": "a pending login records its registration generation; invalid_client at its completion after a forced re-registration compare-and-deletes only that generation and leaves the newer registration, even with the same reissued client_id"
+    },
+    {
+      "id": "registration-transient-failure-backs-off",
+      "expect": "5xx, 408, 429, network and 401/403 registration failures update the failed marker, so repeated lookups and notifications across processes send no registration request until the backoff elapses"
+    },
+    {
+      "id": "registration-retry-after-honoured",
+      "expect": "a registration response with Retry-After sets the next attempt no earlier than Retry-After and no earlier than the exponential backoff, capped at the host maximum"
+    },
+    {
+      "id": "marker-update-atomic-across-processes",
+      "expect": "under the registration-key lock each process reloads and checks the marker, then updates it by compare-and-set on its generation; concurrent failures increment the attempt count without loss and at most one process sends a registration request per permitted attempt"
+    },
+    {
+      "id": "proactive-reregistration-once-across-processes",
+      "expect": "concurrent processes inside the renewal margin reload and re-check under the registration-key lock; exactly one sends a registration request and the others use its new record"
     }
   ],
   "registration_keys": [

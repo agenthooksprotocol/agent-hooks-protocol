@@ -227,8 +227,12 @@ including the up-front lookup's mandatory re-acquisition and challenge
 handling, MAY register when the registration is missing, expired or obsolete,
 subject to the failed-marker backoff below. During a successful
 client-credentials acquisition, an SDK SHOULD re-register proactively when a
-nonzero `client_secret_expires_at` is within a host-configurable renewal margin
-(default: 10% of the secret's issued lifetime, capped at 1 hour).
+nonzero `client_secret_expires_at` is within the renewal margin, by default
+`min(0.1 × (client_secret_expires_at − registered_at), 1 hour)`, where
+`registered_at` is the SDK's local time when the record was stored (the optional
+`client_id_issued_at` is not relied on). Under the registration-key lock it
+reloads the record and re-checks the margin before registering, so only one
+process renews.
 A host MAY supply an initial access token by secret
 reference for a specific permitted exact issuer; it is sent as a Bearer
 credential only to that issuer's `registration_endpoint`, never to another
@@ -300,8 +304,9 @@ bindings and partitions in the namespace. Hosts SHOULD use stable redirects
 a shared store MUST give each process a distinct grant partition, as above, and
 should expect one registration per port.
 
-The record holds `client_id`, `client_secret_expires_at`, the accepted issued
-metadata, the `request_digest` it was registered with, a generation, and, for a
+The record holds `client_id`, `client_secret_expires_at`, the local
+`registered_at` time, the accepted issued metadata, the `request_digest` it was
+registered with, a generation, and, for a
 confidential client, an opaque secret reference. The `client_secret` itself is
 written only through a host secret-storage hook (store, resolve, delete by
 reference), never into the registration, binding, grant or pending-login record;
@@ -327,17 +332,23 @@ operation and re-acquire once with the new client. A PKCE code or refresh token
 bound to the old client is never reused: the operation returns
 `interaction_required`, and the next `prepare` registers a new client.
 
-If the replacement client also receives `invalid_client`, or a registration
-outcome is `invalid_configuration`, the SDK persists a **failed marker** for the
-registration key and returns that error (`credential_unavailable` for a
-repeated `invalid_client`). The marker is a persisted backoff, not a permanent
-block: it holds the current `request_digest`, the last failure time and an
-attempt count. Until the backoff elapses (host-configurable, exponential with a
-cap; default 1 minute doubling per attempt to 1 hour), paths other than host
-`prepare` send no registration request and return `credential_unavailable`
-where one would be needed. A later failure updates the time and count; a
-successful registration, a host `prepare`, or a changed `request_digest` (host
-policy change) clears it. Unattended client-credentials hosts therefore recover
+Every failed registration outcome (any row of the outcome table, including
+`provider_failed` transport errors, 5xx, 408/429 and 401/403), and a repeated
+`invalid_client` for a replacement client, updates a persisted **failed
+marker** for the registration key; the operation returns the mapped error
+(`credential_unavailable` for a repeated `invalid_client`). The marker is a
+backoff, not a permanent block: it holds the current `request_digest`, the last
+failure time, an attempt count, the next permitted attempt time and a marker
+generation. The next attempt time is the exponential backoff (host-configurable;
+default 1 minute doubling per attempt, capped at 1 hour) or, when the response
+carried `Retry-After`, the later of that and the backoff, capped at a host
+maximum (default 1 hour). Until then, paths other than host `prepare` send no
+registration request and return `credential_unavailable` where one would be
+needed. Marker reads and writes happen under the registration-key lock: after
+reloading, the SDK checks the marker before any registration request and updates
+it by compare-and-set on the marker generation, so attempt counts are not lost
+and concurrent processes do not all pass the check. A successful registration,
+a host `prepare`, or a changed `request_digest` (host policy change) clears it. Unattended client-credentials hosts therefore recover
 automatically after the backoff; host `prepare` repairs immediately.
 
 The marker blocks only registration requests. A still-valid stored token for
