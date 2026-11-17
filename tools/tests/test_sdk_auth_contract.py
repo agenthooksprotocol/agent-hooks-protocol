@@ -291,7 +291,7 @@ class SDKAuthContractTests(unittest.TestCase):
                          "dcr-registers-once-across-processes", "dcr-preregistered-wins",
                          "dcr-expired-secret-reregisters", "dcr-invalid-client-reregisters-once",
                          "dcr-policy-disallows-registration", "dcr-secret-not-in-token-record",
-                         "lookup-never-registers", "dcr-failed-marker-bounds-registration",
+                         "lookup-never-registers-pkce", "dcr-failed-marker-bounds-registration",
                          "prepare-force-reregistration", "dcr-policy-change-reregisters",
                          "dcr-replaced-secret-deleted", "cc-registration-auto-repairs-after-backoff",
                          "cc-proactive-reregistration-before-expiry",

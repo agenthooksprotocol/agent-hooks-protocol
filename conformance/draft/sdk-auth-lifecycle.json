@@ -894,7 +894,7 @@
       "expect": "a host initial access token configured for one exact issuer is sent only to that issuer's registration endpoint, never to another issuer's, and never persisted"
     },
     {
-      "id": "lookup-never-registers",
+      "id": "lookup-never-registers-pkce",
       "expect": "the up-front lookup never registers a PKCE client and returns interaction_required when its registration is missing; for client credentials it may (re-)register under the failed-marker backoff"
     },
     {
