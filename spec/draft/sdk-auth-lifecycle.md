@@ -94,7 +94,8 @@ one; secret rotation does not change the grant's identity.
 A binding authorizes one destination. A grant represents one OAuth principal
 and scope-policy partition. Keeping these identities separate supports cached
 unbound authentication without implicitly inheriting event credentials for an
-upload. The allowed ceiling, client secrets, secret values/references, the
+upload. The allowed ceiling, client secrets, secret values/references, client
+registration source and metadata, the
 discovered token-endpoint authentication method, metadata capability arrays,
 expiry and granted/requested scope sets are **not** part of either key, and
 token, metadata and authorization-server endpoint URLs are not part of the grant key.
@@ -145,6 +146,150 @@ with the same namespace, issuer, resource, client and flow.
 They may then reuse one grant/consent. This never authorizes a new destination:
 each binding still needs independent local destination/purpose policy approval.
 No upload binding or absent upload policy implicitly inherits event auth.
+
+## Client registration
+
+An SDK obtains the `client_id` for a grant from exactly one source, selected per
+exact issuer and flow in this order, mirroring
+[MCP 2025-11-25 client registration](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization#client-registration-approaches):
+
+1. **Pre-registered**: an explicit OAuth preset's `clientId`, or a client the host
+   supplies for that namespace, issuer and flow. It always wins; CIMD and DCR are
+   never attempted when one exists.
+2. **Client ID Metadata Document (CIMD)**: only for `authorization_code_pkce`,
+   when the host configures a client ID metadata document URL and the
+   authorization-server metadata has `client_id_metadata_document_supported`
+   equal to JSON `true`.
+3. **Dynamic Client Registration (DCR,
+   [RFC 7591](https://www.rfc-editor.org/rfc/rfc7591.html))**: only when host
+   policy explicitly permits registration at that exact issuer and the
+   authorization-server metadata advertises `registration_endpoint`.
+4. Otherwise no client is available: `credential_unavailable` (the host supplies
+   client information; this replaces MCP's "prompt the user").
+
+Only the resulting `client_id` enters the grant key. Binding metadata records
+the selected `client_id`, its source and, for DCR, the `registration_key`. A recorded selection stays in use when only
+authorization-server metadata changes (newly advertised CIMD support or a removed
+`registration_endpoint` does not move a working grant). It is obsolete when
+current host policy changes it: a pre-registered client now exists, or the
+recorded CIMD URL or DCR permission was removed or changed. Then the SDK
+rebuilds binding metadata and reselects. A different `client_id` is a different
+grant key: the old grant's tokens are never presented under another client, are
+not migrated, and SHOULD be removed by compare-and-delete. PKCE then needs new
+consent (`interaction_required`); client credentials re-acquire
+non-interactively. A pending login records its `client_id` and completes with it.
+
+### Client ID Metadata Documents
+
+The CIMD URL is host or adapter configuration (one published document per client
+identity), not an AHP wire field. It is the `client_id` verbatim. It MUST use
+`https`, contain a path, and contain no userinfo, fragment, or single- or
+double-dot path segments; otherwise `invalid_configuration`. The host also
+declares the document's `redirect_uris`. Before creating a pending login, the
+redirect it will use (stable per grant key; see
+[interaction lifetime](#refresh-failures-and-interaction-lifetime)) MUST exactly equal one of
+them; otherwise `invalid_configuration` and no login is created. The SDK MUST NOT
+fetch the CIMD URL or any URL derived from it: retrieval, caching, and SSRF
+protection for that fetch are the authorization server's concern. A CIMD client
+is public: token endpoint authentication is `none`, there is no client secret and
+no stored registration record. CIMD is not used for `client_credentials`, which
+needs a pre-registered client or DCR with a confidential method. CIMD with
+`private_key_jwt` is deployment-specific and outside this contract. An
+authorization or token endpoint `invalid_client` for a CIMD client is
+`invalid_configuration`; the SDK never falls back to DCR for that operation.
+
+### Dynamic Client Registration
+
+The `registration_endpoint` MUST be HTTPS and pass local destination policy;
+the registration request does not follow redirects. A violation is
+`untrusted_destination`. Registration runs only in an explicit `prepare` (PKCE,
+before it creates a pending login) or in a non-interactive client-credentials
+acquisition (including the up-front lookup and challenge handling); delivery
+paths never register for PKCE. A host MAY supply an initial access token by
+secret reference; it is sent as a Bearer credential to the registration endpoint
+only and never persisted. RFC 7592 client management is out of scope: a
+`registration_access_token` or `registration_client_uri` in the response is
+ignored and not persisted, and the SDK does not delete registrations at the
+authorization server.
+
+The request is a JSON `POST` with:
+
+| Member | `authorization_code_pkce` | `client_credentials` |
+| --- | --- | --- |
+| `redirect_uris` | `[redirect]`, the stable redirect | omitted |
+| `grant_types` | `["authorization_code", "refresh_token"]` | `["client_credentials"]` |
+| `response_types` | `["code"]` | omitted |
+| `token_endpoint_auth_method` | `none` | `client_secret_basic`, or `client_secret_post` when `token_endpoint_auth_methods_supported` lists only that one |
+
+`client_name` (required) and optional `software_id`/`software_version` come from
+the host policy that permits registration. `scope` is sent only when that policy
+supplies a registration scope set; the SDK never derives it from one
+operation's requested scopes. For client credentials, if the advertised methods
+exclude both secret methods, no client is available (`credential_unavailable`).
+
+A registration response is accepted only if it is a 200 or 201 JSON object with
+a non-empty string `client_id` and:
+
+* echoed `redirect_uris`, when present, exactly equal the requested set;
+* echoed `grant_types`, when present, include `authorization_code` (PKCE) or
+  `client_credentials`;
+* echoed `token_endpoint_auth_method`, when present, equals the requested one;
+* PKCE: no `client_secret`. Client credentials: a non-empty `client_secret`;
+* `client_secret_expires_at`, when present, is a non-negative JSON integer and,
+  when nonzero, in the future. `0` or absence means no known expiry.
+
+Echoed `scope` and unknown members are ignored. A response failing these checks
+persists nothing and is `provider_failed`.
+
+| Registration outcome | Code |
+| --- | --- |
+| No pre-registered client, CIMD inapplicable, DCR not permitted or `registration_endpoint` absent | `credential_unavailable` |
+| `registration_endpoint` not HTTPS, refused by destination policy, or redirected | `untrusted_destination` |
+| OAuth error `invalid_redirect_uri`, `invalid_client_metadata`, `invalid_software_statement`, `unapproved_software_statement` | `invalid_configuration` |
+| HTTP 401/403 (missing or rejected initial access token) | `credential_unavailable` |
+| Network failure, timeout, 5xx, non-OAuth body, or invalid response | `provider_failed` |
+
+There is no SDK-driven immediate retry of a failed registration.
+
+### Registration records and secrets
+
+A DCR registration is stored separately from bindings and grants:
+
+```text
+registration_key = frame("ahp.oauth.registration:", [
+  namespace, exact_issuer, flow, exact_redirect   # "" for client_credentials
+])
+```
+
+The registration endpoint, `client_name`, software identifiers, registration
+scope, initial access token, and issued values are not key material.
+Registrations are reused by every grant with the same key, across bindings and
+partitions in the namespace. Hosts SHOULD use a stable redirect so each process
+or ephemeral port does not register a new client.
+
+The record holds `client_id`, `client_secret_expires_at`, the accepted issued
+metadata, a generation, and, for a confidential client, an opaque secret
+reference. The `client_secret` itself is written only through a host
+secret-storage hook (store, resolve, delete by reference), never into the
+registration, binding, grant or pending-login record. Without such a hook, DCR is
+unavailable for client credentials (`credential_unavailable`); the SDK has no
+implicit secret store or fallback. The SDK stores the secret under a fresh
+reference before the record's compare-and-set, and deletes that reference if the
+compare-and-set loses. An unresolvable secret reference makes the record unusable.
+
+Concurrent processes register once: under the registration key's coordination
+lock, the SDK reloads and registers only when no usable record exists, then
+persists by compare-and-set on the generation; a loser uses the winner's record.
+A record is unusable when its nonzero `client_secret_expires_at` has passed or
+its secret cannot be resolved; the SDK then re-registers under the same
+coordination before contacting the token endpoint. An `invalid_client` token
+response for a DCR client (an OAuth error, so not a metadata refetch) removes
+that registration generation by compare-and-delete. Client credentials then
+re-register at most once per operation and re-acquire once with the new client;
+if that client also receives `invalid_client`, the operation fails with
+`credential_unavailable`. A PKCE code or refresh token bound to the old client
+is never reused: the operation returns `interaction_required`, and the next
+`prepare` registers a new client and creates the login.
 
 ## Cached acquisition and metadata availability
 
@@ -269,8 +414,9 @@ Bearer challenge parsing; malformed or ambiguous Bearer auth-params fail closed.
 
 ## Executable coverage
 
-The shared JSON contains recovery/key/response-policy vectors and a **lifecycle
-coverage manifest**, not an OAuth implementation or executable lifecycle runner.
+The shared JSON contains recovery, key, response-policy, client-selection and
+registration-response vectors and a **lifecycle coverage manifest**, not an
+OAuth implementation or executable lifecycle runner.
 The protocol fixture validator checks internal consistency only; it does not
 prove any SDK's persistence, network behavior, cancellation or consent lifecycle.
 Each SDK vendors this file byte-for-byte and supplies native tests at real
