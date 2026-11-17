@@ -23,13 +23,13 @@ The sender MUST resolve upload authentication credentials independently. The
 backend's explicit [registration headers](base/registration.md#AHP-REG-003) also
 apply to its uploads, resolved through the existing secret helpers under the
 upload budget and merged LAST over upload defaults/authentication. Configured
-`Authorization` suppresses upload OAuth discovery, acquisition, challenge handling,
-and retries even when `upload.auth` is present; resolution failure MUST NOT fall
+`Authorization` suppresses upload OAuth discovery, acquisition, challenge
+handling, and retry flows even when `upload.auth` is present; resolution failure MUST NOT fall
 back to OAuth. Otherwise, absence of `upload.auth` uses standard OAuth
 protected-resource discovery on this endpoint, not implicit event credentials
-or an anonymous-only assumption. Upload authentication, discovery,
-acquisition, refresh, and retries count against the upload budget, not a fresh
-budget per attempt. The receiver MUST derive authorization scope from verified
+or an anonymous-only assumption. Upload authentication and transfer count
+against the upload budget. Uploads are never replayed after an authentication
+rejection; see [challenged replay](base/transports/http.md#challenged-replay). The receiver MUST derive authorization scope from verified
 credentials and authorize uploads within that scope; merely accepting a valid
 token is insufficient. Event IDs, subscription IDs, and opaque refs are not
 identity or authorization claims. Anonymous uploads require explicit receiver

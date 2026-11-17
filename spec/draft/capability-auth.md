@@ -100,9 +100,30 @@ MUST NOT grant authority.
 
 ### HTTP without an explicit binding
 
-When endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
+On first contact when endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
 endpoint without an HTTP credential, subject to local policy and TLS identity
-selection below. Absence does not mean anonymous-only: a successful response may
+selection below. Once a validated, locally approved binding is stored for the
+destination, the client sends its stored credential on the first attempt.
+That lookup never creates an interactive login and never performs
+protected-resource discovery. When it has the material and persisted
+authorization-server metadata to do so, it MUST refresh an expired stored token,
+or re-acquire a client-credentials grant, non-interactively; if that metadata is
+absent it MAY fetch authorization-server metadata for the stored issuer only.
+When a renewal using persisted metadata fails where the token endpoint provably
+did not process the request (DNS resolution, TCP connect or TLS handshake
+failure, or HTTP 404/410 from the token endpoint), it refetches the stored
+issuer's authorization-server metadata once, persists it if the issuer identity
+is unchanged, and retries the renewal once. An OAuth error response (such as
+`invalid_grant` or `invalid_client`) never triggers a refetch, and an ambiguous
+failure after the request was sent (read timeout, reset after send, 5xx,
+non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
+rotated refresh token is never replayed.
+A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
+and cannot be renewed this way (transient error, `invalid_grant`, metadata
+failure, or interactive consent needed), the operation fails with that error;
+there is no anonymous fallback. The client sends anonymously only on a store
+miss or host policy refusal. Absent portable configuration does not require repeating
+anonymous first contact on every delivery. Absence does not mean anonymous-only: a successful response may
 be accepted, but an OAuth-protected endpoint MUST be handled using the protected
 resource discovery procedure in [MCP 2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),
 [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728.html), and authorization-server
@@ -160,7 +181,16 @@ its issuer, resource, scope, and client constraints.
 * `oauth`: an optional preset configures HTTPS `issuer`, protected `resource`,
   `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. It uses the
   standards-based discovery and validation above; it is not required merely to
-  encounter an OAuth-protected endpoint.
+  encounter an OAuth-protected endpoint. A trusted explicit preset may discover
+  its configured issuer directly; protected-resource metadata is not a prerequisite
+  for using that preset.
+
+### SDK lifecycle and recovery
+
+[SDK authentication lifecycle](sdk-auth-lifecycle.md) defines shared host-facing
+recovery values, grant/binding storage identities, cache and interaction behavior.
+These are SDK contracts, not additional AHP wire fields; replay is limited to
+[challenged replay](base/transports/http.md#challenged-replay).
 
 ### Deployment-specific authentication
 
@@ -199,15 +229,18 @@ unauthenticated delivery or change the underlying operation. Observations remain
 best effort. Unsupported authentication MUST prevent authenticated retries and
 further delivery; an initial credential-free request is not a failure fallback.
 Protected servers MUST reject unauthorized requests before processing the event or
-storing uploaded bytes. Authentication retries MUST be bounded, occur only after
-an authentication rejection (not an ambiguous successful delivery), and respect
-cancellation.
+storing uploaded bytes. Authentication retries follow
+[challenged replay](base/transports/http.md#challenged-replay): at most one, only
+after an authentication rejection (not an ambiguous successful delivery), never
+for notifications or uploads, and within the deadline and cancellation.
 
 The interception deadline starts at dispatch and includes any authentication work
 needed for that dispatch, including discovery, acquisition, refresh, interaction,
 and retries. No authentication step resets or extends the deadline. Cancellation
 MUST cancel the operation's pending authentication wait and prevent late delivery. A harness-shared acquisition needed by other active callers need not be cancelled; the cancelled operation MUST NOT resume delivery when that acquisition completes. Authorization MAY be
-prepared before dispatch under a separate bounded, cancellable preparation budget;
+prepared before dispatch under a separate bounded, cancellable preparation budget
+(a pending interactive login it creates has its own bounded lifetime; see the
+[SDK lifecycle](sdk-auth-lifecycle.md));
 content upload authentication and transfer use the independent upload budget. Any enclosing hook-call budget also bounds preparation, authentication waits, and upload transfer.
 Pre-dispatch preparation MUST NOT become an unbounded wait hidden from policy.
 See [failure semantics](base/failure.md) and [uploads](content-upload.md).
@@ -222,7 +255,7 @@ An SDK MAY delegate credential acquisition and challenge handling to a harness-o
 
 The portable bearer and OAuth bindings both yield bearer credentials for the AHP HTTP endpoint. Environment variables and credential references are resolved by the configured provider; OAuth client secrets are used at the token endpoint, not sent as AHP endpoint credentials. Missing configured secrets and unsupported mechanisms fail explicitly, never by anonymous fallback. HTTP/TLS deployment extensions remain separate transport configuration.
 
-The harness may own discovery policy, token exchange, refresh, coordination, persistence, and explicit authorization UI. SDK discovery/exchange helpers are optional conveniences; no particular token cache, refresh scheduler, browser implementation, or durable store interface is required by AHP. The protocol client retains responsibility for endpoint isolation, safe credential application, bounded challenged retry, and validation of the final response. Choosing an external provider does not authorize an otherwise unsafe replay.
+The harness may own discovery policy, token exchange, refresh, coordination, persistence, and explicit authorization UI. SDK discovery/exchange helpers are optional conveniences; no particular token cache, refresh scheduler, browser implementation, or durable store interface is required by AHP. The protocol client retains responsibility for endpoint isolation, safe credential application, bounded challenged retry, and validation of the final response. Choosing an external provider does not authorize replay beyond [challenged replay](base/transports/http.md#challenged-replay).
 
 ## Extension policy
 
