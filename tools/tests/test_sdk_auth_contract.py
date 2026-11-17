@@ -300,7 +300,8 @@ class SDKAuthContractTests(unittest.TestCase):
                          "registration-transient-failure-backs-off",
                          "registration-retry-after-honoured",
                          "marker-update-atomic-across-processes",
-                         "proactive-reregistration-once-across-processes"):
+                         "proactive-reregistration-once-across-processes",
+                         "proactive-renewal-failure-keeps-current-registration"):
             self.assertIn(required, ids)
         selection = {row["id"] for row in self.vectors["client_selection"]}
         for shared in ("cimd-used-when-supported", "cimd-not-supported-falls-back-to-dcr",

@@ -948,6 +948,10 @@
     {
       "id": "proactive-reregistration-once-across-processes",
       "expect": "concurrent processes inside the renewal margin reload and re-check under the registration-key lock; exactly one sends a registration request and the others use its new record"
+    },
+    {
+      "id": "proactive-renewal-failure-keeps-current-registration",
+      "expect": "a proactive re-registration failing (e.g. 5xx or 429) inside the renewal margin updates the failed marker, but the operation succeeds with the current still-usable registration and token until that registration actually expires"
     }
   ],
   "registration_keys": [

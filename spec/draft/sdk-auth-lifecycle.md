@@ -232,7 +232,9 @@ nonzero `client_secret_expires_at` is within the renewal margin, by default
 `registered_at` is the SDK's local time when the record was stored (the optional
 `client_id_issued_at` is not relied on). Under the registration-key lock it
 reloads the record and re-checks the margin before registering, so only one
-process renews.
+process renews. A failed proactive renewal updates the failed marker but does
+not affect the operation: the SDK keeps using the current record until it is
+actually unusable.
 A host MAY supply an initial access token by secret
 reference for a specific permitted exact issuer; it is sent as a Bearer
 credential only to that issuer's `registration_endpoint`, never to another
