@@ -24,7 +24,7 @@ and deadlines retain the language's native cancellation identity.
 | `interaction_required` | `login` | Explicit host consent is required. |
 | `access_denied` | `none` | Do not switch identities or retry automatically. |
 | `refresh_rejected` | `login` | An interactive grant's refresh was definitively rejected. |
-| `discovery_failed` | `retry` | Retry under host budget/backoff policy. |
+| `discovery_failed` | `retry` | Retry under host budget/backoff policy; if it persists (e.g. a changed issuer), the host repairs the binding with `prepare`. |
 | `untrusted_destination` | `configure` | Repair local destination/trust policy. |
 | `provider_failed` | `retry` | An operational failure, not proof of lost authorization. |
 
@@ -171,9 +171,13 @@ That lookup never creates an interactive login and never performs
 protected-resource discovery. When it has the material and persisted
 authorization-server metadata to do so, it MUST refresh an expired stored token,
 or re-acquire a client-credentials grant, non-interactively; if that metadata is
-absent it MAY fetch
-authorization-server metadata for the stored issuer only, and a failure is
-`discovery_failed`. If a binding is known but its grant holds no usable token
+absent it MAY fetch authorization-server metadata for the stored issuer only.
+When a renewal using persisted metadata fails without an OAuth error response
+(network, connection or TLS failure, 404/410, or a moved endpoint), it refetches
+the stored issuer's authorization-server metadata once, persists it if the
+issuer identity is unchanged, and retries the renewal once; an OAuth error
+response (such as `invalid_grant` or `invalid_client`) never triggers a refetch.
+A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
 failure, or interactive consent needed), the operation fails with that error;
 there is no anonymous fallback. The client sends anonymously only on a store
@@ -221,7 +225,11 @@ ceiling; both sets only grow, so alternating callers converge, and effective
 scopes stay filtered per caller at use. When the grant key or redirect differs,
 the new login starts from the new caller's requested, required and ceiling alone. Reuse is not a confused-deputy risk: effective scopes are filtered by
 each caller's ceiling at use, and bindings share grants only through explicitly
-host-assigned partitions. A pending login ends exactly one way: completion
+host-assigned partitions. Because reuse requires the exact redirect, hosts
+sharing a store across processes MUST use a stable redirect per grant key; hosts
+using per-process ephemeral loopback ports with a shared store MUST give each
+process a distinct grant partition. A differing redirect supersedes the pending
+login. A pending login ends exactly one way: completion
 (a claimed valid callback, including consent denial), supersede, `cancel`, or
 expiry; a callback for an ended login fails with `interaction_required`. `cancel`
 never deletes a valid stored grant. All SDKs expose `cancel`.
