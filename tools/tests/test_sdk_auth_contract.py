@@ -1,4 +1,5 @@
 """Golden SDK host-auth semantics; no OAuth wire-schema generation."""
+import hashlib
 import json
 from pathlib import Path
 import unittest
@@ -29,9 +30,15 @@ def registration_key(value):
                  ("namespace", "issuer", "flow", "redirect")])
 
 
+def request_digest(value):
+    scope = " ".join(sorted(set(value.get("registration_scope", []))))
+    return hashlib.sha256(frame("ahp.oauth.registration-request:", [
+        value.get("client_name", ""), value.get("software_id", ""),
+        value.get("software_version", ""), scope,
+        value.get("initial_access_token_ref", "")]).encode("utf-8")).hexdigest()
+
+
 SECRET_METHODS = ("client_secret_basic", "client_secret_post")
-CONFIGURE_ERRORS = {"invalid_redirect_uri", "invalid_client_metadata",
-                    "invalid_software_statement", "unapproved_software_statement"}
 
 
 def valid_cimd_url(url):
@@ -53,31 +60,41 @@ def select_client(value):
                 or value["redirect"] not in cimd["redirect_uris"]):
             return {"error": "invalid_configuration"}
         return {"source": "cimd", "client_id": cimd["url"], "token_endpoint_auth_method": "none"}
+    # DCR checks: permission/endpoint, then client-credentials feasibility,
+    # then endpoint destination policy.
     endpoint = metadata.get("registration_endpoint")
     if not value["dcr_permitted"] or not endpoint:
         return {"error": "credential_unavailable"}
+    method = "none"
+    if not pkce:
+        supported = metadata.get("token_endpoint_auth_methods_supported",
+                                 ["client_secret_basic"])
+        method = next((m for m in SECRET_METHODS if m in supported), None)
+        if method is None or not value["secret_hook"]:
+            return {"error": "credential_unavailable"}
     if urlsplit(endpoint).scheme != "https":
         return {"error": "untrusted_destination"}
-    if pkce:
-        return {"source": "dcr", "token_endpoint_auth_method": "none"}
-    supported = metadata.get("token_endpoint_auth_methods_supported", ["client_secret_basic"])
-    method = next((m for m in SECRET_METHODS if m in supported), None)
-    if method is None or not value["secret_hook"]:
-        return {"error": "credential_unavailable"}
     return {"source": "dcr", "token_endpoint_auth_method": method}
 
 
 def validate_registration(row):
     status, body, request = row["status"], row["response"], row["request"]
+
+    def reject(code):
+        return {"accepted": False, "error": code}
+
     if 300 <= status < 400:
-        return {"accepted": False, "error": "untrusted_destination"}
+        return reject("untrusted_destination")
+    if 200 <= status < 300 and (status not in (200, 201) or not isinstance(body, dict)):
+        return reject("provider_failed")
     if status in (401, 403):
-        return {"accepted": False, "error": "credential_unavailable"}
-    if status == 400 and isinstance(body, dict) and body.get("error") in CONFIGURE_ERRORS:
-        return {"accepted": False, "error": "invalid_configuration"}
-    failed = {"accepted": False, "error": "provider_failed"}
-    if status not in (200, 201) or not isinstance(body, dict):
-        return failed
+        return reject("credential_unavailable")
+    if status in (408, 429) or status >= 500:
+        return reject("provider_failed")
+    if 400 <= status < 500:
+        return reject("invalid_configuration")
+    # A 200/201 JSON object failing validation is deterministic: no retry.
+    failed = reject("invalid_configuration")
     client_id = body.get("client_id")
     if not isinstance(client_id, str) or not client_id:
         return failed
@@ -226,6 +243,17 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertNotEqual(base, cases[name]["registration_key"])
         self.assertEqual(cases["dcr-client-credentials"]["input"]["redirect"], "")
 
+    def test_registration_request_digests(self):
+        cases = {row["id"]: row for row in self.vectors["registration_request_digests"]}
+        for name, row in cases.items():
+            with self.subTest(name):
+                self.assertEqual(request_digest(row["input"]), row["request_digest"])
+        base = cases["policy-base"]["request_digest"]
+        self.assertEqual(base, cases["policy-scope-reordered-duplicated"]["request_digest"])
+        for name in ("policy-scope-changed", "policy-client-name-changed",
+                     "policy-initial-access-token-changed", "policy-minimal"):
+            self.assertNotEqual(base, cases[name]["request_digest"])
+
     def test_client_selection_order(self):
         codes = {row["code"] for row in self.vectors["recovery"]}
         sources = set()
@@ -262,7 +290,10 @@ class SDKAuthContractTests(unittest.TestCase):
                          "cimd-redirect-mismatch-invalid-configuration",
                          "dcr-registers-once-across-processes", "dcr-preregistered-wins",
                          "dcr-expired-secret-reregisters", "dcr-invalid-client-reregisters-once",
-                         "dcr-policy-disallows-registration", "dcr-secret-not-in-token-record"):
+                         "dcr-policy-disallows-registration", "dcr-secret-not-in-token-record",
+                         "lookup-never-registers", "dcr-failed-marker-bounds-registration",
+                         "prepare-force-reregistration", "dcr-policy-change-reregisters",
+                         "dcr-replaced-secret-deleted"):
             self.assertIn(required, ids)
         selection = {row["id"] for row in self.vectors["client_selection"]}
         for shared in ("cimd-used-when-supported", "cimd-not-supported-falls-back-to-dcr",

@@ -1,5 +1,5 @@
 {
-  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time.",
+  "description": "SDK-only reference vectors and lifecycle COVERAGE MANIFEST; lifecycle entries require native executable tests. Fake credential strings; no AHP wire-schema change. In token_responses, requested is the caller's requested set (within allowed for acquisitions; the original request for refreshes); wire_request, present for exchange reacquire, is the scope set actually sent: previous_granted plus ceiling-filtered requested and required. client_selection inputs describe host configuration and authorization-server metadata; registration_responses use now as the current Unix time. registration_request_digests hash host registration policy; a record whose digest differs is unusable.",
   "recovery": [
     {
       "code": "invalid_configuration",
@@ -851,7 +851,7 @@
     },
     {
       "id": "dcr-pkce-registers-only-in-prepare",
-      "expect": "delivery, lookup and challenge paths never register a PKCE client; client-credentials acquisition may register non-interactively"
+      "expect": "registration requests are sent only by host prepare (either flow) and challenge-driven client-credentials acquisition; delivery paths never register a PKCE client"
     },
     {
       "id": "dcr-registers-once-across-processes",
@@ -863,11 +863,11 @@
     },
     {
       "id": "dcr-expired-secret-reregisters",
-      "expect": "a passed nonzero client_secret_expires_at or unresolvable secret reference re-registers under coordination before any token-endpoint request"
+      "expect": "a passed nonzero client_secret_expires_at or unresolvable secret reference makes the record unusable; a registering path (prepare or challenge-driven client credentials) re-registers under coordination before any token-endpoint request"
     },
     {
       "id": "dcr-invalid-client-reregisters-once",
-      "expect": "token-endpoint invalid_client for a DCR client compare-and-deletes that registration generation; client credentials re-register once and re-acquire once, and a second invalid_client fails credential_unavailable; PKCE returns interaction_required and the next prepare registers anew; no metadata refetch"
+      "expect": "token-endpoint invalid_client for a DCR client compare-and-deletes that registration generation; where registration is allowed client credentials re-register once and re-acquire once; PKCE returns interaction_required and the next prepare registers anew; no metadata refetch"
     },
     {
       "id": "dcr-new-client-id-new-grant",
@@ -891,7 +891,31 @@
     },
     {
       "id": "dcr-initial-access-token-scoped",
-      "expect": "a host initial access token is sent only to the registration endpoint and never persisted"
+      "expect": "a host initial access token configured for one exact issuer is sent only to that issuer's registration endpoint, never to another issuer's, and never persisted"
+    },
+    {
+      "id": "lookup-never-registers",
+      "expect": "the up-front lookup sends no registration request even when policy permits DCR; a missing or unusable registration returns credential_unavailable (client credentials) or interaction_required (PKCE)"
+    },
+    {
+      "id": "dcr-failed-marker-bounds-registration",
+      "expect": "a repeated invalid_client or invalid_configuration registration outcome persists a failed marker; across operations and processes no further registration request is sent and credential_unavailable is returned until host prepare runs or the request digest changes"
+    },
+    {
+      "id": "dcr-response-validation-invalid-configuration",
+      "expect": "a 2xx JSON registration response failing validation (secret for PKCE, replaced redirect, swapped auth method) persists nothing and returns invalid_configuration, not retry"
+    },
+    {
+      "id": "prepare-force-reregistration",
+      "expect": "prepare with the explicit force-registration option compare-and-deletes the current registration generation and its secret reference, clears a failed marker and registers anew; an expired pending login alone never triggers re-registration"
+    },
+    {
+      "id": "dcr-policy-change-reregisters",
+      "expect": "a changed client_name, software identifier, registration scope or initial access token reference makes the record's request_digest stale; the record is compare-and-deleted and the next permitted registration uses the new policy"
+    },
+    {
+      "id": "dcr-replaced-secret-deleted",
+      "expect": "after a registration record is replaced or compare-and-deleted, the old secret reference is deleted through the host hook once the compare-and-set succeeds; a losing compare-and-set deletes only its own fresh reference"
     }
   ],
   "registration_keys": [
@@ -1370,6 +1394,61 @@
       "expect": {
         "error": "credential_unavailable"
       }
+    },
+    {
+      "id": "cimd-invalid-url-unadvertised-falls-back-to-dcr",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "http://adapter.example/oauth/client.json#frag",
+          "redirect_uris": []
+        },
+        "redirect": "http://127.0.0.1:8765/callback",
+        "as_metadata": {
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "source": "dcr",
+        "token_endpoint_auth_method": "none"
+      }
+    },
+    {
+      "id": "cc-missing-hook-checked-before-insecure-endpoint",
+      "input": {
+        "flow": "client_credentials",
+        "preregistered_client_id": null,
+        "cimd": null,
+        "redirect": null,
+        "as_metadata": {
+          "registration_endpoint": "http://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": false
+      },
+      "expect": {
+        "error": "credential_unavailable"
+      }
+    },
+    {
+      "id": "cc-insecure-endpoint-after-feasibility",
+      "input": {
+        "flow": "client_credentials",
+        "preregistered_client_id": null,
+        "cimd": null,
+        "redirect": null,
+        "as_metadata": {
+          "registration_endpoint": "http://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "untrusted_destination"
+      }
     }
   ],
   "registration_responses": [
@@ -1511,7 +1590,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1541,7 +1620,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1569,7 +1648,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1599,7 +1678,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1626,7 +1705,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1653,7 +1732,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1680,7 +1759,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1782,7 +1861,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1804,7 +1883,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1826,7 +1905,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1846,7 +1925,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -1868,7 +1947,7 @@
       },
       "expect": {
         "accepted": false,
-        "error": "provider_failed"
+        "error": "invalid_configuration"
       }
     },
     {
@@ -2077,8 +2156,241 @@
       "response": null,
       "expect": {
         "accepted": false,
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "invalid-request-400",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 400,
+      "response": {
+        "error": "invalid_request"
+      },
+      "expect": {
+        "accepted": false,
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "not-found-404",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 404,
+      "response": null,
+      "expect": {
+        "accepted": false,
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "rate-limited-429",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 429,
+      "response": null,
+      "expect": {
+        "accepted": false,
         "error": "provider_failed"
       }
+    },
+    {
+      "id": "request-timeout-408",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 408,
+      "response": null,
+      "expect": {
+        "accepted": false,
+        "error": "provider_failed"
+      }
+    },
+    {
+      "id": "accepted-202",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 202,
+      "response": {
+        "client_id": "dcr-client"
+      },
+      "expect": {
+        "accepted": false,
+        "error": "provider_failed"
+      }
+    },
+    {
+      "id": "non-json-201",
+      "flow": "authorization_code_pkce",
+      "request": {
+        "redirect_uris": [
+          "http://127.0.0.1:8765/callback"
+        ],
+        "grant_types": [
+          "authorization_code",
+          "refresh_token"
+        ],
+        "response_types": [
+          "code"
+        ],
+        "token_endpoint_auth_method": "none",
+        "client_name": "Example Adapter"
+      },
+      "now": 1800000000,
+      "status": 201,
+      "response": null,
+      "expect": {
+        "accepted": false,
+        "error": "provider_failed"
+      }
+    }
+  ],
+  "registration_request_digests": [
+    {
+      "id": "policy-base",
+      "input": {
+        "client_name": "Example Adapter",
+        "software_id": "example-adapter",
+        "software_version": "1.2.3",
+        "registration_scope": [
+          "write",
+          "read"
+        ],
+        "initial_access_token_ref": "vault:iat"
+      },
+      "request_digest": "c2c48958f4ef5207355fec71fb7fe5c57ab7e55e4a72e33b5b006df3c4063c96"
+    },
+    {
+      "id": "policy-scope-reordered-duplicated",
+      "input": {
+        "client_name": "Example Adapter",
+        "software_id": "example-adapter",
+        "software_version": "1.2.3",
+        "registration_scope": [
+          "read",
+          "write",
+          "read"
+        ],
+        "initial_access_token_ref": "vault:iat"
+      },
+      "request_digest": "c2c48958f4ef5207355fec71fb7fe5c57ab7e55e4a72e33b5b006df3c4063c96"
+    },
+    {
+      "id": "policy-scope-changed",
+      "input": {
+        "client_name": "Example Adapter",
+        "software_id": "example-adapter",
+        "software_version": "1.2.3",
+        "registration_scope": [
+          "read"
+        ],
+        "initial_access_token_ref": "vault:iat"
+      },
+      "request_digest": "156174b3445620b76009a33b9dabfd84bf22083da4b42d3a6338e4d08c7bf205"
+    },
+    {
+      "id": "policy-client-name-changed",
+      "input": {
+        "client_name": "Renamed Adapter",
+        "software_id": "example-adapter",
+        "software_version": "1.2.3",
+        "registration_scope": [
+          "write",
+          "read"
+        ],
+        "initial_access_token_ref": "vault:iat"
+      },
+      "request_digest": "35edee98a82113b710075f6ab930137ba7ace8e555a499366f35714f1aa600ae"
+    },
+    {
+      "id": "policy-initial-access-token-changed",
+      "input": {
+        "client_name": "Example Adapter",
+        "software_id": "example-adapter",
+        "software_version": "1.2.3",
+        "registration_scope": [
+          "write",
+          "read"
+        ],
+        "initial_access_token_ref": "vault:iat-2"
+      },
+      "request_digest": "fb312db655334f008341d8e6bb255ad42c023284304bcac1169dc674a2140103"
+    },
+    {
+      "id": "policy-minimal",
+      "input": {
+        "client_name": "Example Adapter"
+      },
+      "request_digest": "c4858405b15e009a8c4074b5b25184ad3d5c51636369a1a951ac0faf5a2ba068"
     }
   ]
 }

@@ -168,8 +168,8 @@ exact issuer and flow in this order, mirroring
    client information; this replaces MCP's "prompt the user").
 
 Only the resulting `client_id` enters the grant key. Binding metadata records
-the selected `client_id`, its source and, for DCR, the `registration_key`. A recorded selection stays in use when only
-authorization-server metadata changes (newly advertised CIMD support or a removed
+the selected `client_id`, its source and, for DCR, the `registration_key`. A
+recorded selection stays in use when only authorization-server metadata changes (newly advertised CIMD support or a removed
 `registration_endpoint` does not move a working grant). It is obsolete when
 current host policy changes it: a pre-registered client now exists, or the
 recorded CIMD URL or DCR permission was removed or changed. Then the SDK
@@ -182,32 +182,48 @@ non-interactively. A pending login records its `client_id` and completes with it
 ### Client ID Metadata Documents
 
 The CIMD URL is host or adapter configuration (one published document per client
-identity), not an AHP wire field. It is the `client_id` verbatim. It MUST use
-`https`, contain a path, and contain no userinfo, fragment, or single- or
-double-dot path segments; otherwise `invalid_configuration`. The host also
-declares the document's `redirect_uris`. Before creating a pending login, the
-redirect it will use (stable per grant key; see
-[interaction lifetime](#refresh-failures-and-interaction-lifetime)) MUST exactly equal one of
-them; otherwise `invalid_configuration` and no login is created. The SDK MUST NOT
-fetch the CIMD URL or any URL derived from it: retrieval, caching, and SSRF
-protection for that fetch are the authorization server's concern. A CIMD client
-is public: token endpoint authentication is `none`, there is no client secret and
-no stored registration record. CIMD is not used for `client_credentials`, which
-needs a pre-registered client or DCR with a confidential method. CIMD with
-`private_key_jwt` is deployment-specific and outside this contract. An
-authorization or token endpoint `invalid_client` for a CIMD client is
-`invalid_configuration`; the SDK never falls back to DCR for that operation.
+identity), not an AHP wire field. It is the `client_id` verbatim. Selection
+checks CIMD applicability (PKCE, a configured URL, metadata support equal to
+`true`) first; only then are the URL and redirect validated, so an unused CIMD
+configuration never blocks DCR. A selected CIMD URL MUST use `https`, contain a
+path, and contain no userinfo, fragment, or single- or double-dot path segments;
+otherwise `invalid_configuration`. The host also declares the document's
+`redirect_uris`. Before creating a pending login, the redirect it will use
+(stable per grant key; see
+[interaction lifetime](#refresh-failures-and-interaction-lifetime)) MUST exactly
+equal one of them; otherwise `invalid_configuration` and no login is created.
+The SDK MUST NOT fetch the CIMD URL or any URL derived from it: retrieval,
+caching, and SSRF protection for that fetch are the authorization server's
+concern. A CIMD client is public: token endpoint authentication is `none`, there
+is no client secret and no stored registration record. CIMD is not used for
+`client_credentials`, which needs a pre-registered client or DCR with a
+confidential method. CIMD with `private_key_jwt` is deployment-specific and
+outside this contract. An authorization or token endpoint `invalid_client` for a
+CIMD client is `invalid_configuration`; the SDK never falls back to DCR for that
+operation.
 
 ### Dynamic Client Registration
 
-The `registration_endpoint` MUST be HTTPS and pass local destination policy;
-the registration request does not follow redirects. A violation is
-`untrusted_destination`. Registration runs only in an explicit `prepare` (PKCE,
-before it creates a pending login) or in a non-interactive client-credentials
-acquisition (including the up-front lookup and challenge handling); delivery
-paths never register for PKCE. A host MAY supply an initial access token by
-secret reference; it is sent as a Bearer credential to the registration endpoint
-only and never persisted. RFC 7592 client management is out of scope: a
+DCR eligibility is checked in this order, without network access:
+
+1. Host policy permits registration at the exact issuer and the metadata
+   advertises `registration_endpoint`; otherwise `credential_unavailable`.
+2. For client credentials, a host secret-storage hook exists and
+   `token_endpoint_auth_methods_supported` (default `client_secret_basic`)
+   includes `client_secret_basic` or `client_secret_post`; otherwise
+   `credential_unavailable`.
+3. The `registration_endpoint` is HTTPS and passes local destination policy;
+   otherwise `untrusted_destination`. The request does not follow redirects.
+
+Registration requests are sent only by an explicit host `prepare` (either flow;
+for PKCE, before it creates a pending login) and by client-credentials
+acquisition during challenge handling. The up-front lookup and other delivery
+paths never register: where a usable registration is missing they return
+`credential_unavailable` for client credentials, or `interaction_required` for
+PKCE (whose `prepare` registers). A host MAY supply an initial access token by secret
+reference for a specific permitted exact issuer; it is sent as a Bearer
+credential only to that issuer's `registration_endpoint`, never to another
+issuer's, and never persisted. RFC 7592 client management is out of scope: a
 `registration_access_token` or `registration_client_uri` in the response is
 ignored and not persisted, and the SDK does not delete registrations at the
 authorization server.
@@ -219,16 +235,15 @@ The request is a JSON `POST` with:
 | `redirect_uris` | `[redirect]`, the stable redirect | omitted |
 | `grant_types` | `["authorization_code", "refresh_token"]` | `["client_credentials"]` |
 | `response_types` | `["code"]` | omitted |
-| `token_endpoint_auth_method` | `none` | `client_secret_basic`, or `client_secret_post` when `token_endpoint_auth_methods_supported` lists only that one |
+| `token_endpoint_auth_method` | `none` | `client_secret_basic`, or `client_secret_post` when only that one is supported |
 
 `client_name` (required) and optional `software_id`/`software_version` come from
 the host policy that permits registration. `scope` is sent only when that policy
 supplies a registration scope set; the SDK never derives it from one
-operation's requested scopes. For client credentials, if the advertised methods
-exclude both secret methods, no client is available (`credential_unavailable`).
+operation's requested scopes.
 
-A registration response is accepted only if it is a 200 or 201 JSON object with
-a non-empty string `client_id` and:
+A 200 or 201 response whose body is a JSON object is accepted only with a
+non-empty string `client_id` and:
 
 * echoed `redirect_uris`, when present, exactly equal the requested set;
 * echoed `grant_types`, when present, include `authorization_code` (PKCE) or
@@ -238,16 +253,18 @@ a non-empty string `client_id` and:
 * `client_secret_expires_at`, when present, is a non-negative JSON integer and,
   when nonzero, in the future. `0` or absence means no known expiry.
 
-Echoed `scope` and unknown members are ignored. A response failing these checks
-persists nothing and is `provider_failed`.
+Echoed `scope` and unknown members are ignored. A rejected response persists
+nothing. Outcomes are mapped in table order:
 
 | Registration outcome | Code |
 | --- | --- |
-| No pre-registered client, CIMD inapplicable, DCR not permitted or `registration_endpoint` absent | `credential_unavailable` |
-| `registration_endpoint` not HTTPS, refused by destination policy, or redirected | `untrusted_destination` |
-| OAuth error `invalid_redirect_uri`, `invalid_client_metadata`, `invalid_software_statement`, `unapproved_software_statement` | `invalid_configuration` |
+| 3xx redirect | `untrusted_destination` |
+| 200/201 JSON object failing the checks above | `invalid_configuration` |
+| Other 2xx, or 200/201 without a JSON object body | `provider_failed` |
 | HTTP 401/403 (missing or rejected initial access token) | `credential_unavailable` |
-| Network failure, timeout, 5xx, non-OAuth body, or invalid response | `provider_failed` |
+| HTTP 408 or 429 | `provider_failed` |
+| Any other 4xx, including OAuth errors such as `invalid_redirect_uri`, `invalid_client_metadata` or `invalid_request`, non-OAuth bodies and 404 | `invalid_configuration` |
+| Network failure, timeout, or 5xx | `provider_failed` |
 
 There is no SDK-driven immediate retry of a failed registration.
 
@@ -259,37 +276,63 @@ A DCR registration is stored separately from bindings and grants:
 registration_key = frame("ahp.oauth.registration:", [
   namespace, exact_issuer, flow, exact_redirect   # "" for client_credentials
 ])
+
+request_digest = lowercase hex SHA-256 of frame("ahp.oauth.registration-request:", [
+  client_name, software_id, software_version,
+  registration_scope,          # deduplicated, sorted, space-joined
+  initial_access_token_ref     # the reference, never the token
+])                             # absent optional values are ""
 ```
 
-The registration endpoint, `client_name`, software identifiers, registration
-scope, initial access token, and issued values are not key material.
-Registrations are reused by every grant with the same key, across bindings and
-partitions in the namespace. Hosts SHOULD use a stable redirect so each process
-or ephemeral port does not register a new client.
+The registration endpoint, request digest inputs, and issued values are not key
+material. Registrations are reused by every grant with the same key, across
+bindings and partitions in the namespace. Hosts SHOULD use stable redirects
+(stable loopback ports). A host that uses ephemeral loopback ports with DCR and
+a shared store MUST give each process a distinct grant partition, as above, and
+should expect one registration per port.
 
 The record holds `client_id`, `client_secret_expires_at`, the accepted issued
-metadata, a generation, and, for a confidential client, an opaque secret
-reference. The `client_secret` itself is written only through a host
-secret-storage hook (store, resolve, delete by reference), never into the
-registration, binding, grant or pending-login record. Without such a hook, DCR is
-unavailable for client credentials (`credential_unavailable`); the SDK has no
-implicit secret store or fallback. The SDK stores the secret under a fresh
-reference before the record's compare-and-set, and deletes that reference if the
-compare-and-set loses. An unresolvable secret reference makes the record unusable.
+metadata, the `request_digest` it was registered with, a generation, and, for a
+confidential client, an opaque secret reference. The `client_secret` itself is
+written only through a host secret-storage hook (store, resolve, delete by
+reference), never into the registration, binding, grant or pending-login record;
+the SDK has no implicit secret store or fallback. The SDK stores the secret under
+a fresh reference before the record's compare-and-set, and deletes that
+reference if the compare-and-set loses. Whenever a record is replaced or
+compare-and-deleted, the SDK deletes the old record's secret reference through
+the hook after the compare-and-set succeeds.
 
-Concurrent processes register once: under the registration key's coordination
-lock, the SDK reloads and registers only when no usable record exists, then
-persists by compare-and-set on the generation; a loser uses the winner's record.
-A record is unusable when its nonzero `client_secret_expires_at` has passed or
-its secret cannot be resolved; the SDK then re-registers under the same
-coordination before contacting the token endpoint. An `invalid_client` token
-response for a DCR client (an OAuth error, so not a metadata refetch) removes
-that registration generation by compare-and-delete. Client credentials then
-re-register at most once per operation and re-acquire once with the new client;
-if that client also receives `invalid_client`, the operation fails with
-`credential_unavailable`. A PKCE code or refresh token bound to the old client
-is never reused: the operation returns `interaction_required`, and the next
-`prepare` registers a new client and creates the login.
+A record is unusable when its nonzero `client_secret_expires_at` has passed, its
+secret cannot be resolved, or its `request_digest` differs from the digest of
+current host registration policy. A digest mismatch compare-and-deletes the
+record, so policy changes (name, scope, initial access token) take effect on the
+next registration. Concurrent processes register once: under the registration
+key's coordination lock, the SDK reloads and registers only when no usable
+record exists, then persists by compare-and-set on the generation; a loser uses
+the winner's record.
+
+An `invalid_client` token response for a DCR client (an OAuth error, so not a
+metadata refetch) compare-and-deletes that registration generation. Where
+registration is allowed, client credentials then re-register at most once per
+operation and re-acquire once with the new client. A PKCE code or refresh token
+bound to the old client is never reused: the operation returns
+`interaction_required`, and the next `prepare` registers a new client.
+
+If the replacement client also receives `invalid_client`, or a registration
+outcome is `invalid_configuration`, the SDK persists a **failed marker** for the
+registration key, holding the current `request_digest`, and returns that
+error (`credential_unavailable` for a repeated `invalid_client`). While a
+marker with the current digest exists, every path except host `prepare` returns
+`credential_unavailable` without sending a registration request. A host
+`prepare` or a changed `request_digest` clears the marker.
+
+An authorization server that deletes a PKCE client sends no callback (RFC 6749
+section 4.1.2.1), so the SDK cannot detect it. `prepare` therefore accepts an
+explicit host option to force re-registration: it compare-and-deletes the
+current registration generation (and its secret reference), clears any failed
+marker and registers anew. The SDK never infers this from a pending login
+expiring without a callback, since abandoned consent is indistinguishable and
+would orphan a client and change the grant key on every abandoned login.
 
 ## Cached acquisition and metadata availability
 
