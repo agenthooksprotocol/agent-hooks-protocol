@@ -79,9 +79,15 @@ class SDKAuthContractTests(unittest.TestCase):
                 response = row["response"]
                 refresh = row.get("exchange") == "refresh"
                 inherited = row["previous_granted"] if refresh else row["requested"]
-                # Initial: bounded by the acquisition ceiling. Refresh: bounded only by
-                # the previous grant; the current ceiling filters at use.
-                bound = set(row["previous_granted"] if refresh else row["allowed"])
+                # Acquisition: bounded by previous grant plus acquisition ceiling.
+                # Refresh: bounded only by the previous grant. The current ceiling
+                # filters at use.
+                previous = set(row.get("previous_granted", []))
+                bound = previous if refresh else previous | set(row["allowed"])
+                if row.get("exchange") == "reacquire":
+                    self.assertEqual(set(row["requested"]),
+                                     previous | (set(row["requested"]) & set(row["allowed"]))
+                                     | set(row["required"]))
                 accepted = basically_valid(response)
                 self.assertEqual(accepted, row["accepted"])
                 # A refresh keeps its previous token when the response is invalid or
@@ -117,6 +123,8 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertFalse(cases["fractional-expires-in"]["accepted"])
         self.assertFalse(cases["zero-expires-in"]["accepted"])
         self.assertEqual({True, False}, {row["refresh_preserved"] for row in rows})
+        kept = cases["step-up-keeps-previous-grant"]
+        self.assertLessEqual(set(kept["previous_granted"]), set(kept["granted"]))
         narrowed = cases["refresh-narrow-ceiling-keeps-grant"]
         self.assertLess(set(narrowed["effective"]), set(narrowed["granted"]))
 

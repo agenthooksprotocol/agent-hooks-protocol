@@ -55,10 +55,13 @@ Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
 broader ceiling. The response scope set is the provided `scope`; when omitted it
 is the requested set for an initial response and the previously granted set for
-a refresh. An initial exchange records `granted = response scopes ∩ acquisition
-ceiling`: the ceiling stored on the pending login (PKCE) or the acquiring
-caller's ceiling (client credentials). A refresh records `granted = response
-scopes ∩ previously granted`. The current caller's ceiling applies only at use
+a refresh. An acquisition (PKCE consent or client credentials, including
+step-up or re-acquisition for an existing grant key) requests
+`previously granted ∪ ((requested ∪ required) ∩ caller ceiling)` and records
+`granted = response scopes ∩ (previously granted ∪ acquisition ceiling)`, where
+the acquisition ceiling is the one stored on the pending login (PKCE) or the
+acquiring caller's (client credentials); previously granted is empty for a new
+grant. A refresh records `granted = response scopes ∩ previously granted`. The current caller's ceiling applies only at use
 (`effective = granted ∩ current ceiling`), so narrowing a ceiling never shrinks a
 stored grant. Scopes outside the recorded set (authorization
 servers routinely add `openid`/`offline_access` or return every scope a client
@@ -125,7 +128,10 @@ its recorded granted scopes ∩ the current allowed ceiling. Changing the ceilin
 including widening it, never orphans an existing grant.
 
 Binding metadata stores the validated discovery source and non-secret principal
-material needed to find a grant. Revalidate current local policy and any explicit
+material needed to find a grant, and MUST persist the authorization-server
+metadata the grant needs for refresh/acquisition: issuer, token endpoint,
+supported token-endpoint authentication methods and any other endpoint or
+capability the grant's flow uses. Revalidate current local policy and any explicit
 binding constraints before use. A client secret rotation, a newly advertised
 grant type, or other non-identity metadata change does not permanently invalidate
 a stored grant. Invalidate/rebuild obsolete binding metadata as needed, outside
@@ -146,8 +152,10 @@ Check a locally authorized stored token before performing online discovery.
 Persist or otherwise retain trusted binding metadata so a recreated provider
 can find a valid grant without an available metadata endpoint. Local policy is
 still checked; a cache does not override issuer/resource/destination constraints.
-Discover on a cache miss, explicit invalidation, or when renewed metadata is
-needed for acquisition/refresh, outside the credential-store coordination lock.
+Full discovery (protected-resource, then authorization-server metadata) runs
+only on a cache miss, explicit invalidation, host `prepare` or challenge
+handling, outside the credential-store coordination lock. A `prepare` rebuilds
+binding metadata, so stale persisted metadata always has a repair path.
 Reload and recheck the grant after acquiring its lock to avoid refresh storms.
 
 An explicit OAuth preset already fixes issuer/resource/client/flow. All SDKs
@@ -157,17 +165,23 @@ discovery. Before that first learning, anonymous delivery is allowed under local
 policy. Once a validated, locally approved binding is stored for the
 destination, the client sends its stored credential on the first attempt,
 including for notifications and uploads that are never replayed.
-That lookup never creates an interactive login and never performs discovery; it
-MAY refresh an expired stored token non-interactively using cached
-authorization-server metadata. If a binding is known but that refresh fails
-(transient error, `invalid_grant` or missing cached metadata), the operation
-fails with that error; there is no anonymous fallback. The client sends
-anonymously only on a store miss or host policy refusal.
+That lookup never creates an interactive login and never performs
+protected-resource discovery. It MAY refresh an expired stored token, or
+re-acquire a client-credentials grant, non-interactively using the persisted
+authorization-server metadata; if that metadata is absent it MAY fetch
+authorization-server metadata for the stored issuer only, and a failure is
+`discovery_failed`. If a binding is known but its grant holds no usable token
+and cannot be renewed this way (transient error, `invalid_grant`, metadata
+failure, or interactive consent needed), the operation fails with that error;
+there is no anonymous fallback. The client sends anonymously only on a store
+miss or host policy refusal.
 Hosts can explicitly prepare an unknown endpoint before its first
 non-replayable call. A 401 or Bearer 403 `insufficient_scope` on a notification
 or upload is not replayed, but still runs the provider's challenge handling:
-discovery and client-credentials acquisition are allowed, login creation is not,
-so the next operation sends a credential. An SDK represents a lookup miss as an
+discovery, refresh and client-credentials acquisition are allowed, login
+creation is not, so the next operation sends a credential. Challenge handling
+treats a rejected token as stale (if still current) even when its expiry is
+unknown or in the future, so a revoked token is renewed rather than resent. An SDK represents a lookup miss as an
 absent credential in its native optional result, never as an empty bearer.
 
 ## Refresh failures and interaction lifetime
@@ -192,14 +206,15 @@ Only an explicit host `prepare` creates one. A pending login is a stored record
 whose lifetime is fixed at creation (host-configured and bounded; default 10
 minutes), independent of the creating `prepare` call's deadline or cancellation.
 Completion MUST work from any process sharing the store; the creating context
-need not still be active. The record stores its creating caller's ceiling,
-which bounds the grant recorded on completion. A later `prepare` reuses an
+need not still be active. The record stores its acquisition ceiling, which
+bounds the grant recorded on completion. A later `prepare` reuses an
 unexpired pending login, regardless of the new caller's deadline and without
 extending its lifetime, when the grant key and exact redirect match and the new
 requested plus required scopes are a subset of the pending scopes. Otherwise it
-atomically supersedes it with a login requesting (old pending scopes ∪ new
-requested ∪ new required) ∩ new caller's ceiling, so alternating callers
-converge. Reuse is not a confused-deputy risk: effective scopes are filtered by
+atomically supersedes it with a login requesting old pending scopes ∪ ((new
+requested ∪ new required) ∩ new caller's ceiling) and storing ceiling = old
+ceiling ∪ new caller's ceiling. Both sets only grow, so alternating callers
+converge; effective scopes stay filtered per caller at use. Reuse is not a confused-deputy risk: effective scopes are filtered by
 each caller's ceiling at use, and bindings share grants only through explicitly
 host-assigned partitions. A pending login ends exactly one way: completion
 (a claimed valid callback, including consent denial), supersede, `cancel`, or

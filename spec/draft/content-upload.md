@@ -23,8 +23,8 @@ The sender MUST resolve upload authentication credentials independently. The
 backend's explicit [registration headers](base/registration.md#AHP-REG-003) also
 apply to its uploads, resolved through the existing secret helpers under the
 upload budget and merged LAST over upload defaults/authentication. Configured
-`Authorization` suppresses upload OAuth discovery and acquisition even when
-`upload.auth` is present; resolution failure MUST NOT fall
+`Authorization` suppresses upload OAuth discovery, acquisition, challenge
+handling, and retry flows even when `upload.auth` is present; resolution failure MUST NOT fall
 back to OAuth. Otherwise, absence of `upload.auth` uses standard OAuth
 protected-resource discovery on this endpoint, not implicit event credentials
 or an anonymous-only assumption. Upload authentication and transfer count
