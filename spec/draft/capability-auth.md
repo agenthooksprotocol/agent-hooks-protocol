@@ -105,9 +105,10 @@ endpoint without an HTTP credential, subject to local policy and TLS identity
 selection below. Once a validated, locally approved binding is stored for the
 destination, the client sends its stored credential on the first attempt.
 That lookup never creates an interactive login and never performs
-protected-resource discovery. It MAY refresh an expired stored token, or
-re-acquire a client-credentials grant, non-interactively using the persisted
-authorization-server metadata; if that metadata is absent it MAY fetch
+protected-resource discovery. When it has the material and persisted
+authorization-server metadata to do so, it MUST refresh an expired stored token,
+or re-acquire a client-credentials grant, non-interactively; if that metadata is
+absent it MAY fetch
 authorization-server metadata for the stored issuer only, and a failure is
 `discovery_failed`. If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata

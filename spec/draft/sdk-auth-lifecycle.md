@@ -153,9 +153,11 @@ Persist or otherwise retain trusted binding metadata so a recreated provider
 can find a valid grant without an available metadata endpoint. Local policy is
 still checked; a cache does not override issuer/resource/destination constraints.
 Full discovery (protected-resource, then authorization-server metadata) runs
-only on a cache miss, explicit invalidation, host `prepare` or challenge
-handling, outside the credential-store coordination lock. A `prepare` rebuilds
-binding metadata, so stale persisted metadata always has a repair path.
+only on a cache miss, explicit invalidation, challenge handling, or a host
+`prepare` that must perform an exchange or create a login, outside the
+credential-store coordination lock. A `prepare` that finds a usable cached token
+serves it without any metadata network call; otherwise it rebuilds binding
+metadata, so stale persisted metadata always has a repair path.
 Reload and recheck the grant after acquiring its lock to avoid refresh storms.
 
 An explicit OAuth preset already fixes issuer/resource/client/flow. All SDKs
@@ -166,9 +168,10 @@ policy. Once a validated, locally approved binding is stored for the
 destination, the client sends its stored credential on the first attempt,
 including for notifications and uploads that are never replayed.
 That lookup never creates an interactive login and never performs
-protected-resource discovery. It MAY refresh an expired stored token, or
-re-acquire a client-credentials grant, non-interactively using the persisted
-authorization-server metadata; if that metadata is absent it MAY fetch
+protected-resource discovery. When it has the material and persisted
+authorization-server metadata to do so, it MUST refresh an expired stored token,
+or re-acquire a client-credentials grant, non-interactively; if that metadata is
+absent it MAY fetch
 authorization-server metadata for the stored issuer only, and a failure is
 `discovery_failed`. If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
@@ -211,10 +214,12 @@ bounds the grant recorded on completion. A later `prepare` reuses an
 unexpired pending login, regardless of the new caller's deadline and without
 extending its lifetime, when the grant key and exact redirect match and the new
 requested plus required scopes are a subset of the pending scopes. Otherwise it
-atomically supersedes it with a login requesting old pending scopes ∪ ((new
-requested ∪ new required) ∩ new caller's ceiling) and storing ceiling = old
-ceiling ∪ new caller's ceiling. Both sets only grow, so alternating callers
-converge; effective scopes stay filtered per caller at use. Reuse is not a confused-deputy risk: effective scopes are filtered by
+atomically supersedes it. When only the scopes differ (same grant key and
+redirect), the new login requests old pending scopes ∪ ((new requested ∪ new
+required) ∩ new caller's ceiling) and stores ceiling = old ceiling ∪ new caller's
+ceiling; both sets only grow, so alternating callers converge, and effective
+scopes stay filtered per caller at use. When the grant key or redirect differs,
+the new login starts from the new caller's requested, required and ceiling alone. Reuse is not a confused-deputy risk: effective scopes are filtered by
 each caller's ceiling at use, and bindings share grants only through explicitly
 host-assigned partitions. A pending login ends exactly one way: completion
 (a claimed valid callback, including consent denial), supersede, `cancel`, or

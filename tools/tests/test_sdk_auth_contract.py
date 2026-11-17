@@ -84,10 +84,13 @@ class SDKAuthContractTests(unittest.TestCase):
                 # filters at use.
                 previous = set(row.get("previous_granted", []))
                 bound = previous if refresh else previous | set(row["allowed"])
-                if row.get("exchange") == "reacquire":
-                    self.assertEqual(set(row["requested"]),
-                                     previous | (set(row["requested"]) & set(row["allowed"]))
-                                     | set(row["required"]))
+                if not refresh:
+                    self.assertLessEqual(set(row["requested"]), set(row["allowed"]))
+                self.assertEqual(row.get("exchange") == "reacquire", "wire_request" in row)
+                if "wire_request" in row:
+                    self.assertEqual(set(row["wire_request"]), previous |
+                                     ((set(row["requested"]) | set(row["required"]))
+                                      & set(row["allowed"])))
                 accepted = basically_valid(response)
                 self.assertEqual(accepted, row["accepted"])
                 # A refresh keeps its previous token when the response is invalid or
