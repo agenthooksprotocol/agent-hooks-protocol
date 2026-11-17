@@ -109,11 +109,15 @@ protected-resource discovery. When it has the material and persisted
 authorization-server metadata to do so, it MUST refresh an expired stored token,
 or re-acquire a client-credentials grant, non-interactively; if that metadata is
 absent it MAY fetch authorization-server metadata for the stored issuer only.
-When a renewal using persisted metadata fails without an OAuth error response
-(network, connection or TLS failure, 404/410, or a moved endpoint), it refetches
-the stored issuer's authorization-server metadata once, persists it if the
-issuer identity is unchanged, and retries the renewal once; an OAuth error
-response (such as `invalid_grant` or `invalid_client`) never triggers a refetch.
+When a renewal using persisted metadata fails where the token endpoint provably
+did not process the request (DNS resolution, TCP connect or TLS handshake
+failure, or HTTP 404/410 from the token endpoint), it refetches the stored
+issuer's authorization-server metadata once, persists it if the issuer identity
+is unchanged, and retries the renewal once. An OAuth error response (such as
+`invalid_grant` or `invalid_client`) never triggers a refetch, and an ambiguous
+failure after the request was sent (read timeout, reset after send, 5xx,
+non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
+rotated refresh token is never replayed.
 A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
 failure, or interactive consent needed), the operation fails with that error;
