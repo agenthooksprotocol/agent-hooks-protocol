@@ -23,11 +23,19 @@ def grant_key(value):
                  ("namespace", "issuer", "resource", "client_id", "flow")] + [partition])
 
 
+def valid_expires_in(value):
+    if value is None:
+        return True
+    if type(value) is int:
+        return value > 0
+    return (isinstance(value, str) and value.isascii() and value.isdigit()
+            and int(value) > 0)
+
+
 def basically_valid(response):
-    expires_in = response.get("expires_in")
     return (response.get("token_type", "").lower() == "bearer"
             and bool(response.get("access_token"))
-            and (expires_in is None or (type(expires_in) is int and expires_in > 0)))
+            and valid_expires_in(response.get("expires_in")))
 
 
 class SDKAuthContractTests(unittest.TestCase):
@@ -76,7 +84,10 @@ class SDKAuthContractTests(unittest.TestCase):
                     ceiling &= set(row["previous_granted"])
                 accepted = basically_valid(response)
                 self.assertEqual(accepted, row["accepted"])
-                self.assertTrue(row["refresh_preserved"])
+                # A refresh keeps its previous token when the response is invalid or
+                # omits one; an initial exchange persists only an accepted response's token.
+                self.assertEqual(refresh or (accepted and "refresh_token" in response),
+                                 row["refresh_preserved"])
                 if not accepted:
                     self.assertFalse(row["usable"])
                     self.assertEqual(row["error"], "provider_failed")
@@ -96,6 +107,14 @@ class SDKAuthContractTests(unittest.TestCase):
             row = cases[name]
             self.assertTrue(set(row["response"]["scope"].split()) - set(row["granted"]))
             self.assertTrue(row["accepted"] and row["usable"])
+
+    def test_expires_in_and_refresh_persistence_vectors_are_exercised(self):
+        rows = self.vectors["token_responses"]
+        cases = {row["id"]: row for row in rows}
+        self.assertTrue(cases["string-expires-in"]["accepted"])
+        self.assertFalse(cases["fractional-expires-in"]["accepted"])
+        self.assertFalse(cases["zero-expires-in"]["accepted"])
+        self.assertEqual({True, False}, {row["refresh_preserved"] for row in rows})
 
     def test_lifecycle_coverage_manifest_is_well_formed(self):
         ids = [row["id"] for row in self.vectors["lifecycle"]]

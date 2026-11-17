@@ -102,10 +102,13 @@ MUST NOT grant authority.
 
 On first contact when endpoint authentication and configured `Authorization` are absent, the client MUST attempt the configured
 endpoint without an HTTP credential, subject to local policy and TLS identity
-selection below. Once a validated, independently locally approved binding is
-stored for the destination, the client sends its stored credential on the first
-attempt; absent portable configuration does not require repeating anonymous
-first contact on every delivery. Absence does not mean anonymous-only: a successful response may
+selection below. Once a validated, locally approved binding is stored for the
+destination, the client sends its stored credential on the first attempt.
+That lookup never creates an interactive login and never performs discovery; it
+MAY refresh an expired stored token non-interactively using cached
+authorization-server metadata. The client sends anonymously only on a store
+miss or host policy refusal. Absent portable configuration does not require repeating
+anonymous first contact on every delivery. Absence does not mean anonymous-only: a successful response may
 be accepted, but an OAuth-protected endpoint MUST be handled using the protected
 resource discovery procedure in [MCP 2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),
 [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728.html), and authorization-server

@@ -35,14 +35,19 @@ with `invalid_grant` consumes that valid pending operation and returns
 `interaction_required` (a fresh host login), not `retry` for the consumed code.
 Errors expose only allowlisted codes/recovery, not tokens, response bodies,
 callback URLs, client secrets or arbitrary provider exception chains.
+`interaction_required` and `access_denied` MAY also carry the validated required
+scope set (allowlisted RFC 6749 scope tokens only, never secret). A host passes
+that set back as explicit required scopes to `prepare`, which accepts them.
 
 ## Token response acceptance and persistence
 
 `expires_in` is recommended, not required (RFC 6749 section 5.1). An absent expiry
 means **unknown**, not expired or invalid. Such a token may be used until a
 rejection or stricter explicit host policy; do not invent a short expiry or
-refresh it on every call. Explicit invalid/expired expiry values remain distinct
-from absence.
+refresh it on every call. A present `expires_in` is valid only as a positive
+JSON integer or a string of ASCII digits with a positive value; zero, negative,
+non-integer values and other strings are malformed. Explicit invalid/expired
+expiry values remain distinct from absence.
 
 Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
@@ -58,12 +63,16 @@ deduplicated. A grant need not equal the requested set. Only explicit host
 requirements and validated challenge requirements are mandatory for an
 operation; an exchange fails (`access_denied`, operation-level, grant still
 persisted) only when such a required scope is missing from the effective grant.
+The ceiling governs what the SDK requests and records; it does not constrain what
+an issued token can do. Hosts needing enforcement validate tokens in their own
+policy hook.
 
-A token response failing basic validity (non-Bearer `token_type`, malformed or
-non-positive `expires_in`, invalid token grammar) is not dispatched. Once a code
-was consumed or a refresh token presented, no outcome leaves in-flight or
-refreshing state behind: on a validation failure persist any valid (rotated)
-refresh token, clear in-flight markers and report `provider_failed` (`retry`).
+A token response failing basic validity (non-Bearer `token_type`, malformed
+`expires_in`, invalid token grammar) is not dispatched. Once a code was consumed
+or a refresh token presented, no outcome leaves in-flight or refreshing state
+behind: clear in-flight markers and report `provider_failed` (`retry`). A failed
+initial exchange persists nothing; a failed refresh response persists its
+rotated refresh token only if that token is valid, else retains the previous one.
 Persist a rotated refresh token before reporting operation-level scope
 insufficiency; never discard it because expiry is unknown or granted scopes
 differ from requested scopes.
@@ -78,7 +87,8 @@ and scope-policy partition. Keeping these identities separate supports cached
 unbound authentication without implicitly inheriting event credentials for an
 upload. The allowed ceiling, client secrets, secret values/references, the
 discovered token-endpoint authentication method, metadata capability arrays,
-endpoint URLs, expiry and granted/requested scope sets are **not** part of either key.
+expiry and granted/requested scope sets are **not** part of either key, and
+token, metadata and authorization-server endpoint URLs are not part of the grant key.
 
 The namespace identifies the host account/credential domain and is required.
 Issuer, resource and destination are exact validated identifiers: do not erase
@@ -138,11 +148,13 @@ An explicit OAuth preset already fixes issuer/resource/client/flow. All SDKs
 use its issuer metadata without requiring protected-resource metadata first.
 An unbound endpoint learns its binding through standard protected-resource
 discovery. Before that first learning, anonymous delivery is allowed under local
-policy. Once the store holds an authorized binding for the destination, the SDK
-sends its stored token **on the first attempt**, including for notifications and
-uploads that are never replayed. This up-front lookup never creates an
-interactive login; a missing store entry, a missing context deadline or a host
-policy refusal yields an anonymous attempt, not an error. Hosts can explicitly
+policy. Once a validated, locally approved binding is stored for the
+destination, the client sends its stored credential on the first attempt,
+including for notifications and uploads that are never replayed.
+That lookup never creates an interactive login and never performs discovery; it
+MAY refresh an expired stored token non-interactively using cached
+authorization-server metadata. The client sends anonymously only on a store
+miss or host policy refusal. Hosts can explicitly
 prepare an unknown endpoint before its first non-replayable call.
 
 Go preserves the existing bearer-only `Provider.Credential` success contract.
@@ -157,8 +169,10 @@ A 5xx, timeout, non-OAuth response or transient OAuth error preserves the last
 known refresh material and is operationally retryable under host policy. It is
 not, by itself, `interaction_required`. Client credentials can reissue a grant
 using current credentials and never enter a human-login state. A definitive
-interactive refresh `invalid_grant` drops both access and refresh tokens from
-the record and returns `refresh_rejected`; new consent is required. If an
+interactive refresh `invalid_grant` returns `refresh_rejected` (new consent is
+required) and drops both access and refresh tokens only if the stored record
+still holds the refresh token that was presented (compare-and-delete); a newer
+record is kept. If an
 exchange outcome is ambiguous, retain that fact without permanently wedging the grant; expose
 retry/host repair, not a fabricated definitive authorization loss. Retrying an
 ambiguous rotating refresh may ultimately yield `invalid_grant`; no SDK can
@@ -168,16 +182,19 @@ stricter explicit rotation policy, but it must not be the implicit default.
 Dispatch/credential/challenge paths, including the up-front lookup, never create
 pending logins; they return `interaction_required` when consent is necessary.
 Only an explicit host `prepare` creates one. A pending login is a stored record
-whose lifetime is fixed at creation (host-configured login lifetime; default and
-maximum 10 minutes), independent of the creating `prepare` call's deadline or
-cancellation. Completion MUST work from any process sharing the store; the
-creating context need not still be active. A later `prepare` reuses an unexpired
-pending login when the grant key and exact redirect match and the new requested
-plus required scopes are a subset of the pending login's scopes, regardless of
-the new caller's deadline; reuse never extends the lifetime. Otherwise it atomically
-supersedes the pending login, and the old callback fails with
-`interaction_required`. Only explicit `cancel` or expiry abandons a pending
-login; `cancel` never deletes a valid stored grant. All SDKs expose `cancel`.
+whose lifetime is fixed at creation (host-configured and bounded; default 10
+minutes), independent of the creating `prepare` call's deadline or cancellation.
+Completion MUST work from any process sharing the store; the creating context
+need not still be active. A later `prepare` reuses an unexpired pending login,
+regardless of the new caller's deadline and without extending its lifetime, when
+the grant key and exact redirect match, the new requested plus required scopes
+are a subset of the pending scopes, and the pending scopes are a subset of the
+new caller's allowed ceiling. Otherwise it atomically supersedes it with a login
+requesting (old pending scopes ∪ new requested ∪ new required) ∩ new ceiling, so
+alternating callers converge. A pending login ends exactly one way: completion
+(a claimed valid callback, including consent denial), supersede, `cancel`, or
+expiry; a callback for an ended login fails with `interaction_required`. `cancel`
+never deletes a valid stored grant. All SDKs expose `cancel`.
 
 Validate callback redirect, state and issuer before consuming a pending login.
 A stray invalid callback cannot burn a valid pending operation. Atomically claim
@@ -195,8 +212,9 @@ the challenged operation and the acquisition it triggers; it is **not** persiste
 as a binding requirement. Later operations use the stored grant's effective
 scopes, which after step-up consent include the broader scopes. If the challenge
 omits `scope`, do not invent a broader scope set: use an explicit host-provided
-requirement, or report `access_denied`. PKCE returns `interaction_required` so a
-subsequent host `prepare` can request consent. Client credentials can acquire a
+requirement, or report `access_denied`. PKCE returns `interaction_required`
+carrying the required scopes; the host passes them to a subsequent `prepare` to
+request consent. Client credentials can acquire a
 new grant for permitted scopes without human login. Do not reuse a token known
 to lack the operation's requirements.
 
@@ -213,12 +231,10 @@ coverage manifest**, not an OAuth implementation or executable lifecycle runner.
 The protocol fixture validator checks internal consistency only; it does not
 prove any SDK's persistence, network behavior, cancellation or consent lifecycle.
 Each SDK vendors this file byte-for-byte and supplies native tests at real
-host-network/store/transport boundaries. Each SDK MUST have:
-
-- a test asserting that every `lifecycle` id in the vendored fixture maps to an
-  existing native test; and
-- a test or CI step asserting that the vendored fixture is byte-identical to this
-  canonical file at the SDK's pinned protocol ref.
+host-network/store/transport boundaries. Each SDK MUST have a test asserting
+that every `lifecycle` id in the vendored fixture maps to an existing native
+test. (Recommended, non-normative: a test or CI step checking that the vendored
+fixture is byte-identical to this file at the SDK's pinned protocol ref.)
 
 Native APIs and test names may differ; the semantic vectors and observed
 behaviors may not.

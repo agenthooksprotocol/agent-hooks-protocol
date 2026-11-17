@@ -45,7 +45,7 @@ When the deadline expires, the harness MUST ignore any later response and apply 
 
 A harness MAY retry an intercept request only while the original deadline remains active. Every retry MUST reuse the same event ID, JSON-RPC ID, session ID, call ID, and event contents.
 Distinct local subscriptions can produce identical deliveries to the same backend. Handling that configuration, including any deduplication or idempotency behavior, is a backend concern; this protocol does not require per-subscription deduplication or introduce a wire delivery discriminator. A backend MAY provide idempotency support according to its configuration.
-An observer transport MAY retry a failed notification when it can detect delivery failure. Retries MUST preserve the exact subscription payload and identities. Observation remains best effort; This protocol revision does not guarantee at-least-once or exactly-once delivery.
+An observer transport MAY retry a failed notification when it can detect delivery failure, except after an authentication rejection (HTTP 401 or Bearer 403 `insufficient_scope`), which is never retried for notifications; see [challenged replay](transports/http.md#challenged-replay). Retries MUST preserve the exact subscription payload and identities. Observation remains best effort; This protocol revision does not guarantee at-least-once or exactly-once delivery.
 A harness MUST NOT retry an explicit denial or a successful empty-effect response.
 
 ## Enclosing operation budgets and shutdown
