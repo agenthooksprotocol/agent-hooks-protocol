@@ -293,7 +293,10 @@ class SDKAuthContractTests(unittest.TestCase):
                          "dcr-policy-disallows-registration", "dcr-secret-not-in-token-record",
                          "lookup-never-registers", "dcr-failed-marker-bounds-registration",
                          "prepare-force-reregistration", "dcr-policy-change-reregisters",
-                         "dcr-replaced-secret-deleted"):
+                         "dcr-replaced-secret-deleted", "cc-registration-auto-repairs-after-backoff",
+                         "cc-proactive-reregistration-before-expiry",
+                         "marker-blocks-only-registration",
+                         "stale-callback-does-not-delete-new-registration"):
             self.assertIn(required, ids)
         selection = {row["id"] for row in self.vectors["client_selection"]}
         for shared in ("cimd-used-when-supported", "cimd-not-supported-falls-back-to-dcr",

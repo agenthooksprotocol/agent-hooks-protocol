@@ -851,7 +851,7 @@
     },
     {
       "id": "dcr-pkce-registers-only-in-prepare",
-      "expect": "registration requests are sent only by host prepare (either flow) and challenge-driven client-credentials acquisition; delivery paths never register a PKCE client"
+      "expect": "a PKCE client is registered only by host prepare; client-credentials registration may occur in prepare and any non-interactive acquisition, including the up-front lookup and challenge handling"
     },
     {
       "id": "dcr-registers-once-across-processes",
@@ -863,7 +863,7 @@
     },
     {
       "id": "dcr-expired-secret-reregisters",
-      "expect": "a passed nonzero client_secret_expires_at or unresolvable secret reference makes the record unusable; a registering path (prepare or challenge-driven client credentials) re-registers under coordination before any token-endpoint request"
+      "expect": "a passed nonzero client_secret_expires_at or unresolvable secret reference makes the record unusable; client-credentials acquisition, including the up-front lookup, re-registers under coordination before any token-endpoint request"
     },
     {
       "id": "dcr-invalid-client-reregisters-once",
@@ -895,11 +895,11 @@
     },
     {
       "id": "lookup-never-registers",
-      "expect": "the up-front lookup sends no registration request even when policy permits DCR; a missing or unusable registration returns credential_unavailable (client credentials) or interaction_required (PKCE)"
+      "expect": "the up-front lookup never registers a PKCE client and returns interaction_required when its registration is missing; for client credentials it may (re-)register under the failed-marker backoff"
     },
     {
       "id": "dcr-failed-marker-bounds-registration",
-      "expect": "a repeated invalid_client or invalid_configuration registration outcome persists a failed marker; across operations and processes no further registration request is sent and credential_unavailable is returned until host prepare runs or the request digest changes"
+      "expect": "a repeated invalid_client or invalid_configuration registration outcome persists a failed marker with failure time and attempt count; until the exponential backoff (default 1 minute doubling to 1 hour) elapses no path but host prepare sends a registration request, across operations and processes; prepare, success or a request digest change clears it"
     },
     {
       "id": "dcr-response-validation-invalid-configuration",
@@ -916,6 +916,22 @@
     {
       "id": "dcr-replaced-secret-deleted",
       "expect": "after a registration record is replaced or compare-and-deleted, the old secret reference is deleted through the host hook once the compare-and-set succeeds; a losing compare-and-set deletes only its own fresh reference"
+    },
+    {
+      "id": "cc-registration-auto-repairs-after-backoff",
+      "expect": "an unattended client-credentials host blocked by a failed marker sends no registration request during the backoff, then re-registers and acquires on the next operation after it elapses, without host prepare"
+    },
+    {
+      "id": "cc-proactive-reregistration-before-expiry",
+      "expect": "a successful client-credentials acquisition whose client_secret_expires_at is within the renewal margin re-registers under coordination, so the scheduled expiry causes no outage"
+    },
+    {
+      "id": "marker-blocks-only-registration",
+      "expect": "while a failed marker is active, a still-valid stored token is still sent and PKCE still returns interaction_required; only registration requests are suppressed"
+    },
+    {
+      "id": "stale-callback-does-not-delete-new-registration",
+      "expect": "a pending login records its registration generation; invalid_client at its completion after a forced re-registration compare-and-deletes only that generation and leaves the newer registration, even with the same reissued client_id"
     }
   ],
   "registration_keys": [

@@ -177,7 +177,11 @@ rebuilds binding metadata and reselects. A different `client_id` is a different
 grant key: the old grant's tokens are never presented under another client, are
 not migrated, and SHOULD be removed by compare-and-delete. PKCE then needs new
 consent (`interaction_required`); client credentials re-acquire
-non-interactively. A pending login records its `client_id` and completes with it.
+non-interactively. A pending login records its `client_id` and, for DCR, the
+registration generation it was created under, and completes with that client.
+An `invalid_client` at completion compare-and-deletes only that generation, so a
+stale callback after a forced re-registration never deletes a newer
+registration, even one with the same reissued `client_id`.
 
 ### Client ID Metadata Documents
 
@@ -215,12 +219,17 @@ DCR eligibility is checked in this order, without network access:
 3. The `registration_endpoint` is HTTPS and passes local destination policy;
    otherwise `untrusted_destination`. The request does not follow redirects.
 
-Registration requests are sent only by an explicit host `prepare` (either flow;
-for PKCE, before it creates a pending login) and by client-credentials
-acquisition during challenge handling. The up-front lookup and other delivery
-paths never register: where a usable registration is missing they return
-`credential_unavailable` for client credentials, or `interaction_required` for
-PKCE (whose `prepare` registers). A host MAY supply an initial access token by secret
+A PKCE client is registered only by an explicit host `prepare`, before it
+creates a pending login; the up-front lookup and other delivery paths never
+register one and return `interaction_required` where a usable registration is
+missing. For client credentials, `prepare` and any non-interactive acquisition,
+including the up-front lookup's mandatory re-acquisition and challenge
+handling, MAY register when the registration is missing, expired or obsolete,
+subject to the failed-marker backoff below. During a successful
+client-credentials acquisition, an SDK SHOULD re-register proactively when a
+nonzero `client_secret_expires_at` is within a host-configurable renewal margin
+(default: 10% of the secret's issued lifetime, capped at 1 hour).
+A host MAY supply an initial access token by secret
 reference for a specific permitted exact issuer; it is sent as a Bearer
 credential only to that issuer's `registration_endpoint`, never to another
 issuer's, and never persisted. RFC 7592 client management is out of scope: a
@@ -320,11 +329,20 @@ bound to the old client is never reused: the operation returns
 
 If the replacement client also receives `invalid_client`, or a registration
 outcome is `invalid_configuration`, the SDK persists a **failed marker** for the
-registration key, holding the current `request_digest`, and returns that
-error (`credential_unavailable` for a repeated `invalid_client`). While a
-marker with the current digest exists, every path except host `prepare` returns
-`credential_unavailable` without sending a registration request. A host
-`prepare` or a changed `request_digest` clears the marker.
+registration key and returns that error (`credential_unavailable` for a
+repeated `invalid_client`). The marker is a persisted backoff, not a permanent
+block: it holds the current `request_digest`, the last failure time and an
+attempt count. Until the backoff elapses (host-configurable, exponential with a
+cap; default 1 minute doubling per attempt to 1 hour), paths other than host
+`prepare` send no registration request and return `credential_unavailable`
+where one would be needed. A later failure updates the time and count; a
+successful registration, a host `prepare`, or a changed `request_digest` (host
+policy change) clears it. Unattended client-credentials hosts therefore recover
+automatically after the backoff; host `prepare` repairs immediately.
+
+The marker blocks only registration requests. A still-valid stored token for
+the registration's client keeps working, and PKCE recovery stays
+`interaction_required`.
 
 An authorization server that deletes a PKCE client sends no callback (RFC 6749
 section 4.1.2.1), so the SDK cannot detect it. `prepare` therefore accepts an
