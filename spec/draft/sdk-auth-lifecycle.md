@@ -1,8 +1,9 @@
 # SDK authentication lifecycle contract
 
 This contract defines interoperable SDK host behavior for endpoint authentication.
-It adds no AHP wire fields, JSON-RPC methods, portable credential values or
-permission to replay deliveries. The [endpoint authentication requirements](capability-auth.md)
+It adds no AHP wire fields, JSON-RPC methods or portable credential values, and
+no replay beyond the HTTP binding's [challenged replay](base/transports/http.md#challenged-replay).
+The [endpoint authentication requirements](capability-auth.md)
 and their HTTP failure/deadline/isolation rules continue to apply. Public API
 spelling follows each language; the semantic recovery values and storage-key
 material below are shared. [Golden vectors](../../conformance/draft/sdk-auth-lifecycle.json)
@@ -45,22 +46,27 @@ from absence.
 
 Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
-broader ceiling. A provided response `scope` may narrow requested scopes or add
-only scopes inside the local ceiling.
-A grant need not equal the requested set. For an initial response, omitted
-`scope` inherits the requested set; for a refresh response it inherits the
-previously granted set (or an explicitly authorized narrowing on that refresh).
-A refresh cannot broaden an existing grant: permitted broader requirements need
-a new PKCE consent or a new client-credentials grant. Scope grammar is validated
-and sets are deduplicated for comparison. Only explicit host requirements and validated
-challenge requirements are mandatory for a particular operation; requested
-scopes alone do not turn a valid narrowed token response into a failed exchange.
+broader ceiling. The response scope set is the provided `scope`; when omitted it
+is the requested set for an initial response and the previously granted set for
+a refresh. The SDK records `granted = response scopes ∩ allowed ceiling`, and on
+refresh also `∩ previously granted`. Scopes outside that set (authorization
+servers routinely add `openid`/`offline_access` or return every scope a client
+holds) are **ignored**, not an error, and never recorded. A refresh therefore
+cannot broaden a grant: broader permitted requirements need a new PKCE consent
+or a new client-credentials grant. Scope grammar is validated and sets are
+deduplicated. A grant need not equal the requested set. Only explicit host
+requirements and validated challenge requirements are mandatory for an
+operation; an exchange fails (`access_denied`, operation-level, grant still
+persisted) only when such a required scope is missing from the effective grant.
 
-Persist a successfully received rotated refresh credential before reporting
-operation-level scope insufficiency. Never discard it solely because expiry is
-unknown or granted scopes differ from requested scopes. A token that fails local
-validity/permission policy is not dispatched; any retained refresh material is
-quarantined from use as an access credential until host policy permits repair.
+A token response failing basic validity (non-Bearer `token_type`, malformed or
+non-positive `expires_in`, invalid token grammar) is not dispatched. Once a code
+was consumed or a refresh token presented, no outcome leaves in-flight or
+refreshing state behind: on a validation failure persist any valid (rotated)
+refresh token, clear in-flight markers and report `provider_failed` (`retry`).
+Persist a rotated refresh token before reporting operation-level scope
+insufficiency; never discard it because expiry is unknown or granted scopes
+differ from requested scopes.
 No secret client configuration belongs in persisted metadata/token records.
 Resolve current client secrets through host infrastructure when a grant needs
 one; secret rotation does not change the grant's identity.
@@ -70,9 +76,9 @@ one; secret rotation does not change the grant's identity.
 A binding authorizes one destination. A grant represents one OAuth principal
 and scope-policy partition. Keeping these identities separate supports cached
 unbound authentication without implicitly inheriting event credentials for an
-upload. Client secrets, secret values/references, authentication method,
-metadata capability arrays, endpoint URLs, expiry and actual granted/requested
-scope sets are **not** grant identity fields.
+upload. The allowed ceiling, client secrets, secret values/references, the
+discovered token-endpoint authentication method, metadata capability arrays,
+endpoint URLs, expiry and granted/requested scope sets are **not** part of either key.
 
 The namespace identifies the host account/credential domain and is required.
 Issuer, resource and destination are exact validated identifiers: do not erase
@@ -93,11 +99,14 @@ binding_key = frame("ahp.oauth.binding:", [
 partition = "binding:" + binding_key              # default isolation
 partition = "shared:" + host_grant_partition       # explicit host opt-in
 
-allowed = sorted_unique(locally_allowed_scopes).join(" ")
 grant_key = frame("ahp.oauth.grant:", [
-  namespace, exact_issuer, exact_resource, client_id, flow, allowed, partition
+  namespace, exact_issuer, exact_resource, client_id, flow, partition
 ])
 ```
+
+Ceiling compatibility is checked at use: a stored grant's effective scopes are
+its recorded granted scopes ∩ the current allowed ceiling. Changing the ceiling,
+including widening it, never orphans an existing grant.
 
 Binding metadata stores the validated discovery source and non-secret principal
 material needed to find a grant. Revalidate current local policy and any explicit
@@ -110,7 +119,7 @@ because a metadata/configuration snapshot differs.
 By default event/upload/backend/destination bindings have separate grant
 partitions; PKCE can therefore require separate consent. A host may explicitly
 assign the same nonempty grant partition to independently authorized bindings
-with the same namespace, issuer, resource, client, flow and allowed ceiling.
+with the same namespace, issuer, resource, client and flow.
 They may then reuse one grant/consent. This never authorizes a new destination:
 each binding still needs independent local destination/purpose policy approval.
 No upload binding or absent upload policy implicitly inherits event auth.
@@ -129,10 +138,12 @@ An explicit OAuth preset already fixes issuer/resource/client/flow. All SDKs
 use its issuer metadata without requiring protected-resource metadata first.
 An unbound endpoint learns its binding through standard protected-resource
 discovery. Before that first learning, anonymous delivery is allowed under local
-policy; after a trusted binding/grant is stored, use it **up front**, including
-for notifications and uploads that cannot be replayed. An SDK must not knowingly
-send such operations anonymously merely because the portable binding is absent.
-Hosts can explicitly prepare an unknown endpoint before its first unsafe call.
+policy. Once the store holds an authorized binding for the destination, the SDK
+sends its stored token **on the first attempt**, including for notifications and
+uploads that are never replayed. This up-front lookup never creates an
+interactive login; a missing store entry, a missing context deadline or a host
+policy refusal yields an anonymous attempt, not an error. Hosts can explicitly
+prepare an unknown endpoint before its first non-replayable call.
 
 Go preserves the existing bearer-only `Provider.Credential` success contract.
 A separate optional preemptive-lookup capability may represent an unbound cache
@@ -145,27 +156,28 @@ native optional-credential result.
 A 5xx, timeout, non-OAuth response or transient OAuth error preserves the last
 known refresh material and is operationally retryable under host policy. It is
 not, by itself, `interaction_required`. Client credentials can reissue a grant
-using current credentials and never enter a human-login state. Definitive
-interactive refresh `invalid_grant` requires new consent. If an exchange outcome
-is ambiguous, retain that fact without permanently wedging the grant; expose
+using current credentials and never enter a human-login state. A definitive
+interactive refresh `invalid_grant` drops both access and refresh tokens from
+the record and returns `refresh_rejected`; new consent is required. If an
+exchange outcome is ambiguous, retain that fact without permanently wedging the grant; expose
 retry/host repair, not a fabricated definitive authorization loss. Retrying an
 ambiguous rotating refresh may ultimately yield `invalid_grant`; no SDK can
 promise atomic rollback at an external authorization server. Hosts may impose
 stricter explicit rotation policy, but it must not be the implicit default.
 
-Dispatch/credential/challenge paths do not create pending interactive logins.
-They return `interaction_required` when consent is necessary. Only an explicit
-host `prepare` owns pending login creation, its callback state and its consent
-budget. A short delivery deadline never replaces or creates the host's pending
-login. Reuse requires the same grant/principal partition, exact redirect identity,
-requested scope set and explicit required scope set; the original host context
-must still be active and its deadline must cover the new prepare budget. Reuse
-never extends or transfers the original operation's deadline/cancellation ownership.
-If any condition differs, an explicit prepare atomically invalidates/replaces
-the old pending handle with a fresh host-owned operation; an old callback cannot
-complete it. A host polling the same operation retains its original budget rather
-than repeatedly creating a later one. `cancel` abandons a pending operation
-without deleting a valid stored grant. All SDKs expose this action.
+Dispatch/credential/challenge paths, including the up-front lookup, never create
+pending logins; they return `interaction_required` when consent is necessary.
+Only an explicit host `prepare` creates one. A pending login is a stored record
+whose lifetime is fixed at creation (host-configured login lifetime; default and
+maximum 10 minutes), independent of the creating `prepare` call's deadline or
+cancellation. Completion MUST work from any process sharing the store; the
+creating context need not still be active. A later `prepare` reuses an unexpired
+pending login when the grant key and exact redirect match and the new requested
+plus required scopes are a subset of the pending login's scopes, regardless of
+the new caller's deadline; reuse never extends the lifetime. Otherwise it atomically
+supersedes the pending login, and the old callback fails with
+`interaction_required`. Only explicit `cancel` or expiry abandons a pending
+login; `cancel` never deletes a valid stored grant. All SDKs expose `cancel`.
 
 Validate callback redirect, state and issuer before consuming a pending login.
 A stray invalid callback cannot burn a valid pending operation. Atomically claim
@@ -177,18 +189,20 @@ or browser is created.
 ## Insufficient scope and replay
 
 Recognize a Bearer `403` challenge with `error="insufficient_scope"`, not every
-403 as an auth retry. Validate required scopes against the local allowed ceiling.
-A forbidden scope fails with `access_denied`; a permitted step-up records the
-binding's requirement. If the challenge omits `scope`, do not invent a broader
-scope set: use an explicit host-provided requirement, or report `access_denied`. PKCE returns `interaction_required` so a subsequent host
-`prepare` can request consent with its own budget. Client credentials can acquire
-a new grant for permitted scopes without human login. Do not reuse a token known
-to lack explicit operation requirements.
+403 as an auth retry. Validate required scopes against the local allowed ceiling;
+a scope outside it fails with `access_denied`. A permitted requirement applies to
+the challenged operation and the acquisition it triggers; it is **not** persisted
+as a binding requirement. Later operations use the stored grant's effective
+scopes, which after step-up consent include the broader scopes. If the challenge
+omits `scope`, do not invent a broader scope set: use an explicit host-provided
+requirement, or report `access_denied`. PKCE returns `interaction_required` so a
+subsequent host `prepare` can request consent. Client credentials can acquire a
+new grant for permitted scopes without human login. Do not reuse a token known
+to lack the operation's requirements.
 
-The transport alone decides whether to replay. Preserve the existing at-most-one
-safe retry and never replay effectful deliveries, notifications or uploads just
-because the auth provider handled a challenge. An unsafe operation may fail its
-current attempt while preparing authorization state for a subsequent operation.
+The transport alone decides whether to replay, under
+[challenged replay](base/transports/http.md#challenged-replay): at most once, with
+the same request identity and body, and never for notifications or uploads.
 Unknown authentication schemes and valid padded token68 payloads do not corrupt
 Bearer challenge parsing; malformed or ambiguous Bearer auth-params fail closed.
 
@@ -198,9 +212,13 @@ The shared JSON contains recovery/key/response-policy vectors and a **lifecycle
 coverage manifest**, not an OAuth implementation or executable lifecycle runner.
 The protocol fixture validator checks internal consistency only; it does not
 prove any SDK's persistence, network behavior, cancellation or consent lifecycle.
-Each SDK vendors these exact vectors and supplies executable native tests mapped
-to the lifecycle IDs at real host-network/store/transport boundaries. In particular,
-recreated-provider offline acquisition, narrowed-grant refresh scope inheritance,
-transient rotating-refresh recovery, and scope/budget-incompatible pending reuse
-must be exercised before claiming that SDK conforms. Native APIs and test names
-may differ; the semantic vectors and observed behaviors may not.
+Each SDK vendors this file byte-for-byte and supplies native tests at real
+host-network/store/transport boundaries. Each SDK MUST have:
+
+- a test asserting that every `lifecycle` id in the vendored fixture maps to an
+  existing native test; and
+- a test or CI step asserting that the vendored fixture is byte-identical to this
+  canonical file at the SDK's pinned protocol ref.
+
+Native APIs and test names may differ; the semantic vectors and observed
+behaviors may not.

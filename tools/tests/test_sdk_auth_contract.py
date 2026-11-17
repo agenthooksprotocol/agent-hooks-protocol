@@ -20,8 +20,14 @@ def grant_key(value):
     partition = ("shared:" + value["grant_partition"] if value.get("grant_partition")
                  else "binding:" + binding_key(value))
     return frame("ahp.oauth.grant:", [value[field] for field in
-                 ("namespace", "issuer", "resource", "client_id", "flow")] +
-                 [" ".join(sorted(set(value["allowed_scopes"]))), partition])
+                 ("namespace", "issuer", "resource", "client_id", "flow")] + [partition])
+
+
+def basically_valid(response):
+    expires_in = response.get("expires_in")
+    return (response.get("token_type", "").lower() == "bearer"
+            and bool(response.get("access_token"))
+            and (expires_in is None or (type(expires_in) is int and expires_in > 0)))
 
 
 class SDKAuthContractTests(unittest.TestCase):
@@ -49,31 +55,53 @@ class SDKAuthContractTests(unittest.TestCase):
         cases = {row["id"]: row for row in self.vectors["keys"]}
         self.assertNotEqual(cases["default-event"]["grant_key"], cases["default-upload"]["grant_key"])
         self.assertEqual(cases["shared-event"]["grant_key"], cases["shared-upload"]["grant_key"])
-        for name in ("secret-and-capability-rotation", "scope-order-dedup"):
+        # Neither the allowed ceiling nor secrets/auth method/metadata are key material.
+        for name in ("secret-auth-method-and-capability-rotation", "scope-ceiling-widening"):
             self.assertEqual(cases["default-event"]["grant_key"], cases[name]["grant_key"])
+        self.assertNotEqual(cases["default-event"]["input"]["allowed_scopes"],
+                            cases["scope-ceiling-widening"]["input"]["allowed_scopes"])
         self.assertNotEqual(cases["default-event"]["grant_key"], cases["resource-trailing-slash"]["grant_key"])
-        self.assertNotEqual(cases["default-event"]["grant_key"], cases["scope-ceiling-change"]["grant_key"])
+        for row in self.vectors["keys"]:
+            for secret in ("not-a-real-secret", "client_secret_basic"):
+                self.assertNotIn(secret, row["grant_key"] + row["binding_key"])
 
-    def test_response_vectors_separate_eligibility_from_rotation(self):
+    def test_response_vectors_intersect_grant_with_ceiling(self):
         for row in self.vectors["token_responses"]:
             with self.subTest(row["id"]):
                 response = row["response"]
-                inherited = row.get("previous_granted", row["requested"]) if row.get("exchange") == "refresh" else row["requested"]
-                granted = set(response.get("scope", " ".join(inherited)).split())
-                accepted = granted <= set(row["allowed"])
-                if row.get("exchange") == "refresh":
-                    accepted = accepted and granted <= set(row["previous_granted"])
+                refresh = row.get("exchange") == "refresh"
+                inherited = row["previous_granted"] if refresh else row["requested"]
+                ceiling = set(row["allowed"])
+                if refresh:
+                    ceiling &= set(row["previous_granted"])
+                accepted = basically_valid(response)
                 self.assertEqual(accepted, row["accepted"])
-                self.assertEqual(accepted and set(row["required"]) <= granted, row["usable"])
                 self.assertTrue(row["refresh_preserved"])
-                if accepted:
-                    self.assertEqual("known" if "expires_in" in response else "unknown", row["expiry"])
-                    self.assertEqual(granted, set(row["granted"]))
+                if not accepted:
+                    self.assertFalse(row["usable"])
+                    self.assertEqual(row["error"], "provider_failed")
+                    self.assertNotIn("granted", row)
+                    continue
+                granted = set(response.get("scope", " ".join(inherited)).split()) & ceiling
+                self.assertEqual(granted, set(row["granted"]))
+                self.assertEqual(len(row["granted"]), len(granted))
+                self.assertEqual("known" if "expires_in" in response else "unknown", row["expiry"])
+                usable = set(row["required"]) <= granted
+                self.assertEqual(usable, row["usable"])
+                self.assertEqual(None if usable else "access_denied", row.get("error"))
+
+    def test_extra_scopes_are_ignored_not_rejected(self):
+        cases = {row["id"]: row for row in self.vectors["token_responses"]}
+        for name in ("unallowed-added-scope-ignored", "refresh-broadening-scope-ignored"):
+            row = cases[name]
+            self.assertTrue(set(row["response"]["scope"].split()) - set(row["granted"]))
+            self.assertTrue(row["accepted"] and row["usable"])
 
     def test_lifecycle_coverage_manifest_is_well_formed(self):
         ids = [row["id"] for row in self.vectors["lifecycle"]]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(all(row["expect"] for row in self.vectors["lifecycle"]))
+        self.assertNotIn("quarantin", FIXTURE.read_text())
 
 
 if __name__ == "__main__":
