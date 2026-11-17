@@ -544,6 +544,38 @@
       "usable": false,
       "error": "provider_failed",
       "refresh_preserved": false
+    },
+    {
+      "id": "refresh-narrow-ceiling-keeps-grant",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read",
+        "write"
+      ],
+      "allowed": [
+        "read"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated"
+      },
+      "accepted": true,
+      "expiry": "unknown",
+      "usable": true,
+      "granted": [
+        "read",
+        "write"
+      ],
+      "effective": [
+        "read"
+      ],
+      "refresh_preserved": true
     }
   ],
   "lifecycle": [
@@ -556,12 +588,20 @@
       "expect": "known authorized binding sends stored token on first attempt; no 401/replay for upload or notification"
     },
     {
+      "id": "unreplayed-challenge-prepares-next-attempt",
+      "expect": "401/insufficient_scope on a notification or upload is not replayed but runs challenge handling (discovery, client-credentials acquisition, no login creation); the next operation sends a credential"
+    },
+    {
       "id": "unbound-lookup-anonymous-fallback",
       "expect": "up-front lookup never creates a pending login or performs discovery; only a store miss or host policy refusal sends an anonymous attempt"
     },
     {
       "id": "unbound-lookup-refreshes-expired-token",
       "expect": "up-front lookup refreshes an expired stored token non-interactively using cached authorization-server metadata"
+    },
+    {
+      "id": "up-front-refresh-failure-no-anonymous-fallback",
+      "expect": "known binding whose non-interactive refresh fails (transient, invalid_grant, missing cached metadata) fails the operation with that error, never sends anonymously"
     },
     {
       "id": "refresh-unknown-expiry-rotation",
@@ -601,11 +641,11 @@
     },
     {
       "id": "pending-login-reuse",
-      "expect": "later prepare with same grant key and exact redirect, requested+required scopes within the pending scopes and pending scopes within its ceiling reuses it regardless of deadline"
+      "expect": "later prepare with same grant key and exact redirect whose requested+required scopes are within the pending scopes reuses it regardless of deadline or ceiling; completion records scopes bounded by the stored creating ceiling"
     },
     {
       "id": "pending-login-supersede",
-      "expect": "later prepare failing any reuse condition (including pending scopes outside its ceiling) supersedes it; old callback fails interaction_required"
+      "expect": "later prepare with different grant key/redirect or scopes outside the pending scopes supersedes it; old callback fails interaction_required"
     },
     {
       "id": "pending-login-supersede-scope-union",
@@ -621,7 +661,11 @@
     },
     {
       "id": "scope-ceiling-widening-keeps-grant",
-      "expect": "widening the allowed ceiling finds the existing grant; effective scopes are re-intersected with the current ceiling at use"
+      "expect": "widening the allowed ceiling finds the existing grant; effective scopes are granted scopes intersected with the current ceiling at use"
+    },
+    {
+      "id": "scope-ceiling-narrowing-keeps-grant",
+      "expect": "narrowing the ceiling hides scopes at use only; after a refresh under the narrow ceiling and widening it again the scope is still available"
     },
     {
       "id": "insufficient-scope-step-up",
@@ -633,7 +677,11 @@
     },
     {
       "id": "step-up-required-scopes-round-trip",
-      "expect": "interaction_required/access_denied carry the validated required scopes; host passes them to prepare as explicit required scopes and consent includes them"
+      "expect": "interaction_required carries the validated required scopes; host passes them to prepare as explicit required scopes and consent includes them; access_denied reports them for diagnostics only"
+    },
+    {
+      "id": "prepare-required-outside-ceiling-denied",
+      "expect": "prepare with explicit required scopes outside the caller's ceiling fails access_denied"
     },
     {
       "id": "challenged-replay-once",

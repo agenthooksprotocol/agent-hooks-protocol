@@ -106,8 +106,10 @@ selection below. Once a validated, locally approved binding is stored for the
 destination, the client sends its stored credential on the first attempt.
 That lookup never creates an interactive login and never performs discovery; it
 MAY refresh an expired stored token non-interactively using cached
-authorization-server metadata. The client sends anonymously only on a store
-miss or host policy refusal. Absent portable configuration does not require repeating
+authorization-server metadata. If a binding is known but that refresh fails
+(transient error, `invalid_grant` or missing cached metadata), the operation
+fails with that error; there is no anonymous fallback. The client sends
+anonymously only on a store miss or host policy refusal. Absent portable configuration does not require repeating
 anonymous first contact on every delivery. Absence does not mean anonymous-only: a successful response may
 be accepted, but an OAuth-protected endpoint MUST be handled using the protected
 resource discovery procedure in [MCP 2025-11-25 Authorization](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization),

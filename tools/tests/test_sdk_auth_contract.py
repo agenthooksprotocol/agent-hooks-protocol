@@ -79,9 +79,9 @@ class SDKAuthContractTests(unittest.TestCase):
                 response = row["response"]
                 refresh = row.get("exchange") == "refresh"
                 inherited = row["previous_granted"] if refresh else row["requested"]
-                ceiling = set(row["allowed"])
-                if refresh:
-                    ceiling &= set(row["previous_granted"])
+                # Initial: bounded by the acquisition ceiling. Refresh: bounded only by
+                # the previous grant; the current ceiling filters at use.
+                bound = set(row["previous_granted"] if refresh else row["allowed"])
                 accepted = basically_valid(response)
                 self.assertEqual(accepted, row["accepted"])
                 # A refresh keeps its previous token when the response is invalid or
@@ -93,11 +93,13 @@ class SDKAuthContractTests(unittest.TestCase):
                     self.assertEqual(row["error"], "provider_failed")
                     self.assertNotIn("granted", row)
                     continue
-                granted = set(response.get("scope", " ".join(inherited)).split()) & ceiling
+                granted = set(response.get("scope", " ".join(inherited)).split()) & bound
                 self.assertEqual(granted, set(row["granted"]))
                 self.assertEqual(len(row["granted"]), len(granted))
+                effective = granted & set(row["allowed"])
+                self.assertEqual(effective, set(row.get("effective", row["granted"])))
                 self.assertEqual("known" if "expires_in" in response else "unknown", row["expiry"])
-                usable = set(row["required"]) <= granted
+                usable = set(row["required"]) <= effective
                 self.assertEqual(usable, row["usable"])
                 self.assertEqual(None if usable else "access_denied", row.get("error"))
 
@@ -115,6 +117,8 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertFalse(cases["fractional-expires-in"]["accepted"])
         self.assertFalse(cases["zero-expires-in"]["accepted"])
         self.assertEqual({True, False}, {row["refresh_preserved"] for row in rows})
+        narrowed = cases["refresh-narrow-ceiling-keeps-grant"]
+        self.assertLess(set(narrowed["effective"]), set(narrowed["granted"]))
 
     def test_lifecycle_coverage_manifest_is_well_formed(self):
         ids = [row["id"] for row in self.vectors["lifecycle"]]

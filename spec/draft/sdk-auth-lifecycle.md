@@ -35,9 +35,11 @@ with `invalid_grant` consumes that valid pending operation and returns
 `interaction_required` (a fresh host login), not `retry` for the consumed code.
 Errors expose only allowlisted codes/recovery, not tokens, response bodies,
 callback URLs, client secrets or arbitrary provider exception chains.
-`interaction_required` and `access_denied` MAY also carry the validated required
-scope set (allowlisted RFC 6749 scope tokens only, never secret). A host passes
-that set back as explicit required scopes to `prepare`, which accepts them.
+`interaction_required` MAY carry the validated required scope set (allowlisted
+RFC 6749 scope tokens only, never secret); a host passes it back as explicit
+required scopes to `prepare`. `access_denied` MAY report such a set for
+diagnostics only. `prepare` fails with `access_denied` when its explicit required
+scopes are not a subset of the caller's allowed ceiling.
 
 ## Token response acceptance and persistence
 
@@ -53,8 +55,12 @@ Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
 broader ceiling. The response scope set is the provided `scope`; when omitted it
 is the requested set for an initial response and the previously granted set for
-a refresh. The SDK records `granted = response scopes ∩ allowed ceiling`, and on
-refresh also `∩ previously granted`. Scopes outside that set (authorization
+a refresh. An initial exchange records `granted = response scopes ∩ acquisition
+ceiling`: the ceiling stored on the pending login (PKCE) or the acquiring
+caller's ceiling (client credentials). A refresh records `granted = response
+scopes ∩ previously granted`. The current caller's ceiling applies only at use
+(`effective = granted ∩ current ceiling`), so narrowing a ceiling never shrinks a
+stored grant. Scopes outside the recorded set (authorization
 servers routinely add `openid`/`offline_access` or return every scope a client
 holds) are **ignored**, not an error, and never recorded. A refresh therefore
 cannot broaden a grant: broader permitted requirements need a new PKCE consent
@@ -153,15 +159,16 @@ destination, the client sends its stored credential on the first attempt,
 including for notifications and uploads that are never replayed.
 That lookup never creates an interactive login and never performs discovery; it
 MAY refresh an expired stored token non-interactively using cached
-authorization-server metadata. The client sends anonymously only on a store
-miss or host policy refusal. Hosts can explicitly
-prepare an unknown endpoint before its first non-replayable call.
-
-Go preserves the existing bearer-only `Provider.Credential` success contract.
-A separate optional preemptive-lookup capability may represent an unbound cache
-miss with an absent credential; it never returns an empty successful bearer or
-silently changes legacy custom-provider ownership. Other languages use their
-native optional-credential result.
+authorization-server metadata. If a binding is known but that refresh fails
+(transient error, `invalid_grant` or missing cached metadata), the operation
+fails with that error; there is no anonymous fallback. The client sends
+anonymously only on a store miss or host policy refusal.
+Hosts can explicitly prepare an unknown endpoint before its first
+non-replayable call. A 401 or Bearer 403 `insufficient_scope` on a notification
+or upload is not replayed, but still runs the provider's challenge handling:
+discovery and client-credentials acquisition are allowed, login creation is not,
+so the next operation sends a credential. An SDK represents a lookup miss as an
+absent credential in its native optional result, never as an empty bearer.
 
 ## Refresh failures and interaction lifetime
 
@@ -185,13 +192,16 @@ Only an explicit host `prepare` creates one. A pending login is a stored record
 whose lifetime is fixed at creation (host-configured and bounded; default 10
 minutes), independent of the creating `prepare` call's deadline or cancellation.
 Completion MUST work from any process sharing the store; the creating context
-need not still be active. A later `prepare` reuses an unexpired pending login,
-regardless of the new caller's deadline and without extending its lifetime, when
-the grant key and exact redirect match, the new requested plus required scopes
-are a subset of the pending scopes, and the pending scopes are a subset of the
-new caller's allowed ceiling. Otherwise it atomically supersedes it with a login
-requesting (old pending scopes ∪ new requested ∪ new required) ∩ new ceiling, so
-alternating callers converge. A pending login ends exactly one way: completion
+need not still be active. The record stores its creating caller's ceiling,
+which bounds the grant recorded on completion. A later `prepare` reuses an
+unexpired pending login, regardless of the new caller's deadline and without
+extending its lifetime, when the grant key and exact redirect match and the new
+requested plus required scopes are a subset of the pending scopes. Otherwise it
+atomically supersedes it with a login requesting (old pending scopes ∪ new
+requested ∪ new required) ∩ new caller's ceiling, so alternating callers
+converge. Reuse is not a confused-deputy risk: effective scopes are filtered by
+each caller's ceiling at use, and bindings share grants only through explicitly
+host-assigned partitions. A pending login ends exactly one way: completion
 (a claimed valid callback, including consent denial), supersede, `cancel`, or
 expiry; a callback for an ended login fails with `interaction_required`. `cancel`
 never deletes a valid stored grant. All SDKs expose `cancel`.
@@ -207,7 +217,8 @@ or browser is created.
 
 Recognize a Bearer `403` challenge with `error="insufficient_scope"`, not every
 403 as an auth retry. Validate required scopes against the local allowed ceiling;
-a scope outside it fails with `access_denied`. A permitted requirement applies to
+a scope outside it fails with `access_denied` (the set MAY be reported for
+diagnostics only). A permitted requirement applies to
 the challenged operation and the acquisition it triggers; it is **not** persisted
 as a binding requirement. Later operations use the stored grant's effective
 scopes, which after step-up consent include the broader scopes. If the challenge
