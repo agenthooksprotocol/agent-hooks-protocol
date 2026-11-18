@@ -352,6 +352,7 @@ class SDKAuthContractTests(unittest.TestCase):
         for required in ("configuration-401-diagnostic-carries-auth-code",
                          "configuration-unavailable-retried-after-prepare",
                          "configuration-unavailable-backoff",
+                         "configuration-auth-failure-not-retried-on-backoff",
                          "configuration-invalid-not-retried",
                          "configuration-retry-atomic-routes"):
             self.assertIn(required, ids)

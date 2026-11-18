@@ -1361,7 +1361,11 @@
     },
     {
       "id": "configuration-unavailable-backoff",
-      "expect": "a transport- or auth-caused configuration_unavailable is re-attempted only at the first admission or initialize after backoff (30s, doubling, capped at 1h, host-configurable); earlier admissions do not contact the backend"
+      "expect": "a configuration_unavailable skip with no authError, or with recovery retry, is re-attempted only at the first admission or initialize after backoff (30s, doubling, capped at 1h, host-configurable); earlier admissions do not contact the backend"
+    },
+    {
+      "id": "configuration-auth-failure-not-retried-on-backoff",
+      "expect": "a configuration_unavailable skip whose recovery is login, configure or none is not re-attempted when backoff elapses; only a successful host prepare for that backend's endpoint or reinitialization re-attempts it"
     },
     {
       "id": "configuration-invalid-not-retried",
