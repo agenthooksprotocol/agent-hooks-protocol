@@ -55,7 +55,18 @@ Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
 broader ceiling. The response scope set is the provided `scope`; when omitted it
 is the requested set for an initial response and the previously granted set for
-a refresh. An acquisition (PKCE consent or client credentials, including
+a refresh. A `scope` that is absent, JSON `null`, or a string containing no
+non-whitespace characters (only SP, HTAB, CR, LF) MUST be treated as omitted:
+servers send `""` to mean "nothing to report", and RFC 6749 section 3.3 makes it
+an invalid scope list. Treating it as omitted never widens a grant, because the
+intersections below still apply. Any other string MUST match the RFC 6749
+scope-list grammar: scope tokens separated by exactly one SP. Leading, trailing
+or repeated separators, and HTAB, CR or LF inside a non-blank list, are
+malformed. Any other JSON type (number, boolean, array, object) is malformed. A
+malformed `scope` fails basic validity. This applies equally to JSON and
+form-encoded token responses: an absent form field is absent, not `""`, and a
+present empty form field `scope=` is blank and treated as omitted.
+An acquisition (PKCE consent or client credentials, including
 step-up or re-acquisition for an existing grant key) requests
 `previously granted ∪ ((requested ∪ required) ∩ caller ceiling)` and records
 `granted = response scopes ∩ (previously granted ∪ acquisition ceiling)`, where
@@ -77,14 +88,14 @@ an issued token can do. Hosts needing enforcement validate tokens in their own
 policy hook.
 
 A token response failing basic validity (non-Bearer `token_type`, malformed
-`expires_in`, invalid token grammar) is not dispatched. Once a code was consumed
-or a refresh token presented, no outcome leaves in-flight or refreshing state
-behind: clear in-flight markers and report `provider_failed` (`retry`). A failed
-initial exchange persists nothing; a failed refresh response persists its
-rotated refresh token only if that token is valid, else retains the previous one.
-Persist a rotated refresh token before reporting operation-level scope
-insufficiency; never discard it because expiry is unknown or granted scopes
-differ from requested scopes.
+`expires_in`, malformed `scope`, invalid token grammar) is not dispatched. Once
+a code was consumed or a refresh token presented, no outcome leaves in-flight or
+refreshing state behind: clear in-flight markers and report `provider_failed`
+(`retry`). A failed initial exchange persists nothing; a failed refresh response
+persists its rotated refresh token only if that token is valid, else retains the
+previous one. Persist a rotated refresh token before reporting operation-level
+scope insufficiency; never discard it because expiry is unknown or granted
+scopes differ from requested scopes.
 No secret client configuration belongs in persisted metadata/token records.
 Resolve current client secrets through host infrastructure when a grant needs
 one; secret rotation does not change the grant's identity.

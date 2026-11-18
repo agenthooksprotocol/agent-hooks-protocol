@@ -1,6 +1,7 @@
 """Golden SDK host-auth semantics; no OAuth wire-schema generation."""
 import hashlib
 import json
+import re
 from pathlib import Path
 import unittest
 from urllib.parse import urlsplit
@@ -130,10 +131,28 @@ def valid_expires_in(value):
             and int(value) > 0)
 
 
+SCOPE_TOKEN = re.compile(r"[\x21\x23-\x5b\x5d-\x7e]+")
+
+
+def response_scope(response):
+    """Return the response scope list, None when it is to be treated as omitted,
+    or False when it is malformed."""
+    value = response.get("scope")
+    if value is None or (isinstance(value, str) and not value.strip(" \t\r\n")):
+        return None
+    if not isinstance(value, str):
+        return False
+    tokens = value.split(" ")
+    if not all(SCOPE_TOKEN.fullmatch(token) for token in tokens):
+        return False
+    return tokens
+
+
 def basically_valid(response):
     return (response.get("token_type", "").lower() == "bearer"
             and bool(response.get("access_token"))
-            and valid_expires_in(response.get("expires_in")))
+            and valid_expires_in(response.get("expires_in"))
+            and response_scope(response) is not False)
 
 
 class SDKAuthContractTests(unittest.TestCase):
@@ -200,7 +219,8 @@ class SDKAuthContractTests(unittest.TestCase):
                     self.assertEqual(row["error"], "provider_failed")
                     self.assertNotIn("granted", row)
                     continue
-                granted = set(response.get("scope", " ".join(inherited)).split()) & bound
+                scopes = response_scope(response)
+                granted = set(inherited if scopes is None else scopes) & bound
                 self.assertEqual(granted, set(row["granted"]))
                 self.assertEqual(len(row["granted"]), len(granted))
                 effective = granted & set(row["allowed"])
@@ -216,6 +236,23 @@ class SDKAuthContractTests(unittest.TestCase):
             row = cases[name]
             self.assertTrue(set(row["response"]["scope"].split()) - set(row["granted"]))
             self.assertTrue(row["accepted"] and row["usable"])
+
+    def test_blank_and_malformed_scope_vectors_are_exercised(self):
+        cases = {row["id"]: row for row in self.vectors["token_responses"]}
+        for exchange in ("initial", "refresh"):
+            for name in ("empty", "whitespace", "null"):
+                row = cases[f"{exchange}-{name}-scope"]
+                self.assertIn("scope", row["response"])
+                self.assertTrue(row["accepted"] and row["usable"])
+                self.assertEqual(row["granted"], row.get("previous_granted", row["requested"]))
+            for name in ("numeric", "array"):
+                row = cases[f"{exchange}-{name}-scope"]
+                self.assertNotIsInstance(row["response"]["scope"], (str, type(None)))
+                self.assertEqual(row["error"], "provider_failed")
+            for name in ("repeated-separator", "leading-separator", "tab-separator"):
+                row = cases[f"{exchange}-{name}-scope"]
+                self.assertTrue(row["response"]["scope"].strip(" \t\r\n"))
+                self.assertEqual(row["error"], "provider_failed")
 
     def test_expires_in_and_refresh_persistence_vectors_are_exercised(self):
         rows = self.vectors["token_responses"]
@@ -308,6 +345,22 @@ class SDKAuthContractTests(unittest.TestCase):
                        "cimd-redirect-mismatch-invalid-configuration",
                        "dcr-policy-disallows-registration"):
             self.assertIn(shared, selection)
+
+    def test_configuration_skip_lifecycle_ids_are_listed(self):
+        ids = {row["id"] for row in self.vectors["lifecycle"]}
+        codes = {row["code"] for row in self.vectors["recovery"]}
+        for required in ("configuration-401-diagnostic-carries-auth-code",
+                         "configuration-unavailable-retried-after-prepare",
+                         "configuration-unavailable-backoff",
+                         "configuration-auth-failure-not-retried-on-backoff",
+                         "configuration-invalid-not-retried",
+                         "configuration-retry-atomic-routes"):
+            self.assertIn(required, ids)
+        diagnostic = next(row for row in self.vectors["lifecycle"]
+                          if row["id"] == "configuration-401-diagnostic-carries-auth-code")
+        # The auth cause reuses the shared safe-code vocabulary.
+        self.assertIn("interaction_required", diagnostic["expect"])
+        self.assertIn("interaction_required", codes)
 
     def test_lifecycle_coverage_manifest_is_well_formed(self):
         ids = [row["id"] for row in self.vectors["lifecycle"]]
