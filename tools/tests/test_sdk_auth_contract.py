@@ -249,6 +249,10 @@ class SDKAuthContractTests(unittest.TestCase):
                 row = cases[f"{exchange}-{name}-scope"]
                 self.assertNotIsInstance(row["response"]["scope"], (str, type(None)))
                 self.assertEqual(row["error"], "provider_failed")
+            for name in ("repeated-separator", "leading-separator", "tab-separator"):
+                row = cases[f"{exchange}-{name}-scope"]
+                self.assertTrue(row["response"]["scope"].strip(" \t\r\n"))
+                self.assertEqual(row["error"], "provider_failed")
 
     def test_expires_in_and_refresh_persistence_vectors_are_exercised(self):
         rows = self.vectors["token_responses"]

@@ -895,6 +895,147 @@
       "usable": false,
       "error": "provider_failed",
       "refresh_preserved": true
+    },
+    {
+      "id": "initial-repeated-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read  write"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "initial-leading-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": " read"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "initial-tab-separator-scope",
+      "requested": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh",
+        "scope": "read\twrite"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": false
+    },
+    {
+      "id": "refresh-repeated-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read  write"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-leading-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": " read"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
+    },
+    {
+      "id": "refresh-tab-separator-scope",
+      "exchange": "refresh",
+      "requested": [
+        "read",
+        "write"
+      ],
+      "previous_granted": [
+        "read"
+      ],
+      "allowed": [
+        "read",
+        "write"
+      ],
+      "required": [],
+      "response": {
+        "access_token": "fixture-access",
+        "token_type": "Bearer",
+        "refresh_token": "fixture-refresh-rotated",
+        "scope": "read\twrite"
+      },
+      "accepted": false,
+      "usable": false,
+      "error": "provider_failed",
+      "refresh_preserved": true
     }
   ],
   "lifecycle": [
