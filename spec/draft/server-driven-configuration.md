@@ -21,15 +21,32 @@ Discovery is configuration retrieval, not capability negotiation, registration a
 
 A client MUST distinguish omitted subscriptions from an explicitly supplied array. A present array completely replaces backend defaults, uses existing explicit-configuration validation, and MUST NOT depend on discovery succeeding. Clients need not send discovery for that backend. An explicit empty array remains invalid; it is not an instruction to fetch defaults.
 
-When subscriptions are omitted, the client retrieves configuration during initialization or initial admission, before admitting any event delivery to that backend. A synchronous constructor MAY defer the asynchronous part to a single shared admission operation before first use; concurrent callers MUST NOT observe partially resolved routes. No new public initialization API is required. Reinitialization may reload configuration; this revision requires neither periodic refresh nor live negotiation.
+When subscriptions are omitted, the client retrieves configuration during initialization or initial admission, before admitting any event delivery to that backend. A synchronous constructor MAY defer the asynchronous part to a single shared admission operation before first use; concurrent callers MUST NOT observe partially resolved routes. No new public initialization API is required. Reinitialization may reload configuration; apart from the [skipped-backend retry](#skipped-backends) below, this revision requires neither periodic refresh nor live negotiation.
 
 The client MUST validate the complete discovery response, including correlation and exact protocol version, before using it. Invalid configuration is not repaired. Unknown object fields are ignored according to the base protocol; they do not expand the recognized configuration surface.
 
 For a valid advertisement, the client resolves each subscription's selectors against its declared supported events and the requested delivery mode. Exact selectors, whole-family wildcards, and `*` keep their existing meaning. Unsupported event/mode matches are excluded. A subscription with no remaining matches is removed. All other settings are retained unchanged; interception MUST NOT be converted into observation and effects MUST NOT be invented. The resolved subscriptions retain advertised order, and backends retain client registration order.
 
-A failed, unavailable, unauthenticated, malformed, version-incompatible, or timed-out discovery skips that backend. A valid advertisement with no supported subscriptions also skips it. Skipping means no registration or event delivery to that backend; the client SHOULD make the reason available through a local diagnostic without leaking credentials or content. There is no legacy-versus-modern distinction. Cancellation of initialization propagates as cancellation rather than being swallowed as an ordinary skip.
+A failed, unavailable, unauthenticated, malformed, version-incompatible, or timed-out discovery skips that backend. A valid advertisement with no supported subscriptions also skips it. Skipping means no registration or event delivery to that backend. There is no legacy-versus-modern distinction. Cancellation of initialization propagates as cancellation rather than being swallowed as an ordinary skip, and emits no skip diagnostic.
 
 This mechanism does not prescribe application policy about continuing without a backend. It has no required/optional hook categories and performs no server-needs check. An advertisement is a source of defaults, not a delivery or effect guarantee. Existing per-request capabilities remain authoritative and may narrow the capabilities available for an individual interception.
+
+### Skipped backends
+
+When discovery skips a backend, the SDK MUST emit a host-visible diagnostic carrying the backend identifier and exactly one code:
+
+| Code | Cause | Retried |
+| --- | --- | --- |
+| `configuration_unavailable` | Transport failure, timeout, non-success HTTP status, JSON-RPC error other than method-not-found, or an endpoint authentication failure | Yes |
+| `configuration_invalid` | Method-not-found, or an uncorrelated, malformed, or version-incompatible response | No |
+| `no_applicable_subscriptions` | A valid advertisement with no supported subscriptions | No |
+| `configuration_local_secret` | A discovered local secret reference ([AHP-REG-005](#AHP-REG-005)) | No |
+
+When the cause is an authentication error, the diagnostic also carries `authError`, the safe error code, and `recovery`, its paired recovery, both from the [SDK authentication lifecycle](sdk-auth-lifecycle.md) table. No other values are defined. The diagnostic MUST NOT contain credentials, tokens, response bodies, or event content.
+
+A backend skipped with `configuration_unavailable` MUST be re-attempted at the next event admission or initialization that occurs after either of these: a successful host `prepare` for that backend's event endpoint, or the end of a backoff. The backoff starts at 30 seconds, doubles after each failed attempt, and is capped at 1 hour. Hosts MAY configure these values. A successful `prepare` makes the backend eligible at once and resets its backoff. A retry is part of the single shared admission operation: concurrent callers wait for it or observe the previous routes, never a partial set, and a successful retry installs the backend's routes atomically. Events admitted before a retry succeeds are not replayed to that backend. Other codes are not retried until reinitialization.
+
+A backend with omitted subscriptions has no failure policy until its configuration is valid, so it is advisory while its configuration is unavailable: events proceed without it and no failure policy is inferred. Enforcement while a backend is unreachable or unauthenticated requires explicit subscriptions with `failurePolicy` `fail-closed`.
 
 ## Connection and trust boundaries
 

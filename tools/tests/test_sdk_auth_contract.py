@@ -346,6 +346,21 @@ class SDKAuthContractTests(unittest.TestCase):
                        "dcr-policy-disallows-registration"):
             self.assertIn(shared, selection)
 
+    def test_configuration_skip_lifecycle_ids_are_listed(self):
+        ids = {row["id"] for row in self.vectors["lifecycle"]}
+        codes = {row["code"] for row in self.vectors["recovery"]}
+        for required in ("configuration-401-diagnostic-carries-auth-code",
+                         "configuration-unavailable-retried-after-prepare",
+                         "configuration-unavailable-backoff",
+                         "configuration-invalid-not-retried",
+                         "configuration-retry-atomic-routes"):
+            self.assertIn(required, ids)
+        diagnostic = next(row for row in self.vectors["lifecycle"]
+                          if row["id"] == "configuration-401-diagnostic-carries-auth-code")
+        # The auth cause reuses the shared safe-code vocabulary.
+        self.assertIn("interaction_required", diagnostic["expect"])
+        self.assertIn("interaction_required", codes)
+
     def test_lifecycle_coverage_manifest_is_well_formed(self):
         ids = [row["id"] for row in self.vectors["lifecycle"]]
         self.assertEqual(len(ids), len(set(ids)))

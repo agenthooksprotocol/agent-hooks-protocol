@@ -1350,6 +1350,26 @@
     {
       "id": "proactive-renewal-failure-keeps-current-registration",
       "expect": "a proactive re-registration failing (e.g. 5xx or 429) inside the renewal margin updates the failed marker, but the operation succeeds with the current still-usable registration and token until that registration actually expires"
+    },
+    {
+      "id": "configuration-401-diagnostic-carries-auth-code",
+      "expect": "discovery answered 401 with no usable grant skips the backend and emits a host-visible diagnostic {backendId, code configuration_unavailable, authError interaction_required, recovery login}; no credentials or bodies; cancellation emits no diagnostic and propagates"
+    },
+    {
+      "id": "configuration-unavailable-retried-after-prepare",
+      "expect": "after a successful host prepare for the skipped backend's event endpoint, the next event admission re-attempts discovery without waiting for backoff and admits the backend's routes"
+    },
+    {
+      "id": "configuration-unavailable-backoff",
+      "expect": "a transport- or auth-caused configuration_unavailable is re-attempted only at the first admission or initialize after backoff (30s, doubling, capped at 1h, host-configurable); earlier admissions do not contact the backend"
+    },
+    {
+      "id": "configuration-invalid-not-retried",
+      "expect": "configuration_invalid, no_applicable_subscriptions and configuration_local_secret skips are never re-attempted before reinitialization, even after prepare or backoff elapses"
+    },
+    {
+      "id": "configuration-retry-atomic-routes",
+      "expect": "a retry runs inside the single shared admission: concurrent callers observe old or complete new routes, never partial; events admitted before the retry succeeded are not replayed"
     }
   ],
   "registration_keys": [
