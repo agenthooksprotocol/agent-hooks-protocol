@@ -274,7 +274,9 @@ non-empty string `client_id` and:
 * echoed `grant_types`, when present, include `authorization_code` (PKCE) or
   `client_credentials`;
 * echoed `token_endpoint_auth_method`, when present, equals the requested one;
-* PKCE: no `client_secret`. Client credentials: a non-empty `client_secret`;
+* client credentials: a non-empty `client_secret`. For PKCE (method `none`),
+  any `client_secret` and its expiry are ignored and never persisted, as the MCP
+  TypeScript SDK does;
 * `client_secret_expires_at`, when present, is a non-negative JSON integer and,
   when nonzero, in the future. `0` or absence means no known expiry.
 
@@ -299,22 +301,27 @@ with that login's exact redirect; the up-front lookup and delivery paths never
 register and return `interaction_required`. Each new login registers anew, and
 there is no separate registration record. The pending login holds the issued
 `client_id`; completion commits that client with the tokens into the grant
-record, replacing the previous client and tokens. Refresh uses the client stored
-in the grant record. An `invalid_client` at completion or refresh
-compare-and-deletes the grant and returns `interaction_required`; the next
-`prepare` registers again.
+record, replacing the previous client and tokens under the grant lock or by
+compare-and-set. Refresh uses the client stored in the grant record. An
+`invalid_client` at completion ends only that pending login and returns
+`interaction_required`; the stored grant, which may belong to an older valid
+client, is kept. An `invalid_client` at refresh returns `interaction_required`
+and deletes the grant only if the stored record still holds the presented
+`client_id` and refresh token (compare-and-delete). The next `prepare`
+registers again.
 
 **Client credentials.** Without a login to carry it, a DCR client for client
 credentials is a persisted registration record under
 `registration_key = frame("ahp.oauth.registration:", [namespace, exact_issuer])`.
-The record holds `client_id`, `client_secret_expires_at`, a generation and an
-opaque secret reference; the `client_secret` itself is written only through the
+The record holds `client_id`, the registered `token_endpoint_auth_method`,
+`client_secret_expires_at`, a generation and an opaque secret reference; the `client_secret` itself is written only through the
 host secret-storage hook (store, resolve, delete by reference), never into any
 record, and the SDK has no implicit secret store. `prepare` and any
 non-interactive acquisition, including the up-front lookup's re-acquisition and
 challenge handling, MAY register when no usable record exists. A record is
 unusable when its nonzero `client_secret_expires_at` has passed or its secret
-cannot be resolved. Processes register once: under the registration key's lock,
+cannot be resolved. Host `prepare` MAY replace a usable record so changed
+registration settings take effect. Processes register once: under the registration key's lock,
 the SDK reloads, registers only when no usable record exists, stores the secret
 under a fresh reference, and persists by compare-and-set on the generation; a
 loser deletes its reference and uses the winner's record. After a successful
@@ -324,9 +331,11 @@ then re-registers at most once per operation and re-acquires once, and a repeate
 `invalid_client` is `credential_unavailable`. After a failed registration the
 SDK sends no registration request for that key until a backoff passes
 (host-configurable; default 1 minute doubling per failure, capped at 1 hour, or
-a later `Retry-After` up to that cap), and returns `credential_unavailable` where
-one would be needed; host `prepare` bypasses the backoff. The backoff MAY be
-process-local.
+a later `Retry-After` up to that cap). Where a registration would be needed
+meanwhile, the SDK returns the code of the last failure, so a retryable failure
+stays `provider_failed` (`retry`); host `prepare` bypasses the backoff. When
+processes share the store, the backoff SHOULD be shared through it; otherwise it
+MAY be process-local.
 
 ### MCP parity
 
@@ -411,8 +420,9 @@ Only an explicit host `prepare` creates one. As in MCP clients, a pending login
 belongs to the process that created it, which receives its callback (for
 example, on its own loopback listener) and completes it by `state`. A host MAY
 instead persist pending logins so another process sharing the store can complete
-one by `state`, for example from a pasted callback URL; the PKCE verifier is then
-a secret, held only in the pending record and never in metadata or logs. A
+one by `state`, for example from a pasted callback URL. The PKCE verifier is a
+secret: it is never in metadata or logs, and when persisted it is held only in
+the pending record. A
 pending login's lifetime is fixed at creation (host-configured and bounded;
 default 10 minutes), independent of the creating `prepare` call's deadline or
 cancellation, and expired pending logins MUST be deleted. It holds its exact
@@ -420,11 +430,15 @@ redirect, client, PKCE verifier and acquisition ceiling, which bounds the grant
 recorded on completion.
 
 Several pending logins MAY exist for one grant key, up to a host-configurable
-cap (default 5); creating one beyond the cap cancels the oldest. Each requests
+cap (default 5), counted per process for process-owned logins or per store when
+persisted; creating one beyond the cap cancels the oldest, atomically in a
+persisted store. Each requests
 scopes by the acquisition rule in
 [token response acceptance](#token-response-acceptance-and-persistence).
 Completing one never invalidates another; each completion replaces the grant,
-so the newest completed login wins, as in MCP clients. Effective scopes stay
+so the newest completed login wins, as in MCP clients. Concurrent step-ups may
+therefore lose scopes the other login added; another `insufficient_scope`
+challenge recovers them. Effective scopes stay
 filtered by each caller's ceiling at use, and bindings share grants only through
 explicitly host-assigned partitions. A pending login ends exactly one way:
 completion (a claimed valid callback, including consent denial), `cancel`

@@ -1173,7 +1173,7 @@
     },
     {
       "id": "pending-logins-capped-per-grant-key",
-      "expect": "a pending login beyond the host-configurable cap (default 5) for one grant key cancels the oldest; expired pending logins are deleted"
+      "expect": "a pending login beyond the host-configurable cap (default 5) for one grant key, per process or per store when persisted, cancels the oldest, atomically in a persisted store; expired pending logins are deleted"
     },
     {
       "id": "pending-completion-newest-grant-wins",
@@ -1309,7 +1309,7 @@
     },
     {
       "id": "dcr-pkce-invalid-client-drops-grant",
-      "expect": "invalid_client at PKCE completion or refresh for a DCR client compare-and-deletes the grant and returns interaction_required; the next prepare registers again"
+      "expect": "invalid_client at PKCE completion ends only that pending login (the stored grant is kept); at refresh it returns interaction_required and compare-and-deletes the grant only if it still holds the presented client_id and refresh token"
     },
     {
       "id": "dcr-registers-once-across-processes",
@@ -1361,7 +1361,7 @@
     },
     {
       "id": "registration-transient-failure-backs-off",
-      "expect": "after a failed client-credentials registration, no registration request is sent for that key until the backoff (default 1 minute doubling, capped at 1 hour) passes; credential_unavailable meanwhile; host prepare bypasses it"
+      "expect": "after a failed client-credentials registration, no registration request is sent for that key until the backoff (default 1 minute doubling, capped at 1 hour) passes, shared through a shared store; meanwhile the last failure's code is returned (provider_failed for retryable failures); host prepare bypasses it"
     },
     {
       "id": "registration-retry-after-honoured",
@@ -1638,6 +1638,55 @@
       },
       "expect": {
         "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "localhost-redirect-invalid",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://localhost:51004/callback"
+          ]
+        },
+        "redirect": "http://localhost:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "invalid_configuration"
+      }
+    },
+    {
+      "id": "cimd-ipv6-loopback-redirect-matches",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": null,
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://[::1]/callback"
+          ]
+        },
+        "redirect": "http://[::1]:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "source": "cimd",
+        "client_id": "https://adapter.example/oauth/client.json",
+        "token_endpoint_auth_method": "none",
+        "client_identity": "cimd:https://adapter.example/oauth/client.json"
       }
     },
     {
@@ -2098,7 +2147,7 @@
       }
     },
     {
-      "id": "pkce-secret-rejected",
+      "id": "pkce-secret-ignored",
       "flow": "authorization_code_pkce",
       "request": {
         "redirect_uris": [
@@ -2123,8 +2172,13 @@
         "client_secret_expires_at": 0
       },
       "expect": {
-        "accepted": false,
-        "error": "invalid_configuration"
+        "accepted": true,
+        "expiry": "none",
+        "record": {
+          "client_id": "dcr-client",
+          "client_secret_expires_at": null,
+          "secret_ref": false
+        }
       }
     },
     {

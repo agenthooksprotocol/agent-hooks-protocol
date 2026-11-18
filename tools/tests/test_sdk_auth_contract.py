@@ -58,6 +58,10 @@ def select_client(value):
                 "client_identity": "preregistered:" + value["preregistered_client_id"]}
     metadata = value["as_metadata"]
     pkce = value["flow"] == "authorization_code_pkce"
+    redirect = urlsplit(value["redirect"] or "")
+    if pkce and redirect.scheme == "http" and redirect.hostname not in ("127.0.0.1", "::1"):
+        # HTTP only to a literal loopback IP; localhost is never accepted.
+        return {"error": "invalid_configuration"}
     cimd = value["cimd"]
     if pkce and cimd and metadata.get("client_id_metadata_document_supported") is True:
         if (not valid_cimd_url(cimd["url"])
@@ -115,10 +119,12 @@ def validate_registration(row):
     if body.get("token_endpoint_auth_method",
                 request["token_endpoint_auth_method"]) != request["token_endpoint_auth_method"]:
         return failed
+    if row["flow"] == "authorization_code_pkce":
+        # A public client's secret and its expiry are ignored, never persisted.
+        body = {k: v for k, v in body.items()
+                if k not in ("client_secret", "client_secret_expires_at")}
     secret = body.get("client_secret")
-    if (row["flow"] == "authorization_code_pkce") != (secret is None):
-        return failed
-    if secret is not None and (not isinstance(secret, str) or not secret):
+    if row["flow"] == "client_credentials" and (not isinstance(secret, str) or not secret):
         return failed
     expires_at = body.get("client_secret_expires_at")
     if expires_at is not None and (type(expires_at) is not int or expires_at < 0
@@ -302,8 +308,11 @@ class SDKAuthContractTests(unittest.TestCase):
                           "https://127.0.0.1:8765/cb"):
             self.assertEqual(loopback_portless(unchanged), unchanged)
         selection = {row["id"]: row for row in self.vectors["client_selection"]}
+        self.assertEqual(selection["localhost-redirect-invalid"]["expect"],
+                         {"error": "invalid_configuration"})
         for name in ("cimd-loopback-port-mismatch-accepted",
-                     "cimd-portless-loopback-redirect-matches"):
+                     "cimd-portless-loopback-redirect-matches",
+                     "cimd-ipv6-loopback-redirect-matches"):
             row = selection[name]
             self.assertNotIn(row["input"]["redirect"], row["input"]["cimd"]["redirect_uris"])
             self.assertEqual(row["expect"]["source"], "cimd")
