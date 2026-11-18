@@ -330,7 +330,9 @@ loser deletes its reference and uses the winner's record. After a successful
 replacement or compare-and-delete the old secret reference is deleted. An
 `invalid_client` token response compare-and-deletes that generation; the SDK
 then re-registers at most once per operation and re-acquires once, and a repeated
-`invalid_client` is `credential_unavailable`. After a failed registration the
+`invalid_client` is `credential_unavailable` and counts as a failed registration
+for the backoff below, so a server that accepts registrations but rejects their
+clients is not re-registered on every operation. After a failed registration the
 SDK sends no registration request for that key until a backoff passes
 (host-configurable; default 1 minute doubling per failure, capped at 1 hour, or
 a later `Retry-After` up to that cap). Where a registration would be needed
