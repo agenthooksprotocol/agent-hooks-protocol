@@ -37,10 +37,12 @@ When discovery skips a backend, the SDK MUST emit a host-visible diagnostic carr
 
 | Code | Cause | Retried |
 | --- | --- | --- |
-| `configuration_unavailable` | Transport failure, timeout, non-success HTTP status, JSON-RPC error other than method-not-found, or an endpoint authentication failure | Yes |
-| `configuration_invalid` | Method-not-found, or an uncorrelated, malformed, or version-incompatible response | No |
+| `configuration_unavailable` | Transport failure, timeout, HTTP status other than 200, JSON-RPC error other than method-not-found, or an endpoint authentication failure | Yes |
+| `configuration_invalid` | A transport that cannot be constructed from the registration, method-not-found, or an uncorrelated, malformed, or version-incompatible reply | No |
 | `no_applicable_subscriptions` | A valid advertisement with no supported subscriptions | No |
 | `configuration_local_secret` | A discovered local secret reference ([AHP-REG-005](#AHP-REG-005)) | No |
+
+A reply is uncorrelated only when it is unambiguously the reply to the discovery request but its `id` does not match, such as the HTTP response body of that request. On a shared stream transport such as stdio, a frame whose `id` does not match the pending discovery request is not a reply to it: the SDK discards it, and if no correlated reply arrives before the discovery deadline, the skip is `configuration_unavailable`. Over HTTP, a status other than 200 is `configuration_unavailable`; a 401 or 403, or an authentication error from the provider, also carries `authError` and `recovery`. A 200 whose body is malformed, uncorrelated, version-incompatible, or a JSON-RPC method-not-found error is `configuration_invalid`. A transport that cannot be constructed from the backend's registration is a local configuration problem: `configuration_invalid`, never retried.
 
 When the cause is an authentication error, the diagnostic also carries `authError`, the safe error code, and `recovery`, its paired recovery, both from the [SDK authentication lifecycle](sdk-auth-lifecycle.md) table. No other values are defined. The diagnostic MUST NOT contain credentials, tokens, response bodies, or event content.
 
