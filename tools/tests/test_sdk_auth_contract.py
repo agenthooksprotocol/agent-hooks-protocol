@@ -1,10 +1,9 @@
 """Golden SDK host-auth semantics; no OAuth wire-schema generation."""
-import hashlib
 import json
 import re
 from pathlib import Path
 import unittest
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = ROOT / "conformance/draft/sdk-auth-lifecycle.json"
@@ -23,20 +22,23 @@ def grant_key(value):
     partition = ("shared:" + value["grant_partition"] if value.get("grant_partition")
                  else "binding:" + binding_key(value))
     return frame("ahp.oauth.grant:", [value[field] for field in
-                 ("namespace", "issuer", "resource", "client_id", "flow")] + [partition])
+                 ("namespace", "issuer", "resource", "client_identity", "flow")] + [partition])
 
 
 def registration_key(value):
-    return frame("ahp.oauth.registration:", [value[field] for field in
-                 ("namespace", "issuer", "flow", "redirect")])
+    """Client-credentials DCR records only; PKCE registers per login."""
+    return frame("ahp.oauth.registration:", [value["namespace"], value["issuer"]])
 
 
-def request_digest(value):
-    scope = " ".join(sorted(set(value.get("registration_scope", []))))
-    return hashlib.sha256(frame("ahp.oauth.registration-request:", [
-        value.get("client_name", ""), value.get("software_id", ""),
-        value.get("software_version", ""), scope,
-        value.get("initial_access_token_ref", "")]).encode("utf-8")).hexdigest()
+def loopback_portless(uri):
+    """RFC 8252 section 7.3: a literal-loopback http redirect without userinfo,
+    compared without its port. Other URIs are unchanged."""
+    parts = urlsplit(uri)
+    if (parts.scheme == "http" and parts.hostname in ("127.0.0.1", "::1")
+            and "@" not in parts.netloc):
+        host = "[::1]" if parts.hostname == "::1" else "127.0.0.1"
+        return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    return uri
 
 
 SECRET_METHODS = ("client_secret_basic", "client_secret_post")
@@ -52,15 +54,18 @@ def valid_cimd_url(url):
 def select_client(value):
     """Pre-registered, then CIMD (PKCE only), then permitted DCR."""
     if value["preregistered_client_id"]:
-        return {"source": "preregistered", "client_id": value["preregistered_client_id"]}
+        return {"source": "preregistered", "client_id": value["preregistered_client_id"],
+                "client_identity": "preregistered:" + value["preregistered_client_id"]}
     metadata = value["as_metadata"]
     pkce = value["flow"] == "authorization_code_pkce"
     cimd = value["cimd"]
     if pkce and cimd and metadata.get("client_id_metadata_document_supported") is True:
         if (not valid_cimd_url(cimd["url"])
-                or value["redirect"] not in cimd["redirect_uris"]):
+                or loopback_portless(value["redirect"]) not in
+                {loopback_portless(uri) for uri in cimd["redirect_uris"]}):
             return {"error": "invalid_configuration"}
-        return {"source": "cimd", "client_id": cimd["url"], "token_endpoint_auth_method": "none"}
+        return {"source": "cimd", "client_id": cimd["url"], "token_endpoint_auth_method": "none",
+                "client_identity": "cimd:" + cimd["url"]}
     # DCR checks: permission/endpoint, then client-credentials feasibility,
     # then endpoint destination policy.
     endpoint = metadata.get("registration_endpoint")
@@ -75,7 +80,7 @@ def select_client(value):
             return {"error": "credential_unavailable"}
     if urlsplit(endpoint).scheme != "https":
         return {"error": "untrusted_destination"}
-    return {"source": "dcr", "token_endpoint_auth_method": method}
+    return {"source": "dcr", "token_endpoint_auth_method": method, "client_identity": "dcr"}
 
 
 def validate_registration(row):
@@ -99,7 +104,9 @@ def validate_registration(row):
     client_id = body.get("client_id")
     if not isinstance(client_id, str) or not client_id:
         return failed
-    if "redirect_uris" in body and body["redirect_uris"] != request.get("redirect_uris"):
+    if "redirect_uris" in body and (
+            not isinstance(body["redirect_uris"], list)
+            or not set(request.get("redirect_uris", [])) <= set(body["redirect_uris"])):
         return failed
     flow_grant = ("authorization_code" if row["flow"] == "authorization_code_pkce"
                   else "client_credentials")
@@ -272,24 +279,39 @@ class SDKAuthContractTests(unittest.TestCase):
             with self.subTest(name):
                 self.assertEqual(registration_key(row["input"]), row["registration_key"])
                 self.assertNotIn("not-a-real-secret", row["registration_key"])
-        base = cases["dcr-pkce-loopback"]["registration_key"]
+        base = cases["cc-registration"]["registration_key"]
         # Registration metadata, endpoint, scope and secrets are not key material.
-        self.assertEqual(base, cases["dcr-pkce-nonkey-metadata"]["registration_key"])
-        for name in ("dcr-pkce-other-redirect", "dcr-issuer-trailing-slash",
-                     "dcr-client-credentials", "dcr-unicode-namespace"):
+        self.assertEqual(base, cases["cc-registration-nonkey-metadata"]["registration_key"])
+        for name in ("cc-issuer-trailing-slash", "cc-unicode-namespace"):
             self.assertNotEqual(base, cases[name]["registration_key"])
-        self.assertEqual(cases["dcr-client-credentials"]["input"]["redirect"], "")
+        self.assertNotIn("registration_request_digests", self.vectors)
 
-    def test_registration_request_digests(self):
-        cases = {row["id"]: row for row in self.vectors["registration_request_digests"]}
-        for name, row in cases.items():
-            with self.subTest(name):
-                self.assertEqual(request_digest(row["input"]), row["request_digest"])
-        base = cases["policy-base"]["request_digest"]
-        self.assertEqual(base, cases["policy-scope-reordered-duplicated"]["request_digest"])
-        for name in ("policy-scope-changed", "policy-client-name-changed",
-                     "policy-initial-access-token-changed", "policy-minimal"):
-            self.assertNotEqual(base, cases[name]["request_digest"])
+    def test_issued_dcr_client_is_not_key_material(self):
+        cases = {row["id"]: row for row in self.vectors["keys"]}
+        first, second = cases["dcr-client-identity"], cases["dcr-reissued-client-same-key"]
+        self.assertNotEqual(first["input"]["issued_client_id"], second["input"]["issued_client_id"])
+        self.assertEqual(first["grant_key"], second["grant_key"])
+        self.assertNotEqual(first["grant_key"], cases["default-event"]["grant_key"])
+        for row in self.vectors["keys"]:
+            self.assertNotIn("dcr-client", row["grant_key"])
+
+    def test_loopback_redirect_matching_is_port_agnostic_for_cimd_only(self):
+        self.assertEqual(loopback_portless("http://127.0.0.1:8765/cb"), "http://127.0.0.1/cb")
+        self.assertEqual(loopback_portless("http://[::1]:8765/cb"), "http://[::1]/cb")
+        for unchanged in ("http://u@127.0.0.1:8765/cb", "http://localhost:8765/cb",
+                          "https://127.0.0.1:8765/cb"):
+            self.assertEqual(loopback_portless(unchanged), unchanged)
+        selection = {row["id"]: row for row in self.vectors["client_selection"]}
+        for name in ("cimd-loopback-port-mismatch-accepted",
+                     "cimd-portless-loopback-redirect-matches"):
+            row = selection[name]
+            self.assertNotIn(row["input"]["redirect"], row["input"]["cimd"]["redirect_uris"])
+            self.assertEqual(row["expect"]["source"], "cimd")
+        responses = {row["id"]: row for row in self.vectors["registration_responses"]}
+        self.assertFalse(responses["pkce-echo-other-port-rejected"]["expect"]["accepted"])
+        for row in self.vectors["registration_responses"]:
+            if row["flow"] == "authorization_code_pkce":
+                self.assertEqual(row["request"].get("application_type"), "native")
 
     def test_client_selection_order(self):
         codes = {row["code"] for row in self.vectors["recovery"]}
@@ -325,20 +347,21 @@ class SDKAuthContractTests(unittest.TestCase):
         for required in ("registration-order-preregistered-cimd-dcr", "cimd-used-when-supported",
                          "cimd-not-supported-falls-back-to-dcr",
                          "cimd-redirect-mismatch-invalid-configuration",
+                         "cimd-portless-loopback-redirect-matches",
+                         "loopback-redirect-ephemeral-port-per-login",
+                         "dcr-pkce-registers-per-login", "dcr-issued-client-stored-with-grant",
+                         "dcr-pkce-invalid-client-drops-grant",
                          "dcr-registers-once-across-processes", "dcr-preregistered-wins",
                          "dcr-expired-secret-reregisters", "dcr-invalid-client-reregisters-once",
                          "dcr-policy-disallows-registration", "dcr-secret-not-in-token-record",
-                         "lookup-never-registers-pkce", "dcr-failed-marker-bounds-registration",
-                         "prepare-force-reregistration", "dcr-policy-change-reregisters",
-                         "dcr-replaced-secret-deleted", "cc-registration-auto-repairs-after-backoff",
-                         "cc-proactive-reregistration-before-expiry",
-                         "marker-blocks-only-registration",
-                         "stale-callback-does-not-delete-new-registration",
+                         "lookup-never-registers-pkce", "dcr-replaced-secret-deleted",
                          "registration-transient-failure-backs-off",
                          "registration-retry-after-honoured",
-                         "marker-update-atomic-across-processes",
-                         "proactive-reregistration-once-across-processes",
-                         "proactive-renewal-failure-keeps-current-registration"):
+                         "pending-login-owned-by-creating-process",
+                         "pending-login-persisted-cross-process-completion",
+                         "pending-logins-concurrent-per-state",
+                         "pending-logins-capped-per-grant-key",
+                         "pending-completion-newest-grant-wins"):
             self.assertIn(required, ids)
         selection = {row["id"] for row in self.vectors["client_selection"]}
         for shared in ("cimd-used-when-supported", "cimd-not-supported-falls-back-to-dcr",
@@ -366,6 +389,9 @@ class SDKAuthContractTests(unittest.TestCase):
         ids = [row["id"] for row in self.vectors["lifecycle"]]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(all(row["expect"] for row in self.vectors["lifecycle"]))
+        # Mechanisms removed for MCP parity stay removed.
+        for gone in ("supersede", "marker", "proactive", "force-reregistration", "pending-login-reuse"):
+            self.assertFalse([name for name in ids if gone in name], gone)
         self.assertNotIn("quarantin", FIXTURE.read_text())
 
 
