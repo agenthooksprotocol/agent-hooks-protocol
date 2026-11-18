@@ -55,7 +55,15 @@ Keep requested scopes, locally allowed scopes and granted scopes separate.
 The allowed ceiling defaults to requested scopes unless the host supplies a
 broader ceiling. The response scope set is the provided `scope`; when omitted it
 is the requested set for an initial response and the previously granted set for
-a refresh. An acquisition (PKCE consent or client credentials, including
+a refresh. A `scope` that is absent, JSON `null`, or a string containing no
+non-whitespace characters (only SP, HTAB, CR, LF) MUST be treated as omitted:
+servers send `""` to mean "nothing to report", and RFC 6749 section 3.3 makes it
+an invalid scope list. Treating it as omitted never widens a grant, because the
+intersections below still apply. Any other string MUST match the RFC 6749
+scope-list grammar; any other JSON type (number, boolean, array, object) is
+malformed. Both fail basic validity. This applies equally to JSON and
+form-encoded token responses; an absent form field is absent, not `""`.
+An acquisition (PKCE consent or client credentials, including
 step-up or re-acquisition for an existing grant key) requests
 `previously granted ∪ ((requested ∪ required) ∩ caller ceiling)` and records
 `granted = response scopes ∩ (previously granted ∪ acquisition ceiling)`, where
@@ -77,7 +85,7 @@ an issued token can do. Hosts needing enforcement validate tokens in their own
 policy hook.
 
 A token response failing basic validity (non-Bearer `token_type`, malformed
-`expires_in`, invalid token grammar) is not dispatched. Once a code was consumed
+`expires_in`, malformed `scope`, invalid token grammar) is not dispatched. Once a code was consumed
 or a refresh token presented, no outcome leaves in-flight or refreshing state
 behind: clear in-flight markers and report `provider_failed` (`retry`). A failed
 initial exchange persists nothing; a failed refresh response persists its
