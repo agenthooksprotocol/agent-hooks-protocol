@@ -1664,6 +1664,30 @@
       }
     },
     {
+      "id": "preregistered-localhost-redirect-invalid",
+      "input": {
+        "flow": "authorization_code_pkce",
+        "preregistered_client_id": "client",
+        "cimd": {
+          "url": "https://adapter.example/oauth/client.json",
+          "redirect_uris": [
+            "http://127.0.0.1:8765/callback",
+            "https://adapter.example/callback"
+          ]
+        },
+        "redirect": "http://localhost:51004/callback",
+        "as_metadata": {
+          "client_id_metadata_document_supported": true,
+          "registration_endpoint": "https://issuer.example/register"
+        },
+        "dcr_permitted": true,
+        "secret_hook": true
+      },
+      "expect": {
+        "error": "invalid_configuration"
+      }
+    },
+    {
       "id": "cimd-ipv6-loopback-redirect-matches",
       "input": {
         "flow": "authorization_code_pkce",

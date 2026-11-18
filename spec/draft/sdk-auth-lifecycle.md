@@ -208,7 +208,9 @@ compares a loopback redirect without its port, as authorization servers do
 ([RFC 8252 section 7.3](https://www.rfc-editor.org/rfc/rfc8252.html#section-7.3)).
 Unlike MCP 2025-11-25, `localhost` is not accepted: following
 [RFC 8252 section 8.3](https://www.rfc-editor.org/rfc/rfc8252.html#section-8.3),
-a name can resolve to or be bound on a non-loopback interface.
+a name can resolve to or be bound on a non-loopback interface. A `localhost` or
+other non-loopback `http` redirect is `invalid_configuration`, checked before
+client selection, registration or any pending login.
 
 ### Client ID Metadata Documents
 

@@ -52,16 +52,16 @@ def valid_cimd_url(url):
 
 
 def select_client(value):
-    """Pre-registered, then CIMD (PKCE only), then permitted DCR."""
-    if value["preregistered_client_id"]:
-        return {"source": "preregistered", "client_id": value["preregistered_client_id"],
-                "client_identity": "preregistered:" + value["preregistered_client_id"]}
-    metadata = value["as_metadata"]
+    """Redirect check, then pre-registered, then CIMD (PKCE only), then permitted DCR."""
     pkce = value["flow"] == "authorization_code_pkce"
     redirect = urlsplit(value["redirect"] or "")
     if pkce and redirect.scheme == "http" and redirect.hostname not in ("127.0.0.1", "::1"):
         # HTTP only to a literal loopback IP; localhost is never accepted.
         return {"error": "invalid_configuration"}
+    if value["preregistered_client_id"]:
+        return {"source": "preregistered", "client_id": value["preregistered_client_id"],
+                "client_identity": "preregistered:" + value["preregistered_client_id"]}
+    metadata = value["as_metadata"]
     cimd = value["cimd"]
     if pkce and cimd and metadata.get("client_id_metadata_document_supported") is True:
         if (not valid_cimd_url(cimd["url"])
@@ -308,8 +308,8 @@ class SDKAuthContractTests(unittest.TestCase):
                           "https://127.0.0.1:8765/cb"):
             self.assertEqual(loopback_portless(unchanged), unchanged)
         selection = {row["id"]: row for row in self.vectors["client_selection"]}
-        self.assertEqual(selection["localhost-redirect-invalid"]["expect"],
-                         {"error": "invalid_configuration"})
+        for name in ("localhost-redirect-invalid", "preregistered-localhost-redirect-invalid"):
+            self.assertEqual(selection[name]["expect"], {"error": "invalid_configuration"})
         for name in ("cimd-loopback-port-mismatch-accepted",
                      "cimd-portless-loopback-redirect-matches",
                      "cimd-ipv6-loopback-redirect-matches"):
