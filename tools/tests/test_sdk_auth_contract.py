@@ -168,6 +168,118 @@ def basically_valid(response):
             and response_scope(response) is not False)
 
 
+SCOPED_CODES = ("access_denied", "interaction_required")
+HTTP_TOKEN = r"[!#$%&'*+.^_`|~0-9A-Za-z-]+"
+BEARER_PARAM = re.compile(r'[ \t]*(' + HTTP_TOKEN + r')[ \t]*=[ \t]*(?:"((?:[^"\\]|\\.)*)"|('
+                          + HTTP_TOKEN + r'))[ \t]*')
+
+
+def bearer_params(header):
+    """Strict single-Bearer-challenge auth-params; None when unparsable or a
+    parameter is duplicated."""
+    if not re.match(r"Bearer(?: |$)", header):
+        return None
+    rest, params, pos = header[len("Bearer"):].strip(" \t"), {}, 0
+    while pos < len(rest):
+        match = BEARER_PARAM.match(rest, pos)
+        if not match:
+            return None
+        name = match.group(1).lower()
+        if name in params:
+            return None
+        quoted = match.group(2)
+        params[name] = (re.sub(r"\\(.)", r"\1", quoted) if quoted is not None
+                        else match.group(3))
+        pos = match.end()
+        if pos < len(rest):
+            if rest[pos] != ",":
+                return None
+            pos += 1
+    return params
+
+
+def challenge_scope(value):
+    """Single-SP-separated RFC 6749 scope tokens, else False."""
+    tokens = value.split(" ")
+    return tokens if all(SCOPE_TOKEN.fullmatch(token) for token in tokens) else False
+
+
+def decide_scope(value):
+    """Reference scope decision: R = H | E | Ch; requested scopes never required."""
+    requested = set(value["requested"]) | set(value.get("preset_scopes", []))
+    ceiling = set(value.get("ceiling", requested))
+    if "host_error" in value:
+        # Host-policy errors keep their code; any scopes are stripped.
+        code = value["host_error"]["code"]
+        return {"code": code, **({"scopes": []} if code in SCOPED_CODES else {})}
+    challenge = value.get("challenge")
+    status = challenge["status"] if challenge else None
+    out = {"retired": True} if status == 401 else {}
+
+    def deny(scopes, with_required=True):
+        result = dict(out, code="access_denied", scopes=sorted(scopes), network_calls=0)
+        if with_required:
+            result["required"] = sorted(scopes)
+        return result
+
+    if not requested <= ceiling:
+        return dict(out, code="invalid_configuration", network_calls=0)
+    base = set(value["host_required"]) | set(value["explicit"])
+    hint, step_up = set(), set()
+    if challenge:
+        params = bearer_params(challenge["www_authenticate"])
+        scopes = None
+        if params is not None and "scope" in params:
+            scopes = challenge_scope(params["scope"])
+        if params is None or scopes is False:
+            return deny([], with_required=False)
+        if status == 401:
+            hint = set(scopes or ()) & ceiling
+        else:
+            assert params.get("error") == "insufficient_scope"
+            if scopes is None and not base:
+                return deny([], with_required=False)
+            step_up = set(scopes or ())
+    required = base | step_up
+    if not required <= ceiling:
+        return deny(required)
+    granted = value["granted"]
+    covered = granted is not None and required <= set(granted) & ceiling
+    if status == 403 and covered:
+        return deny(required)
+    if covered and status != 401:
+        return dict(out, code=None, action="use", required=sorted(required))
+    acquisition = sorted(set(granted or ()) | ((requested | required | hint) & ceiling))
+    result = dict(out, required=sorted(required), acquisition_scopes=acquisition)
+    if value["flow"] == "client_credentials":
+        return dict(result, code=None, action="acquire")
+    if value["path"] == "prepare":
+        return dict(result, code=None, action="login")
+    return dict(result, code="interaction_required", scopes=sorted(required))
+
+
+def complete_login(value):
+    """Reference complete(): enforce the stored R and report login_ended."""
+    if value["pending"] != "pending":
+        result = ({"code": "interaction_required", "scopes": []} if value["pending"] == "expired"
+                  else {"failed": True})
+        return dict(result, login_ended=True, grant_persisted=False)
+    if value["callback"] == "invalid":
+        return {"failed": True, "login_ended": False, "grant_persisted": False}
+    if value["callback"] == "denied":
+        return {"failed": True, "login_ended": True, "grant_persisted": False}
+    if value["exchange"] == "invalid_grant":
+        return {"code": "interaction_required", "scopes": [], "login_ended": True,
+                "grant_persisted": False}
+    if value["exchange"] == "invalid_response":
+        return {"code": "provider_failed", "login_ended": True, "grant_persisted": False}
+    required = set(value["stored_required"])
+    if not required <= set(value["granted"]) & set(value["ceiling"]):
+        return {"code": "access_denied", "scopes": sorted(required), "login_ended": True,
+                "grant_persisted": True}
+    return {"code": None, "grant_persisted": True}
+
+
 class SDKAuthContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -214,8 +326,8 @@ class SDKAuthContractTests(unittest.TestCase):
                 # filters at use.
                 previous = set(row.get("previous_granted", []))
                 bound = previous if refresh else previous | set(row["allowed"])
-                if not refresh:
-                    self.assertLessEqual(set(row["requested"]), set(row["allowed"]))
+                # Requested scopes outside the ceiling are invalid_configuration.
+                self.assertLessEqual(set(row["requested"]), set(row["allowed"]))
                 self.assertEqual(row.get("exchange") == "reacquire", "wire_request" in row)
                 if "wire_request" in row:
                     self.assertEqual(set(row["wire_request"]), previous |
@@ -242,6 +354,9 @@ class SDKAuthContractTests(unittest.TestCase):
                 usable = set(row["required"]) <= effective
                 self.assertEqual(usable, row["usable"])
                 self.assertEqual(None if usable else "access_denied", row.get("error"))
+                # access_denied carries R, deduplicated and byte-sorted.
+                self.assertEqual(None if usable else sorted(set(row["required"])),
+                                 row.get("error_scopes"))
 
     def test_extra_scopes_are_ignored_not_rejected(self):
         cases = {row["id"]: row for row in self.vectors["token_responses"]}
@@ -278,6 +393,108 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertLessEqual(set(kept["previous_granted"]), set(kept["granted"]))
         narrowed = cases["refresh-narrow-ceiling-keeps-grant"]
         self.assertLess(set(narrowed["effective"]), set(narrowed["granted"]))
+
+    def assert_error_scope_set(self, expect):
+        code = expect.get("code")
+        self.assertEqual(code in SCOPED_CODES, "scopes" in expect, expect)
+        if "scopes" in expect:
+            scopes = expect["scopes"]
+            self.assertEqual(scopes, sorted(set(scopes)))
+            self.assertTrue(all(SCOPE_TOKEN.fullmatch(scope) for scope in scopes))
+
+    def test_scope_decisions(self):
+        codes = {row["code"] for row in self.vectors["recovery"]}
+        for row in self.vectors["scope_decisions"]:
+            with self.subTest(row["id"]):
+                value, expect = row["input"], row["expect"]
+                self.assertEqual(decide_scope(value), expect)
+                self.assertIn(expect["code"], codes | {None})
+                self.assert_error_scope_set(expect)
+                for scope in value.get("preset_scopes", []):
+                    # Preset scopes are requested, never required.
+                    self.assertNotIn(scope, expect.get("required", []))
+                    self.assertNotIn(scope, expect.get("scopes", []))
+
+    def test_scope_decision_coverage(self):
+        rows = {row["id"]: row for row in self.vectors["scope_decisions"]}
+        refusals = [row for row in rows.values()
+                    if row["expect"].get("code") == "access_denied"
+                    and row["expect"].get("required")]
+        # Ceiling refusal is local on every path.
+        self.assertEqual({row["input"]["path"] for row in refusals},
+                         {"fresh", "cached", "prepare", "credential", "challenge", "preemptive"})
+        for row in refusals:
+            self.assertEqual(row["expect"]["network_calls"], 0)
+        for name in ("empty", "repeated-space", "leading-space", "trailing-space",
+                     "tab-separator", "invalid-character", "duplicated-parameter", "401"):
+            self.assertEqual(rows["malformed-challenge-scope-" + name]["expect"]["scopes"], [])
+        # A 401 scope never becomes a requirement or an access_denied.
+        for row in rows.values():
+            if row["input"].get("challenge", {}).get("status") == 401:
+                self.assertTrue(row["expect"]["retired"])
+                params = bearer_params(row["input"]["challenge"]["www_authenticate"])
+                scopes = challenge_scope(params["scope"]) if params and "scope" in params else []
+                if scopes:
+                    host = set(row["input"]["host_required"]) | set(row["input"]["explicit"])
+                    self.assertEqual(set(row["expect"]["required"]), host)
+                    self.assertNotEqual(row["expect"]["code"], "access_denied")
+        self.assertEqual(rows["step-up-carries-full-required-set"]["expect"]["scopes"],
+                         ["read", "write"])
+        self.assertEqual(rows["insufficient-scope-already-granted-denied"]["expect"]["code"],
+                         "access_denied")
+        for name in ("requested-outside-ceiling-invalid-configuration",
+                     "preset-outside-ceiling-invalid-configuration"):
+            self.assertEqual(rows[name]["expect"]["code"], "invalid_configuration")
+        for row in rows.values():
+            if "host_error" in row["input"]:
+                error = row["input"]["host_error"]
+                self.assertTrue(error["scopes"])
+                self.assertFalse(row["expect"].get("scopes"))
+                self.assertIn(error["callback"],
+                              ("client_selection", "token_validation", "destination"))
+                if error["callback"] == "destination":
+                    # The code this contract defines for that destination refusal.
+                    self.assertEqual(error["code"], {
+                        "registration_endpoint": "untrusted_destination",
+                        "issuer_metadata": "discovery_failed"}[error["target"]])
+
+    def test_completions(self):
+        codes = {row["code"] for row in self.vectors["recovery"]}
+        ended = set()
+        for row in self.vectors["completions"]:
+            with self.subTest(row["id"]):
+                expect = row["expect"]
+                self.assertEqual(complete_login(row["input"]), expect)
+                failed = expect.get("code") is not None or expect.get("failed", False)
+                # Every complete() error, and only an error, carries login_ended.
+                self.assertEqual(failed, "login_ended" in expect)
+                self.assertIn(expect.get("code"), codes | {None})
+                self.assert_error_scope_set(expect)
+                if expect.get("code") == "access_denied":
+                    self.assertEqual(expect["scopes"],
+                                     sorted(set(row["input"]["stored_required"])))
+                    self.assertTrue(expect["grant_persisted"] and expect["login_ended"])
+                ended.add(expect.get("login_ended"))
+        self.assertEqual(ended, {None, True, False})
+
+    def test_scope_contract_lifecycle_ids_are_listed(self):
+        ids = {row["id"] for row in self.vectors["lifecycle"]}
+        for required in ("preset-scopes-requested-not-required",
+                         "ceiling-refusal-before-network-every-path",
+                         "requested-outside-ceiling-invalid-configuration",
+                         "challenge-401-scope-requested-not-required",
+                         "malformed-challenge-scope-denied",
+                         "insufficient-scope-already-granted-denied",
+                         "complete-enforces-stored-required-set",
+                         "grant-narrower-than-required-denied",
+                         "host-policy-errors-carry-no-scopes",
+                         "complete-error-login-ended",
+                         "insufficient-scope-step-up", "step-up-required-scopes-round-trip",
+                         "prepare-required-outside-ceiling-denied",
+                         "scope-challenge-without-required-scope"):
+            self.assertIn(required, ids)
+        expects = {row["id"]: row["expect"] for row in self.vectors["lifecycle"]}
+        self.assertNotIn("diagnostics only", expects["step-up-required-scopes-round-trip"])
 
     def test_registration_keys_are_utf8_length_framed(self):
         cases = {row["id"]: row for row in self.vectors["registration_keys"]}
