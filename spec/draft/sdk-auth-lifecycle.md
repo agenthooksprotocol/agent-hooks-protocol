@@ -100,20 +100,26 @@ never ends the decision.
    outside the ceiling is this case too, never `interaction_required`,
    `provider_failed` or a native exception. When the binding or a preset is
    known, the SDK MUST decide this locally with no network I/O. An unbound
-   target MAY first make at most one protected-resource metadata fetch, which
-   client selection needs, and MUST make no authorization-server request
-   (metadata, registration, token or authorization).
+   target MAY first run one protected-resource metadata discovery, which client
+   selection needs, and MUST make no authorization-server request (metadata,
+   registration, token or authorization). That discovery is one request to the
+   challenge's `resource_metadata` URL when the challenge parses and carries
+   one; otherwise it tries the RFC 9728 well-known locations in MCP's order,
+   endpoint-path-specific then origin-root, so at most two requests. An
+   unusable challenge (unparseable, or without `resource_metadata`) never fails
+   discovery; it falls back to those locations.
 5. **Server disagrees with the record** (403 `insufficient_scope` only). If
    the grant's generation equals `sent`, or `sent` is none, and
    granted ∩ C ⊇ R, fail `access_denied` with R; the SDK MUST NOT replay the
    token or create a login. Otherwise, if the current generation differs from
    `sent` and granted ∩ C ⊇ R, return **use** with the current token.
 6. **Use.** If the token is valid and granted ∩ C ⊇ R, return **use**.
-7. **Refresh.** If a refresh token is present and the previous granted ⊇ R,
-   refresh. Record the response scopes ∩ the previous granted. If the result
-   does not cover R, fail `access_denied` with R; the grant and any rotated
-   refresh token are still persisted.
-8. **Client credentials.** Acquire, requesting
+7. **Refresh** (PKCE grants only). If a refresh token is present and the
+   previous granted ⊇ R, refresh. Record the response scopes ∩ the previous
+   granted. If the result does not cover R, fail `access_denied` with R; the
+   grant and any rotated refresh token are still persisted.
+8. **Client credentials.** Reissue the grant with current client credentials,
+   even when it holds a refresh token, requesting
    previous ∪ ((S ∪ R ∪ P′) ∩ C). Record the response scopes ∩ (previous ∪ C).
    If the result does not cover R, fail `access_denied` with R; the grant is
    still persisted.
@@ -145,8 +151,9 @@ consent includes the broader scopes.
    invalid callback. An invalid callback fails `access_denied` with no scopes
    and the flag false, and MUST NOT consume the login, so a stray callback
    cannot burn a valid pending operation.
-3. **Host policy** before the claim: client selection, a client source that
-   is no longer permitted, and destination checks. A failure keeps the host's
+3. **Host policy** before the claim, for every valid callback including a
+   consent denial: client selection, a client source that is no longer
+   permitted, and destination checks. A failure keeps the host's
    code (`invalid_configuration` when the client source is no longer
    permitted), carries no scopes, leaves the login pending and sets the flag
    false.
@@ -170,7 +177,8 @@ consent includes the broader scopes.
    ceiling stored on the login). If granted ∩ current C does not cover the
    stored R, fail `access_denied` with the stored R. A pending record written
    by an older release has no stored R; for it, use the prepare-time H if the
-   record holds it, else the current H.
+   record holds that field, even when it is empty, and the current H only when
+   the field is absent.
 
 The login-ended flag is a boolean on every error from `complete`: true when the
 pending login named by the callback's `state` no longer exists after the call.
@@ -179,6 +187,25 @@ Native names are TS `loginEnded`, Python `login_ended`, Go `LoginEnded` and
 Rust `login_ended()`. It is host-facing SDK behaviour, not a wire field, and
 does not change error codes or recovery. No implicit listener or browser is
 created.
+
+### Renewal errors
+
+Token-endpoint errors from a refresh ([decide](#decide) step 7) or a
+client-credentials grant (step 8) map as follows; none carries scopes.
+
+* `invalid_grant`: `refresh_rejected` for a PKCE refresh
+  ([refresh failures](#refresh-failures-and-interaction-lifetime)), and
+  `credential_unavailable` for a client-credentials grant.
+* `unauthorized_client`: `credential_unavailable`.
+* `invalid_client`, by client source as in [complete](#complete) step 6:
+  `credential_unavailable` for a pre-registered client, `invalid_configuration`
+  for a CIMD client, and `interaction_required` for a PKCE DCR client. A
+  client-credentials DCR client re-registers once and re-acquires; a repeated
+  `invalid_client` is `credential_unavailable`
+  ([DCR](#dynamic-client-registration)).
+* Every other token-endpoint error (including `access_denied` and
+  `invalid_scope`), an unreachable or 404 endpoint, and an invalid token
+  response: `provider_failed`.
 
 ### Classify
 
@@ -634,7 +661,7 @@ Callbacks are handled by [complete](#complete).
 ## Executable coverage
 
 The shared JSON contains recovery, key, response-policy, scope-decision,
-completion, client-selection and registration-response vectors and a
+completion, token-error, client-selection and registration-response vectors and a
 **lifecycle coverage manifest**, not an
 OAuth implementation or executable lifecycle runner.
 The protocol fixture validator checks internal consistency only; it does not
@@ -645,10 +672,10 @@ that every `lifecycle` id in the vendored fixture maps to an existing native
 test. (Recommended, non-normative: a test or CI step checking that the
 vendored fixture is byte-identical to this file at the SDK's pinned protocol ref.)
 
-Each SDK MUST run every `scope_decisions` and `completions` vector against its
-[decide](#decide) and [complete](#complete) implementations in a table-driven
-test. Every field a vector defines MUST be asserted, and a field not defined
-here MUST fail the run.
+Each SDK MUST run every `scope_decisions`, `completions` and `token_errors`
+vector against its [decide](#decide), [complete](#complete) and [renewal
+error](#renewal-errors) implementations in a table-driven test. Every field a
+vector defines MUST be asserted, and a field not defined here MUST fail the run.
 
 A vector's optional `requires` lists optional SDK features it depends on. It
 applies only to SDKs with all of them; an SDK without one MUST skip the vector
@@ -665,7 +692,11 @@ Its `input` members are:
 * `flow`: `authorization_code_pkce` or `client_credentials`.
 * `path`: the entry point: `fresh` (first use of a target), `cached`,
   `prepare`, `credential` (lookup and delivery), `challenge` or `preemptive`.
-  `op` is `prepare` exactly when `path` is `prepare`.
+  `op` is `prepare` exactly when `path` is `prepare`. With a `stored` or
+  `preset` binding, `fresh` is the first credential lookup. With an `unbound`
+  target, `fresh` is an anonymous request (no token sent) that receives the
+  vector's 401 and is handled by `challenge`; such a vector has `challenge`
+  with status 401 and `sent` `null`, and every SDK runs it that way.
 * `binding`: `stored` (a stored binding), `preset` (an explicit preset) or
   `unbound`.
 * `requested` (S), `host_required` (H) and `explicit` (E): scope lists.
@@ -702,7 +733,11 @@ Its `expect` members are:
   count requests made after the inputs (after the challenged response on the
   challenge path): authorization-server requests (metadata, registration, token
   and authorization), and all network requests exactly (`network_calls`) or at
-  most (`network_calls_max`, for an `unbound` target).
+  most (`network_calls_max`, for an `unbound` target). For an `unbound`
+  target `network_calls_max` counts the protected-resource metadata
+  discovery's requests: 1 when the challenge parses and carries
+  `resource_metadata`, otherwise 2 (the path-specific and origin-root
+  well-known locations).
 
 A `completions` vector has `id`, optional `requires`, `input` and `expect`.
 Its `input` members are:
@@ -726,14 +761,23 @@ Its `input` members are:
   `invalid_client`, `unauthorized_client`, `access_denied`, `invalid_scope`,
   `server_error`), `unreachable`, `not_found` (HTTP 404) or `invalid_response`.
 * `stored_required`: the stored R, or `null` for a record written by an older
-  release; then `prepare_time_host_required` (when the record holds it) and
-  `current_host_required` apply.
+  release; then `prepare_time_host_required` (when the record holds it, even
+  empty) and `current_host_required` apply.
 * `granted`: the recorded granted scopes after the exchange; `ceiling`: the
   current C.
 
 Its `expect` members are `code` (`null` for success), `scopes` (as for
 `scope_decisions`), `login_ended` (present exactly when `code` is not `null`)
 and `grant_persisted` (whether the grant was written).
+
+A `token_errors` vector has `id`, optional `requires`, `input` and `expect`,
+for a token-endpoint error outside `complete` ([renewal errors](#renewal-errors)).
+Its `input` members are `grant_type` (`refresh`, a PKCE refresh, or
+`client_credentials`), `client_source` (as for `completions`; `cimd` only with
+`refresh`) and `error` (a value of `completions` `exchange` other than `ok`).
+Its `expect` members are `code` and, present exactly for a client-credentials
+DCR `invalid_client`, `reregistrations` (the registrations sent before the
+repeated `invalid_client`). A `token_errors` outcome never carries scopes.
 
 Native APIs and test names may differ; the semantic vectors and observed
 behaviors may not.

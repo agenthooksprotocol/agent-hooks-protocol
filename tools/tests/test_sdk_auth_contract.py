@@ -208,6 +208,13 @@ def scope_list_valid(scopes):
     return all(isinstance(s, str) and SCOPE_TOKEN.fullmatch(s) for s in scopes)
 
 
+def unbound_discovery_requests(challenge):
+    """One protected-resource discovery: the challenge's resource_metadata when
+    it parses and carries one, else the path-specific and root well-knowns."""
+    params = bearer_params(challenge["www_authenticate"]) if challenge else None
+    return 1 if params and "resource_metadata" in params else 2
+
+
 def decide_scope(value):
     """Reference decide(): steps 1-9 of the SDK scope decision, in order."""
     if "host_error" in value:
@@ -228,7 +235,8 @@ def decide_scope(value):
         retired = {"retired": current}
         token_valid = token_valid and not current
     local = {"authorization_server_requests": 0}
-    local.update({"network_calls_max": 1} if value["binding"] == "unbound" else {"network_calls": 0})
+    local.update({"network_calls_max": unbound_discovery_requests(challenge)}
+                 if value["binding"] == "unbound" else {"network_calls": 0})
 
     def fail(code, scopes=None, required=None):
         out = dict(retired, code=code, **local)
@@ -276,8 +284,9 @@ def decide_scope(value):
     # 6. Use.
     if token_valid and covered:
         return dict(retired, code=None, action="use", required=sorted(required))
-    # 7. Refresh.
-    if grant is not None and grant["refresh"] and required <= granted:
+    # 7. Refresh, PKCE grants only; client credentials reissue at step 8.
+    if (value["flow"] == "authorization_code_pkce" and grant is not None
+            and grant["refresh"] and required <= granted):
         return dict(retired, code=None, action="refresh", required=sorted(required))
     previous = granted
     # 8. Client credentials, with the same-operation hint only.
@@ -348,6 +357,24 @@ def complete_login(value):
     return {"code": None, "grant_persisted": True}
 
 
+def token_error(value):
+    """Reference renewal-error mapping for refresh and client-credentials grants."""
+    grant_type, source, error = value["grant_type"], value["client_source"], value["error"]
+    if error == "invalid_grant":
+        return {"code": "refresh_rejected" if grant_type == "refresh" else "credential_unavailable"}
+    if error == "unauthorized_client":
+        return {"code": "credential_unavailable"}
+    if error == "invalid_client":
+        if grant_type == "client_credentials" and source == "dcr":
+            # Re-register once, re-acquire once; a repeat is credential_unavailable.
+            return {"code": "credential_unavailable", "reregistrations": 1}
+        return {"code": {"preregistered": "credential_unavailable", "cimd": "invalid_configuration",
+                         "dcr": "interaction_required"}[source]}
+    return {"code": "provider_failed"}
+
+
+TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error"}
+TOKEN_ERROR_EXPECT = {"code", "reregistrations"}
 SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
                         "host_required", "explicit", "grant", "sent", "challenge",
                         "prior_401_hint", "host_error"}
@@ -537,7 +564,19 @@ class SDKAuthContractTests(unittest.TestCase):
         for row in refusals:
             unbound = row["input"]["binding"] == "unbound"
             self.assertEqual(row["expect"].get("network_calls_max" if unbound else "network_calls"),
-                             1 if unbound else 0)
+                             unbound_discovery_requests(row["input"].get("challenge")) if unbound else 0)
+        # An unbound target is an anonymous request answered by the vector's 401.
+        unbound = [row for row in rows.values() if row["input"]["binding"] == "unbound"]
+        for row in unbound:
+            self.assertEqual(row["input"]["path"], "fresh")
+            self.assertEqual(row["input"]["challenge"]["status"], 401)
+            self.assertIsNone(row["input"]["sent"])
+            self.assertIsNone(row["input"]["grant"])
+        self.assertEqual({row["expect"]["network_calls_max"] for row in unbound}, {1, 2})
+        self.assertEqual(rows["unbound-unparseable-challenge-denied"]["expect"]["scopes"], [])
+        self.assertEqual(rows["client-credentials-with-refresh-token-reissues"]["expect"]["action"],
+                         "acquire")
+        self.assertTrue(rows["client-credentials-with-refresh-token-reissues"]["input"]["grant"]["refresh"])
         for name in ("empty", "repeated-space", "leading-space", "trailing-space",
                      "tab-separator", "invalid-character", "duplicated-parameter",
                      "two-bearer-challenges", "bad-auth-param", "401"):
@@ -637,9 +676,43 @@ class SDKAuthContractTests(unittest.TestCase):
                          {"code": "access_denied", "scopes": [], "login_ended": False,
                           "grant_persisted": False})
         self.assertIsNone(rows["complete-with-server-added-params"]["expect"]["code"])
+        # Host policy runs before the claim even for a consent denial.
+        for name in ("complete-consent-denied-source-not-permitted-login-pending",
+                     "complete-consent-denied-client-selection-failure-login-pending"):
+            self.assertEqual(rows[name]["input"]["callback"], "denied")
+            self.assertFalse(rows[name]["expect"]["login_ended"])
+            self.assertNotIn("scopes", rows[name]["expect"])
+        # An empty prepare-time H is used, not the current H.
+        empty = rows["complete-legacy-record-empty-prepare-time-host-required"]
+        self.assertEqual(empty["input"]["prepare_time_host_required"], [])
+        self.assertTrue(empty["input"]["current_host_required"])
+        self.assertIsNone(empty["expect"]["code"])
         legacy = [row for row in rows.values() if row["input"]["stored_required"] is None]
         self.assertEqual({"prepare_time_host_required" in row["input"] for row in legacy},
                          {True, False})
+
+    def test_token_errors(self):
+        codes = {row["code"] for row in self.vectors["recovery"]}
+        rows = self.vectors["token_errors"]
+        for row in rows:
+            with self.subTest(row["id"]):
+                self.assertLessEqual(set(row), VECTOR_KEYS)
+                self.assertEqual(set(row["input"]), TOKEN_ERROR_INPUT)
+                self.assertLessEqual(set(row["expect"]), TOKEN_ERROR_EXPECT)
+                self.assertEqual(token_error(row["input"]), row["expect"])
+                self.assertIn(row["expect"]["code"], codes)
+                self.assertIn(row["input"]["error"], TOKEN_ENDPOINT_ERRORS)
+                self.assertFalse(row["input"]["client_source"] == "cimd"
+                                 and row["input"]["grant_type"] != "refresh")
+        # Every error code is covered for both grant types.
+        for grant_type in ("refresh", "client_credentials"):
+            self.assertEqual({row["input"]["error"] for row in rows
+                              if row["input"]["grant_type"] == grant_type},
+                             set(TOKEN_ENDPOINT_ERRORS))
+        self.assertEqual({(row["input"]["grant_type"], row["input"]["client_source"]) for row in rows
+                          if row["input"]["error"] == "invalid_client"},
+                         {("refresh", "preregistered"), ("refresh", "cimd"), ("refresh", "dcr"),
+                          ("client_credentials", "preregistered"), ("client_credentials", "dcr")})
 
     def test_optional_feature_requirements(self):
         """requires names optional SDK features; untagged vectors apply to every SDK."""
@@ -661,7 +734,8 @@ class SDKAuthContractTests(unittest.TestCase):
         for feature in OPTIONAL_FEATURES:
             # Features are defined in the spec prose, not only the JSON description.
             self.assertIn("`%s`" % feature, spec)
-        for field in SCOPE_DECISION_INPUT | SCOPE_DECISION_EXPECT | COMPLETION_INPUT | COMPLETION_EXPECT:
+        for field in (SCOPE_DECISION_INPUT | SCOPE_DECISION_EXPECT | COMPLETION_INPUT
+                      | COMPLETION_EXPECT | TOKEN_ERROR_INPUT | TOKEN_ERROR_EXPECT):
             self.assertIn("`%s`" % field, spec, field)
         # Rule 11 stays covered without the token-validation callback.
         untagged = [row["input"]["host_error"] for row in self.vectors["scope_decisions"]
@@ -694,7 +768,8 @@ class SDKAuthContractTests(unittest.TestCase):
                          "scope-challenge-without-required-scope",
                          "entry-points-route-through-decide", "transport-challenge-routing",
                          "replay-rejection-retires-token",
-                         "complete-token-endpoint-errors-classified"):
+                         "complete-token-endpoint-errors-classified",
+                         "renewal-token-errors-classified"):
             self.assertIn(required, ids)
         expects = {row["id"]: row["expect"] for row in self.vectors["lifecycle"]}
         self.assertNotIn("diagnostics only", expects["step-up-required-scopes-round-trip"])
