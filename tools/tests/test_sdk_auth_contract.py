@@ -265,6 +265,7 @@ def decide_scope(value):
     return dict(result, code="interaction_required", scopes=sorted(required))
 
 
+OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle"}
 CALLBACK_DEFECTS = ("redirect_mismatch", "state_mismatch", "iss_mismatch", "fragment",
                     "userinfo", "missing_code", "duplicate_param")
 
@@ -279,6 +280,12 @@ def complete_login(value):
         # Rejected before the claim: the login is still pending.
         return {"code": "access_denied", "scopes": [], "login_ended": False,
                 "grant_persisted": False}
+    if "host_error" in value:
+        # A host callback failure before the claim keeps its code, carries no
+        # scopes and leaves the login pending.
+        code = value["host_error"]["code"]
+        return dict({"code": code}, **({"scopes": []} if code in SCOPED_CODES else {}),
+                    login_ended=False, grant_persisted=False)
     if value["callback"] == "denied":
         return {"code": "access_denied", "scopes": [], "login_ended": True,
                 "grant_persisted": False}
@@ -498,10 +505,11 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertNotIn("failed", expect)
                 self.assertEqual(expect["code"] is not None, "login_ended" in expect)
                 self.assertIn(expect["code"], codes | {None})
-                # Only the invalid callback rejected before the claim leaves it pending.
+                # Only a failure before the claim leaves the login pending.
                 self.assertEqual(expect.get("login_ended") is False,
-                                 row["input"]["callback"] in CALLBACK_DEFECTS
-                                 and row["input"]["pending"] == "pending")
+                                 row["input"]["pending"] == "pending"
+                                 and (row["input"]["callback"] in CALLBACK_DEFECTS
+                                      or "host_error" in row["input"]))
                 self.assert_error_scope_set(expect)
                 if expect.get("code") == "access_denied" and expect["scopes"]:
                     # Only the stored-R scope check attaches scopes.
@@ -520,6 +528,39 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertEqual({row["input"]["handle"] for row in unknown}, {"matching", "none"})
         for row in unknown:
             self.assertEqual(row["expect"]["code"], "interaction_required")
+
+    def test_optional_feature_requirements(self):
+        """requires names optional SDK features; untagged vectors apply to every SDK."""
+        tagged = {}
+        for section, rows in self.vectors.items():
+            if not isinstance(rows, list):
+                continue
+            for row in rows:
+                if "requires" in row:
+                    self.assertTrue(row["requires"], row["id"])
+                    self.assertLessEqual(set(row["requires"]), OPTIONAL_FEATURES, row["id"])
+                    tagged[row["id"]] = set(row["requires"])
+        self.assertEqual(tagged, {
+            "host-policy-access-denied-scopes-stripped": {"token_validation_callback"},
+            "complete-invalid-callback-state-mismatch": {"complete_handle"},
+            "complete-unknown-state-with-handle": {"complete_handle"},
+        })
+        self.assertIn("requires", self.vectors["description"])
+        # Rule 11 stays covered without the token-validation callback.
+        untagged = [row["input"]["host_error"] for row in self.vectors["scope_decisions"]
+                    + self.vectors["completions"]
+                    if "host_error" in row["input"] and "requires" not in row]
+        self.assertEqual({error["callback"] for error in untagged},
+                         {"client_selection", "destination"})
+        self.assertTrue(all(error["scopes"] for error in untagged))
+        # Without a handle, unknown state is still covered.
+        rows = [row for row in self.vectors["completions"]
+                if row["input"]["pending"] == "unknown" and "requires" not in row]
+        self.assertTrue(rows)
+        # A host failure before the claim keeps the login pending.
+        pending = [row for row in self.vectors["completions"] if "host_error" in row["input"]]
+        self.assertTrue(pending and all(row["expect"]["login_ended"] is False
+                                        for row in pending))
 
     def test_scope_contract_lifecycle_ids_are_listed(self):
         ids = {row["id"] for row in self.vectors["lifecycle"]}

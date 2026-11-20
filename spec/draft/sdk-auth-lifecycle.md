@@ -500,16 +500,20 @@ exact redirect, a `state` equal to the host's handle when one is passed, no
 `error`, and no duplicated parameter. An invalid callback MUST fail with
 `access_denied` and MUST NOT consume the login, so a stray callback cannot burn
 a valid pending operation. Atomically claim a valid callback once before code
-exchange. A valid callback carrying `error` (consent denial) consumes the login
-and MUST fail with `access_denied`. After the claim, a token-endpoint `invalid_grant` MUST
-fail with `interaction_required`. A token-endpoint `invalid_client` fails by
-client source: `credential_unavailable` for a pre-registered client (the host
-repairs its client information), `invalid_configuration` for a CIMD client
+exchange. A host callback or policy failure before the claim (for example client
+selection or destination policy) keeps its own code, carries no scopes and MUST
+NOT consume the login. A valid callback carrying `error` (consent denial)
+consumes the login and MUST fail with `access_denied`. After the claim, a
+token-endpoint `invalid_grant` MUST fail with `interaction_required`. A
+token-endpoint `invalid_client` fails by client source: `credential_unavailable`
+for a pre-registered client (the host repairs its client information),
+`invalid_configuration` for a CIMD client
 ([CIMD](#client-id-metadata-documents)), and `interaction_required` for a DCR
-client, whose next `prepare` registers again ([DCR](#dynamic-client-registration)).
-Any other token-endpoint failure or an invalid token response MUST fail with
-`provider_failed`. The login is consumed in every case. These errors carry no
-scopes. No implicit listener or browser is created.
+client, whose next `prepare` registers again
+([DCR](#dynamic-client-registration)). Any other token-endpoint failure or an
+invalid token response MUST fail with `provider_failed`. The login is consumed
+in every case. These errors carry no scopes. No implicit listener or browser is
+created.
 
 A pending login stores the R it was prepared with: H at `prepare` time ∪ E ∪
 any Ch in the `prepare` context. `complete()` MUST succeed only when the
@@ -520,11 +524,11 @@ refresh token are still persisted, and the login is consumed.
 Every error thrown by `complete()` MUST carry a boolean login-ended flag: true
 when the pending login named by the callback's `state` no longer exists after
 the call (it was consumed, or it had expired or was unknown); false when it is
-still pending, which is the case only after an invalid callback rejected with
-`access_denied` before the claim. Native names are TS `loginEnded`, Python
-`login_ended`, Go `LoginEnded` and Rust `login_ended()`. The flag is
-host-facing SDK behaviour, not a wire field, and does not change error codes or
-recovery.
+still pending, which is the case only after a failure before the claim: an
+invalid callback (`access_denied`) or a host callback or policy failure.
+Native names are TS `loginEnded`, Python `login_ended`, Go `LoginEnded` and
+Rust `login_ended()`. The flag is host-facing SDK behaviour, not a wire field,
+and does not change error codes or recovery.
 
 ## Challenges, step-up and replay
 
@@ -575,8 +579,11 @@ prove any SDK's persistence, network behavior, cancellation or consent lifecycle
 Each SDK vendors this file byte-for-byte and supplies native tests at real
 host-network/store/transport boundaries. Each SDK MUST have a test asserting
 that every `lifecycle` id in the vendored fixture maps to an existing native
-test. (Recommended, non-normative: a test or CI step checking that the vendored
-fixture is byte-identical to this file at the SDK's pinned protocol ref.)
+test. A vector whose `requires` names an optional SDK feature applies only to
+SDKs with that feature; an SDK without it MUST skip the vector and MUST NOT
+remap it onto a different mechanism. Every vector without `requires` applies to
+every SDK. (Recommended, non-normative: a test or CI step checking that the
+vendored fixture is byte-identical to this file at the SDK's pinned protocol ref.)
 
 Native APIs and test names may differ; the semantic vectors and observed
 behaviors may not.
