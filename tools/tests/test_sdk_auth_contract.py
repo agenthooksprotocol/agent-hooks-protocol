@@ -301,7 +301,8 @@ def decide_scope(value):
                 required=sorted(required))
 
 
-OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle"}
+OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle",
+                     "legacy_prepare_time_host_required"}
 CALLBACK_DEFECTS = ("redirect_mismatch", "redirect_query_mismatch", "state_duplicated",
                     "iss_mismatch", "fragment", "userinfo", "missing_code", "code_and_error",
                     "duplicate_param", "unparseable")
@@ -736,7 +737,22 @@ class SDKAuthContractTests(unittest.TestCase):
             "host-policy-access-denied-scopes-stripped": {"token_validation_callback"},
             "complete-handle-names-other-login": {"complete_handle"},
             "complete-unknown-state-with-handle": {"complete_handle"},
+            "complete-legacy-record-prepare-time-host-required": {"legacy_prepare_time_host_required"},
+            "complete-legacy-record-empty-prepare-time-host-required":
+                {"legacy_prepare_time_host_required"},
         })
+        # Vectors whose record holds a prepare-time H need that feature; the
+        # absent-field fallback stays untagged so every SDK tests it.
+        for row in self.vectors["completions"]:
+            holds = "prepare_time_host_required" in row["input"]
+            self.assertEqual(holds, "legacy_prepare_time_host_required" in row.get("requires", []),
+                             row["id"])
+        fallback = [row for row in self.vectors["completions"]
+                    if row["input"]["stored_required"] is None and "requires" not in row]
+        self.assertEqual([row["id"] for row in fallback],
+                         ["complete-legacy-record-current-host-required"])
+        self.assertNotIn("prepare_time_host_required", fallback[0]["input"])
+        self.assertIn("legacy_prepare_time_host_required", self.vectors["description"])
         spec = (ROOT / "spec/draft/sdk-auth-lifecycle.md").read_text()
         for feature in OPTIONAL_FEATURES:
             # Features are defined in the spec prose, not only the JSON description.

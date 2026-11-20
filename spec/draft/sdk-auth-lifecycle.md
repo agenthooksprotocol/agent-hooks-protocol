@@ -685,6 +685,10 @@ and MUST NOT remap it onto a different mechanism. Every vector without
 * `token_validation_callback`: the SDK exposes a host token-validation
   callback.
 * `complete_handle`: the SDK's `complete` accepts a pending-login handle.
+* `legacy_prepare_time_host_required`: the SDK's previous release persisted
+  the prepare-time host-required scopes on pending logins. An SDK without it
+  MUST NOT persist a new field only to satisfy those vectors; the absent-field
+  fallback to the current H applies to every SDK.
 
 A `scope_decisions` vector has `id`, optional `requires`, `input` and `expect`.
 Its `input` members are:
