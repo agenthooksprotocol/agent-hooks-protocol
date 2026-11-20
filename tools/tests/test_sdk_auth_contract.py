@@ -220,11 +220,18 @@ def decide_scope(value):
     grant, challenge = value["grant"], value.get("challenge")
     status = challenge["status"] if challenge else None
     sent = value.get("sent")
+    # 0. A 401 retires the sent generation, if current, before every other step.
+    retired = {}
+    token_valid = grant is not None and grant["token"] == "valid"
+    if status == 401:
+        current = grant is not None and sent is not None and grant["generation"] == sent
+        retired = {"retired": current}
+        token_valid = token_valid and not current
     local = {"authorization_server_requests": 0}
     local.update({"network_calls_max": 1} if value["binding"] == "unbound" else {"network_calls": 0})
 
-    def fail(code, scopes=None, required=None, **extra):
-        out = dict(extra, code=code, **local)
+    def fail(code, scopes=None, required=None):
+        out = dict(retired, code=code, **local)
         if code in SCOPED_CODES:
             out["scopes"] = sorted(scopes or ())
         if required is not None:
@@ -253,18 +260,12 @@ def decide_scope(value):
             step_up = set(scopes or ())
         else:
             hint = set(scopes or ())
-    # 3. 401: retire the sent generation if current; the hint is P & C.
-    retired = {}
-    token_valid = grant is not None and grant["token"] == "valid"
-    if status == 401:
-        current = grant is not None and sent is not None and grant["generation"] == sent
-        retired = {"retired": current}
-        token_valid = token_valid and not current
-        hint &= ceiling
+    # 3. 401 hint: P & C, for a same-operation client-credentials acquisition only.
+    hint &= ceiling
     required = host | explicit | step_up
     # 4. Ceiling.
     if not required <= ceiling:
-        return fail("access_denied", required, required, **retired)
+        return fail("access_denied", required, required)
     granted = set(grant["granted"]) if grant else set()
     covered = grant is not None and required <= granted & ceiling
     # 5. Server disagrees with the record.
@@ -309,10 +310,11 @@ def complete_login(value):
         return dict(out, login_ended=ended, grant_persisted=persisted)
 
     # 1. State lookup, before any host callback.
-    if value["pending"] != "pending" or value["handle"] == "other":
+    if value["pending"] != "pending":
         return error("interaction_required", True)
-    # 2. Callback validation; the login stays pending.
-    if value["callback"] in CALLBACK_DEFECTS:
+    # 2. Callback validation (a handle naming another login is invalid); the
+    # login named by state stays pending.
+    if value["callback"] in CALLBACK_DEFECTS or value["handle"] == "other":
         return error("access_denied", False)
     # 3. Host policy before the claim.
     if not value["source_permitted"]:
@@ -500,10 +502,13 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertEqual(expect["code"] is None, "action" in expect)
                 self.assertEqual(expect.get("action") in ("acquire", "login"),
                                  "acquisition_scopes" in expect)
+                # Step 0: every 401 reports retirement, whatever the outcome.
                 self.assertEqual(value.get("challenge", {}).get("status") == 401
-                                 and "host_error" not in value
-                                 and expect["code"] != "invalid_configuration"
-                                 and "required" in expect, "retired" in expect)
+                                 and "host_error" not in value, "retired" in expect)
+                if "retired" in expect:
+                    self.assertEqual(expect["retired"],
+                                     value["grant"] is not None
+                                     and value["sent"] == value["grant"]["generation"])
                 self.assertFalse("network_calls" in expect and "network_calls_max" in expect)
                 if "network_calls" in expect or "network_calls_max" in expect:
                     self.assertEqual(expect["authorization_server_requests"], 0)
@@ -537,13 +542,16 @@ class SDKAuthContractTests(unittest.TestCase):
                      "tab-separator", "invalid-character", "duplicated-parameter",
                      "two-bearer-challenges", "bad-auth-param", "401"):
             self.assertEqual(rows["malformed-challenge-scope-" + name]["expect"]["scopes"], [])
+        # Step 0 retires before failures decided at steps 1 and 2.
+        for name in ("malformed-challenge-scope-401", "challenge-401-invalid-configuration-retires-first"):
+            self.assertTrue(rows[name]["expect"]["retired"])
         # A 401 scope never becomes a requirement or an access_denied.
         for row in rows.values():
             challenge = row["input"].get("challenge")
             if challenge and challenge["status"] == 401:
                 params = bearer_params(challenge["www_authenticate"])
                 scopes = challenge_scope(params["scope"]) if params and "scope" in params else []
-                if scopes:
+                if scopes and "required" in row["expect"]:
                     self.assertEqual(set(row["expect"]["required"]),
                                      set(row["input"]["host_required"]) | set(row["input"]["explicit"]))
                     self.assertNotEqual(row["expect"]["code"], "access_denied")
@@ -624,6 +632,10 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertEqual(rows[name]["expect"]["code"], "interaction_required")
             self.assertTrue(rows[name]["expect"]["login_ended"])
         self.assertIn("host_error", rows["complete-unknown-state-failing-host-callback"]["input"])
+        # A handle naming another login is an invalid callback: both logins stay pending.
+        self.assertEqual(rows["complete-handle-names-other-login"]["expect"],
+                         {"code": "access_denied", "scopes": [], "login_ended": False,
+                          "grant_persisted": False})
         self.assertIsNone(rows["complete-with-server-added-params"]["expect"]["code"])
         legacy = [row for row in rows.values() if row["input"]["stored_required"] is None]
         self.assertEqual({"prepare_time_host_required" in row["input"] for row in legacy},

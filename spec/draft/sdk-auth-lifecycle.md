@@ -73,8 +73,13 @@ scope-related error code.
 ### Decide
 
 `decide(op, config, grant, sent, challenge)` returns exactly one outcome. The
-steps run in this order; the first that matches wins.
+steps run in this order; the first that matches wins. Step 0 runs first and
+never ends the decision.
 
+0. **401 retires first.** On a 401, retire generation `sent` if it is still the
+   current generation. This happens before every other step, whatever the
+   outcome, including a malformed or unparseable challenge and a configuration
+   failure.
 1. **Configuration.** Fail `invalid_configuration` with no scopes if S ⊄ C, if
    the preset's `scopes` is present and differs from S, or if S, C, H or E
    contains an invalid scope token. This is an SDK auth error, never a native
@@ -87,8 +92,8 @@ steps run in this order; the first that matches wins.
    grammar is malformed. Fail `access_denied` with no scopes for a 403 that is
    not `insufficient_scope`, and for a 403 `insufficient_scope` without `scope`
    when H ∪ E is empty.
-3. **401.** Retire generation `sent` if it is still the current generation.
-   The hint is P′ = P ∩ C. It is used only by a client-credentials acquisition
+3. **401 hint.** The token was already retired at step 0. The hint is
+   P′ = P ∩ C. It is used only by a client-credentials acquisition
    in this same operation (step 8). It MUST NOT be stored, added to R, or cause
    `access_denied`.
 4. **Ceiling.** If R ⊄ C, fail `access_denied` with R. A host-required scope
@@ -127,12 +132,13 @@ consent includes the broader scopes.
 
 1. **Look up the pending login by the callback's `state`**, before any host
    callback runs. If it is absent, unknown, expired or ended, fail
-   `interaction_required` with no scopes and the login-ended flag true. An SDK
-   whose `complete` takes a pending-login handle fails the same way when the
-   handle names a different login.
-2. **Validate the callback.** It MUST match the exact redirect (scheme, host,
-   port, path and the redirect's own query parameters; parameters the
-   authorization server adds, such as `session_state`, are allowed), contain no
+   `interaction_required` with no scopes and the login-ended flag true.
+2. **Validate the callback.** For an SDK whose `complete` takes a pending-login
+   handle, a handle that names a different login than the callback's live
+   `state` is an invalid callback, and both logins stay pending. The callback
+   MUST match the exact redirect (scheme, host, port, path and the redirect's
+   own query parameters; parameters the authorization server adds, such as
+   `session_state`, are allowed), contain no
    fragment or userinfo, carry exactly one `state`, an `iss` equal to the issuer
    when present or required by the authorization server, exactly one of `code`
    or `error`, and no duplicated parameter. An unparseable callback URL is an
@@ -168,6 +174,7 @@ consent includes the broader scopes.
 
 The login-ended flag is a boolean on every error from `complete`: true when the
 pending login named by the callback's `state` no longer exists after the call.
+It always describes that login, never the one a host handle names.
 Native names are TS `loginEnded`, Python `login_ended`, Go `LoginEnded` and
 Rust `login_ended()`. It is host-facing SDK behaviour, not a wire field, and
 does not change error codes or recovery. No implicit listener or browser is
@@ -688,7 +695,8 @@ Its `expect` members are:
   `acquire` or `login` (a pending login is created).
 * `acquisition_scopes`: present exactly when `action` is `acquire` or `login`;
   the sorted scopes requested.
-* `retired`: present exactly for a 401; whether generation `sent` was retired.
+* `retired`: present exactly for a 401, whatever the outcome; whether
+  generation `sent` was retired at [decide](#decide) step 0.
 * `authorization_server_requests` and either `network_calls` or
   `network_calls_max`: present on failures decided at steps 1, 2, 4 and 5. They
   count requests made after the inputs (after the challenged response on the
@@ -702,7 +710,7 @@ Its `input` members are:
 * `pending`: the login named by the callback's `state`: `pending`, `expired`,
   `ended`, `unknown`, or `absent` (no `state`).
 * `handle`: the handle the host passes: `matching`, `other` (names a different
-  login) or `none`. An SDK without `complete_handle` passes none for `matching`.
+  login than the callback's live `state`; an invalid callback) or `none`. An SDK without `complete_handle` passes none for `matching`.
 * `client_source`: `preregistered`, `cimd` or `dcr`.
 * `source_permitted`: whether host policy still permits that client source.
 * `callback`: `valid`, `valid_with_server_params` (adds `session_state`),

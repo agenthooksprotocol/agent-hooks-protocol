@@ -2443,8 +2443,45 @@
         }
       },
       "expect": {
+        "retired": true,
         "code": "access_denied",
         "scopes": [],
+        "authorization_server_requests": 0,
+        "network_calls": 0
+      }
+    },
+    {
+      "id": "challenge-401-invalid-configuration-retires-first",
+      "input": {
+        "flow": "client_credentials",
+        "path": "challenge",
+        "binding": "stored",
+        "requested": [
+          "read",
+          "admin"
+        ],
+        "ceiling": [
+          "read"
+        ],
+        "host_required": [],
+        "explicit": [],
+        "grant": {
+          "generation": 1,
+          "granted": [
+            "read"
+          ],
+          "token": "valid",
+          "refresh": false
+        },
+        "sent": 1,
+        "challenge": {
+          "status": 401,
+          "www_authenticate": "Bearer scope=\"read\""
+        }
+      },
+      "expect": {
+        "retired": true,
+        "code": "invalid_configuration",
         "authorization_server_requests": 0,
         "network_calls": 0
       }
@@ -3299,9 +3336,9 @@
         ]
       },
       "expect": {
-        "code": "interaction_required",
+        "code": "access_denied",
         "scopes": [],
-        "login_ended": true,
+        "login_ended": false,
         "grant_persisted": false
       }
     },
@@ -4432,7 +4469,7 @@
     },
     {
       "id": "challenge-401-scope-requested-not-required",
-      "expect": "a 401 retires the sent generation if current; its in-ceiling scope hint is used only by a client-credentials acquisition in the same operation, never stored, never added to R and never yields access_denied"
+      "expect": "a 401 retires the sent generation, if current, before every other decision step and whatever the outcome (including a malformed challenge); its in-ceiling scope hint is used only by a client-credentials acquisition in the same operation, never stored, never added to R and never yields access_denied"
     },
     {
       "id": "malformed-challenge-scope-denied",
@@ -4456,7 +4493,7 @@
     },
     {
       "id": "complete-error-login-ended",
-      "expect": "every complete() error carries login_ended: state lookup runs before any host callback (absent, unknown, expired or ended state, or a handle naming another login: interaction_required/true); invalid callback access_denied/false; pre-claim host policy keeps its code (client source no longer permitted: invalid_configuration)/false; an uncertain claim re-reads the store (gone: true, otherwise false); after the claim every error is /true"
+      "expect": "every complete() error carries login_ended: state lookup runs before any host callback (absent, unknown, expired or ended state: interaction_required/true); invalid callback, including a handle naming another login than the live state, access_denied/false with both logins pending; login_ended always describes the login named by state; pre-claim host policy keeps its code (client source no longer permitted: invalid_configuration)/false; an uncertain claim re-reads the store (gone: true, otherwise false); after the claim every error is /true"
     },
     {
       "id": "entry-points-route-through-decide",
