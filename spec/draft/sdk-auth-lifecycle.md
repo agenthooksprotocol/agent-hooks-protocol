@@ -42,8 +42,10 @@ Only `access_denied` and `interaction_required` carry a scope set; see
 
 An SDK keeps these sets distinct:
 
-* **Requested scopes**: the client's configured scopes and an OAuth binding
-  preset's optional `scopes`. They are requested, never required.
+* **Requested scopes**: the client's configured scopes. An explicit OAuth
+  preset's optional `scopes` are the selected client's configured scopes; a
+  preset whose `scopes` differ is `invalid_configuration`, like any other
+  mismatched preset constraint. They are requested, never required.
 * **Ceiling**: the caller's allowed scopes. It defaults to the requested scopes.
 * **Required set** `R = H ∪ E ∪ Ch`: the host-required scopes configured for the
   client (H), the explicit required scopes passed to `prepare` (E), and the
@@ -51,9 +53,9 @@ An SDK keeps these sets distinct:
   (Ch; see [challenges](#challenges-step-up-and-replay)). Only R is mandatory for
   an operation.
 
-Requested scopes, including preset scopes, MUST NOT be added to R or to any
-error's scope set. A grant that lacks them still satisfies an operation whose R
-is covered.
+Requested scopes, including an explicit preset's `scopes`, MUST NOT be added
+to R or to any error's scope set. A grant that lacks them still satisfies an
+operation whose R is covered.
 
 A requested scope outside the ceiling is a configuration error: the SDK MUST
 fail with `invalid_configuration`, raised as an SDK auth error, never as a
@@ -61,8 +63,12 @@ native exception or `provider_failed`, and MUST NOT drop the scope silently.
 
 If R contains a scope outside the ceiling, the operation MUST fail with
 `access_denied` carrying R. The SDK MUST make this decision locally, before any
-network I/O, on every path: a fresh or cached binding, `prepare`, credential
-lookup and delivery, challenge handling, and preemptive credential lookup. A
+authorization-server request (metadata, registration, token or authorization),
+on every path: a fresh or cached binding, `prepare`, credential lookup and
+delivery, challenge handling, and preemptive credential lookup. When the
+binding or an explicit preset is already known, the SDK MUST make it with no
+network I/O at all. An unbound target first learns its client, and so its
+ceiling, through protected-resource discovery and host client selection. A
 host-required scope outside the ceiling is this case too, never
 `interaction_required`, `provider_failed` or a native exception.
 
@@ -485,10 +491,25 @@ completion (a claimed valid callback, including consent denial), `cancel`
 `interaction_required`. `cancel` never deletes a valid stored grant. All SDKs
 expose `cancel`.
 
-Validate the callback's `state`, issuer and exact redirect before consuming a
-pending login. A stray invalid callback cannot burn a valid pending operation.
-Atomically claim a valid callback once before code exchange; valid consent
-denial consumes that operation. No implicit listener or browser is created.
+`complete()` first finds the pending login named by the callback's `state`. If
+there is none (the `state` is absent or unknown, or its login has expired or
+ended), it MUST fail with `interaction_required`, whatever pending-login handle
+the host passes. It then validates the callback before claiming the login: the
+exact redirect, a `state` equal to the host's handle when one is passed, no
+`iss` other than the issuer, no fragment or userinfo, exactly one of `code` or
+`error`, and no duplicated parameter. An invalid callback MUST fail with
+`access_denied` and MUST NOT consume the login, so a stray callback cannot burn
+a valid pending operation. Atomically claim a valid callback once before code
+exchange. A valid callback carrying `error` (consent denial) consumes the login
+and MUST fail with `access_denied`. After the claim, a token-endpoint `invalid_grant` MUST
+fail with `interaction_required`. A token-endpoint `invalid_client` fails by
+client source: `credential_unavailable` for a pre-registered client (the host
+repairs its client information), `invalid_configuration` for a CIMD client
+([CIMD](#client-id-metadata-documents)), and `interaction_required` for a DCR
+client, whose next `prepare` registers again ([DCR](#dynamic-client-registration)).
+Any other token-endpoint failure or an invalid token response MUST fail with
+`provider_failed`. The login is consumed in every case. These errors carry no
+scopes. No implicit listener or browser is created.
 
 A pending login stores the R it was prepared with: H at `prepare` time ∪ E ∪
 any Ch in the `prepare` context. `complete()` MUST succeed only when the
@@ -499,10 +520,11 @@ refresh token are still persisted, and the login is consumed.
 Every error thrown by `complete()` MUST carry a boolean login-ended flag: true
 when the pending login named by the callback's `state` no longer exists after
 the call (it was consumed, or it had expired or was unknown); false when it is
-still pending, for example after a stray or invalid callback rejected before
-the claim. Native names are TS `loginEnded`, Python `login_ended`, Go
-`LoginEnded` and Rust `login_ended()`. The flag is host-facing SDK behaviour,
-not a wire field, and does not change error codes or recovery.
+still pending, which is the case only after an invalid callback rejected with
+`access_denied` before the claim. Native names are TS `loginEnded`, Python
+`login_ended`, Go `LoginEnded` and Rust `login_ended()`. The flag is
+host-facing SDK behaviour, not a wire field, and does not change error codes or
+recovery.
 
 ## Challenges, step-up and replay
 

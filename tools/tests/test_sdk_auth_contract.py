@@ -206,8 +206,13 @@ def challenge_scope(value):
 
 def decide_scope(value):
     """Reference scope decision: R = H | E | Ch; requested scopes never required."""
-    requested = set(value["requested"]) | set(value.get("preset_scopes", []))
+    requested = set(value["requested"])
     ceiling = set(value.get("ceiling", requested))
+    # Local refusals send no authorization-server request; with a stored binding
+    # or explicit preset they send nothing, while an unbound target first learns
+    # its client from one protected-resource metadata fetch.
+    local = {"authorization_server_requests": 0,
+             "network_calls": 1 if value["binding"] == "unbound" else 0}
     if "host_error" in value:
         # Host-policy errors keep their code; any scopes are stripped.
         code = value["host_error"]["code"]
@@ -217,13 +222,15 @@ def decide_scope(value):
     out = {"retired": True} if status == 401 else {}
 
     def deny(scopes, with_required=True):
-        result = dict(out, code="access_denied", scopes=sorted(scopes), network_calls=0)
+        result = dict(out, code="access_denied", scopes=sorted(scopes), **local)
         if with_required:
             result["required"] = sorted(scopes)
         return result
 
-    if not requested <= ceiling:
-        return dict(out, code="invalid_configuration", network_calls=0)
+    preset = value.get("preset_scopes")
+    if (preset is not None and set(preset) != requested) or not requested <= ceiling:
+        # A preset's scopes are the client's configured scopes.
+        return dict(out, code="invalid_configuration", **local)
     base = set(value["host_required"]) | set(value["explicit"])
     hint, step_up = set(), set()
     if challenge:
@@ -258,20 +265,33 @@ def decide_scope(value):
     return dict(result, code="interaction_required", scopes=sorted(required))
 
 
+CALLBACK_DEFECTS = ("redirect_mismatch", "state_mismatch", "iss_mismatch", "fragment",
+                    "userinfo", "missing_code", "duplicate_param")
+
+
 def complete_login(value):
-    """Reference complete(): enforce the stored R and report login_ended."""
+    """Reference complete(): pinned codes, the stored R and login_ended."""
     if value["pending"] != "pending":
-        result = ({"code": "interaction_required", "scopes": []} if value["pending"] == "expired"
-                  else {"failed": True})
-        return dict(result, login_ended=True, grant_persisted=False)
-    if value["callback"] == "invalid":
-        return {"failed": True, "login_ended": False, "grant_persisted": False}
+        # Absent, unknown, expired or ended state, whatever handle the host passes.
+        return {"code": "interaction_required", "scopes": [], "login_ended": True,
+                "grant_persisted": False}
+    if value["callback"] in CALLBACK_DEFECTS:
+        # Rejected before the claim: the login is still pending.
+        return {"code": "access_denied", "scopes": [], "login_ended": False,
+                "grant_persisted": False}
     if value["callback"] == "denied":
-        return {"failed": True, "login_ended": True, "grant_persisted": False}
+        return {"code": "access_denied", "scopes": [], "login_ended": True,
+                "grant_persisted": False}
     if value["exchange"] == "invalid_grant":
         return {"code": "interaction_required", "scopes": [], "login_ended": True,
                 "grant_persisted": False}
-    if value["exchange"] == "invalid_response":
+    if value["exchange"] == "invalid_client":
+        # By client source: repair host client, repair CIMD config, or re-register.
+        code = {"preregistered": "credential_unavailable", "cimd": "invalid_configuration",
+                "dcr": "interaction_required"}[value["client_source"]]
+        return dict({"code": code}, **({"scopes": []} if code in SCOPED_CODES else {}),
+                    login_ended=True, grant_persisted=False)
+    if value["exchange"] in ("token_endpoint_failure", "invalid_response"):
         return {"code": "provider_failed", "login_ended": True, "grant_persisted": False}
     required = set(value["stored_required"])
     if not required <= set(value["granted"]) & set(value["ceiling"]):
@@ -410,7 +430,10 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertEqual(decide_scope(value), expect)
                 self.assertIn(expect["code"], codes | {None})
                 self.assert_error_scope_set(expect)
-                for scope in value.get("preset_scopes", []):
+                self.assertIn(value["binding"], ("unbound", "preset", "stored"))
+                if "preset_scopes" in value:
+                    self.assertEqual(value["binding"], "preset")
+                for scope in set(value.get("preset_scopes", [])) - set(value["host_required"]):
                     # Preset scopes are requested, never required.
                     self.assertNotIn(scope, expect.get("required", []))
                     self.assertNotIn(scope, expect.get("scopes", []))
@@ -423,8 +446,12 @@ class SDKAuthContractTests(unittest.TestCase):
         # Ceiling refusal is local on every path.
         self.assertEqual({row["input"]["path"] for row in refusals},
                          {"fresh", "cached", "prepare", "credential", "challenge", "preemptive"})
+        self.assertEqual({row["input"]["binding"] for row in refusals},
+                         {"unbound", "preset", "stored"})
         for row in refusals:
-            self.assertEqual(row["expect"]["network_calls"], 0)
+            self.assertEqual(row["expect"]["authorization_server_requests"], 0)
+            self.assertEqual(row["expect"]["network_calls"],
+                             1 if row["input"]["binding"] == "unbound" else 0)
         for name in ("empty", "repeated-space", "leading-space", "trailing-space",
                      "tab-separator", "invalid-character", "duplicated-parameter", "401"):
             self.assertEqual(rows["malformed-challenge-scope-" + name]["expect"]["scopes"], [])
@@ -443,7 +470,8 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertEqual(rows["insufficient-scope-already-granted-denied"]["expect"]["code"],
                          "access_denied")
         for name in ("requested-outside-ceiling-invalid-configuration",
-                     "preset-outside-ceiling-invalid-configuration"):
+                     "preset-outside-ceiling-invalid-configuration",
+                     "preset-scopes-differ-from-client-invalid-configuration"):
             self.assertEqual(rows[name]["expect"]["code"], "invalid_configuration")
         for row in rows.values():
             if "host_error" in row["input"]:
@@ -465,17 +493,33 @@ class SDKAuthContractTests(unittest.TestCase):
             with self.subTest(row["id"]):
                 expect = row["expect"]
                 self.assertEqual(complete_login(row["input"]), expect)
-                failed = expect.get("code") is not None or expect.get("failed", False)
-                # Every complete() error, and only an error, carries login_ended.
-                self.assertEqual(failed, "login_ended" in expect)
-                self.assertIn(expect.get("code"), codes | {None})
+                # Every complete() error has a pinned code and carries login_ended.
+                self.assertIn("code", expect)
+                self.assertNotIn("failed", expect)
+                self.assertEqual(expect["code"] is not None, "login_ended" in expect)
+                self.assertIn(expect["code"], codes | {None})
+                # Only the invalid callback rejected before the claim leaves it pending.
+                self.assertEqual(expect.get("login_ended") is False,
+                                 row["input"]["callback"] in CALLBACK_DEFECTS
+                                 and row["input"]["pending"] == "pending")
                 self.assert_error_scope_set(expect)
-                if expect.get("code") == "access_denied":
+                if expect.get("code") == "access_denied" and expect["scopes"]:
+                    # Only the stored-R scope check attaches scopes.
                     self.assertEqual(expect["scopes"],
                                      sorted(set(row["input"]["stored_required"])))
                     self.assertTrue(expect["grant_persisted"] and expect["login_ended"])
                 ended.add(expect.get("login_ended"))
         self.assertEqual(ended, {None, True, False})
+        rows = self.vectors["completions"]
+        self.assertEqual({row["input"]["callback"] for row in rows} & set(CALLBACK_DEFECTS),
+                         set(CALLBACK_DEFECTS))
+        self.assertEqual({row["input"]["client_source"] for row in rows
+                          if row["input"]["exchange"] == "invalid_client"},
+                         {"preregistered", "cimd", "dcr"})
+        unknown = [row for row in rows if row["input"]["pending"] == "unknown"]
+        self.assertEqual({row["input"]["handle"] for row in unknown}, {"matching", "none"})
+        for row in unknown:
+            self.assertEqual(row["expect"]["code"], "interaction_required")
 
     def test_scope_contract_lifecycle_ids_are_listed(self):
         ids = {row["id"] for row in self.vectors["lifecycle"]}
