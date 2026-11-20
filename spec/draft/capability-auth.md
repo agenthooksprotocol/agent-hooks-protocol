@@ -147,11 +147,12 @@ method to negotiate bearer, mTLS, or workload credentials.
 Discovery is untrusted input, not permission to send credentials. Clients MUST
 validate HTTPS URLs, server certificates, exact discovered issuer identity,
 resource/audience, scope requirements, and token validity. Only a Bearer 403
-`insufficient_scope` challenge's scopes describe requirements; a 401 challenge's
-`scope` only adds requested scopes. Neither is consent: clients MUST request only
-locally permitted scopes and MUST NOT assume `scopes_supported` is the required
-set for a particular request (see [SDK scope sets](sdk-auth-lifecycle.md#scope-sets)
-and [challenges](sdk-auth-lifecycle.md#challenges-step-up-and-replay)). Clients MUST request
+`insufficient_scope` challenge's scopes describe requirements. A 401 means the
+token was rejected; its `scope` is only a hint, used by a client-credentials
+acquisition in the same operation and never stored or required. Neither is
+consent: clients MUST request only locally permitted scopes and MUST NOT assume
+`scopes_supported` is the required set for a particular request (see
+[SDK scope decisions](sdk-auth-lifecycle.md#scope-decisions)). Clients MUST request
 resource-bound tokens using RFC 8707 and MUST NOT use a token for another resource.
 Clients MUST apply local destination/SSRF policy to metadata, registration,
 authorization, and token endpoints, including DNS resolution and every redirect;
@@ -185,9 +186,11 @@ its issuer, resource, scope, and client constraints.
   If resolution fails, do not send the request. Send the resolved token in exactly
   one Authorization header. A challenge cannot choose a different local secret.
 * `oauth`: an optional preset configures HTTPS `issuer`, protected `resource`,
-  `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. Preset
-  `scopes` are requested, not required: a grant lacking them still satisfies an
-  operation whose [required set](sdk-auth-lifecycle.md#scope-sets) is covered. It uses the
+  `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. Omitted
+  preset `scopes` mean no constraint; present ones MUST equal the client's
+  configured scopes. They are requested, not required: a grant lacking them
+  still satisfies an operation whose
+  [required set](sdk-auth-lifecycle.md#inputs) is covered. It uses the
   standards-based discovery and validation above; it is not required merely to
   encounter an OAuth-protected endpoint. A trusted explicit preset may discover
   its configured issuer directly; protected-resource metadata is not a prerequisite

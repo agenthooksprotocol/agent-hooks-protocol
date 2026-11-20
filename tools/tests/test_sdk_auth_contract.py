@@ -204,34 +204,39 @@ def challenge_scope(value):
     return tokens if all(SCOPE_TOKEN.fullmatch(token) for token in tokens) else False
 
 
+def scope_list_valid(scopes):
+    return all(isinstance(s, str) and SCOPE_TOKEN.fullmatch(s) for s in scopes)
+
+
 def decide_scope(value):
-    """Reference scope decision: R = H | E | Ch; requested scopes never required."""
-    requested = set(value["requested"])
-    ceiling = set(value.get("ceiling", requested))
-    # Local refusals send no authorization-server request; with a stored binding
-    # or explicit preset they send nothing, while an unbound target first learns
-    # its client from one protected-resource metadata fetch.
-    local = {"authorization_server_requests": 0,
-             "network_calls": 1 if value["binding"] == "unbound" else 0}
+    """Reference decide(): steps 1-9 of the SDK scope decision, in order."""
     if "host_error" in value:
-        # Host-policy errors keep their code; any scopes are stripped.
+        # Host-callback errors keep their code; classify() strips any scopes.
         code = value["host_error"]["code"]
         return {"code": code, **({"scopes": []} if code in SCOPED_CODES else {})}
-    challenge = value.get("challenge")
+    requested = set(value["requested"])
+    ceiling = set(value.get("ceiling", value["requested"]))
+    host, explicit = set(value["host_required"]), set(value["explicit"])
+    grant, challenge = value["grant"], value.get("challenge")
     status = challenge["status"] if challenge else None
-    out = {"retired": True} if status == 401 else {}
+    sent = value.get("sent")
+    local = {"authorization_server_requests": 0}
+    local.update({"network_calls_max": 1} if value["binding"] == "unbound" else {"network_calls": 0})
 
-    def deny(scopes, with_required=True):
-        result = dict(out, code="access_denied", scopes=sorted(scopes), **local)
-        if with_required:
-            result["required"] = sorted(scopes)
-        return result
+    def fail(code, scopes=None, required=None, **extra):
+        out = dict(extra, code=code, **local)
+        if code in SCOPED_CODES:
+            out["scopes"] = sorted(scopes or ())
+        if required is not None:
+            out["required"] = sorted(required)
+        return out
 
+    # 1. Configuration.
     preset = value.get("preset_scopes")
-    if (preset is not None and set(preset) != requested) or not requested <= ceiling:
-        # A preset's scopes are the client's configured scopes.
-        return dict(out, code="invalid_configuration", **local)
-    base = set(value["host_required"]) | set(value["explicit"])
+    if (not requested <= ceiling or (preset is not None and set(preset) != requested)
+            or not all(scope_list_valid(s) for s in (requested, ceiling, host, explicit))):
+        return fail("invalid_configuration")
+    # 2. Challenge form.
     hint, step_up = set(), set()
     if challenge:
         params = bearer_params(challenge["www_authenticate"])
@@ -239,72 +244,118 @@ def decide_scope(value):
         if params is not None and "scope" in params:
             scopes = challenge_scope(params["scope"])
         if params is None or scopes is False:
-            return deny([], with_required=False)
-        if status == 401:
-            hint = set(scopes or ()) & ceiling
-        else:
-            assert params.get("error") == "insufficient_scope"
-            if scopes is None and not base:
-                return deny([], with_required=False)
+            return fail("access_denied")
+        if status == 403:
+            if params.get("error") != "insufficient_scope":
+                return fail("access_denied")
+            if scopes is None and not host | explicit:
+                return fail("access_denied")
             step_up = set(scopes or ())
-    required = base | step_up
+        else:
+            hint = set(scopes or ())
+    # 3. 401: retire the sent generation if current; the hint is P & C.
+    retired = {}
+    token_valid = grant is not None and grant["token"] == "valid"
+    if status == 401:
+        current = grant is not None and sent is not None and grant["generation"] == sent
+        retired = {"retired": current}
+        token_valid = token_valid and not current
+        hint &= ceiling
+    required = host | explicit | step_up
+    # 4. Ceiling.
     if not required <= ceiling:
-        return deny(required)
-    granted = value["granted"]
-    covered = granted is not None and required <= set(granted) & ceiling
+        return fail("access_denied", required, required, **retired)
+    granted = set(grant["granted"]) if grant else set()
+    covered = grant is not None and required <= granted & ceiling
+    # 5. Server disagrees with the record.
     if status == 403 and covered:
-        return deny(required)
-    if covered and status != 401:
-        return dict(out, code=None, action="use", required=sorted(required))
-    acquisition = sorted(set(granted or ()) | ((requested | required | hint) & ceiling))
-    result = dict(out, required=sorted(required), acquisition_scopes=acquisition)
+        if sent is None or grant["generation"] == sent:
+            return fail("access_denied", required, required)
+        return {"code": None, "action": "use", "required": sorted(required)}
+    # 6. Use.
+    if token_valid and covered:
+        return dict(retired, code=None, action="use", required=sorted(required))
+    # 7. Refresh.
+    if grant is not None and grant["refresh"] and required <= granted:
+        return dict(retired, code=None, action="refresh", required=sorted(required))
+    previous = granted
+    # 8. Client credentials, with the same-operation hint only.
     if value["flow"] == "client_credentials":
-        return dict(result, code=None, action="acquire")
+        return dict(retired, code=None, action="acquire", required=sorted(required),
+                    acquisition_scopes=sorted(previous | ((requested | required | hint) & ceiling)))
+    # 9. PKCE.
     if value["path"] == "prepare":
-        return dict(result, code=None, action="login")
-    return dict(result, code="interaction_required", scopes=sorted(required))
+        return dict(retired, code=None, action="login", required=sorted(required),
+                    acquisition_scopes=sorted(previous | ((requested | required) & ceiling)))
+    return dict(retired, code="interaction_required", scopes=sorted(required),
+                required=sorted(required))
 
 
 OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle"}
-CALLBACK_DEFECTS = ("redirect_mismatch", "state_mismatch", "iss_mismatch", "fragment",
-                    "userinfo", "missing_code", "duplicate_param")
+CALLBACK_DEFECTS = ("redirect_mismatch", "redirect_query_mismatch", "state_duplicated",
+                    "iss_mismatch", "fragment", "userinfo", "missing_code", "code_and_error",
+                    "duplicate_param", "unparseable")
+TOKEN_ENDPOINT_ERRORS = ("invalid_grant", "invalid_client", "unauthorized_client",
+                         "access_denied", "invalid_scope", "server_error", "unreachable",
+                         "not_found", "invalid_response")
 
 
 def complete_login(value):
-    """Reference complete(): pinned codes, the stored R and login_ended."""
-    if value["pending"] != "pending":
-        # Absent, unknown, expired or ended state, whatever handle the host passes.
-        return {"code": "interaction_required", "scopes": [], "login_ended": True,
-                "grant_persisted": False}
+    """Reference complete(): steps 1-7, in order."""
+    def error(code, ended, persisted=False, scopes=()):
+        out = {"code": code}
+        if code in SCOPED_CODES:
+            out["scopes"] = sorted(scopes)
+        return dict(out, login_ended=ended, grant_persisted=persisted)
+
+    # 1. State lookup, before any host callback.
+    if value["pending"] != "pending" or value["handle"] == "other":
+        return error("interaction_required", True)
+    # 2. Callback validation; the login stays pending.
     if value["callback"] in CALLBACK_DEFECTS:
-        # Rejected before the claim: the login is still pending.
-        return {"code": "access_denied", "scopes": [], "login_ended": False,
-                "grant_persisted": False}
+        return error("access_denied", False)
+    # 3. Host policy before the claim.
+    if not value["source_permitted"]:
+        return error("invalid_configuration", False)
     if "host_error" in value:
-        # A host callback failure before the claim keeps its code, carries no
-        # scopes and leaves the login pending.
-        code = value["host_error"]["code"]
-        return dict({"code": code}, **({"scopes": []} if code in SCOPED_CODES else {}),
-                    login_ended=False, grant_persisted=False)
+        return error(value["host_error"]["code"], False)
+    # 4. Claim; an uncertain claim re-reads the store.
+    if value["claim"] != "ok":
+        return error(value["claim"]["error_code"], value["claim"]["reread"] == "gone")
+    # 5. Consent denied.
     if value["callback"] == "denied":
-        return {"code": "access_denied", "scopes": [], "login_ended": True,
-                "grant_persisted": False}
-    if value["exchange"] == "invalid_grant":
-        return {"code": "interaction_required", "scopes": [], "login_ended": True,
-                "grant_persisted": False}
-    if value["exchange"] == "invalid_client":
-        # By client source: repair host client, repair CIMD config, or re-register.
-        code = {"preregistered": "credential_unavailable", "cimd": "invalid_configuration",
-                "dcr": "interaction_required"}[value["client_source"]]
-        return dict({"code": code}, **({"scopes": []} if code in SCOPED_CODES else {}),
-                    login_ended=True, grant_persisted=False)
-    if value["exchange"] in ("token_endpoint_failure", "invalid_response"):
-        return {"code": "provider_failed", "login_ended": True, "grant_persisted": False}
-    required = set(value["stored_required"])
-    if not required <= set(value["granted"]) & set(value["ceiling"]):
-        return {"code": "access_denied", "scopes": sorted(required), "login_ended": True,
-                "grant_persisted": True}
+        return error("access_denied", True)
+    if value["callback"] == "denied_invalid_client":
+        return error("invalid_configuration" if value["client_source"] == "cimd"
+                     else "access_denied", True)
+    # 6. Exchange.
+    exchange = value["exchange"]
+    if exchange == "invalid_grant":
+        return error("interaction_required", True)
+    if exchange == "invalid_client":
+        return error({"preregistered": "credential_unavailable", "cimd": "invalid_configuration",
+                      "dcr": "interaction_required"}[value["client_source"]], True)
+    if exchange != "ok":
+        return error("provider_failed", True)
+    # 7. Persist, then enforce the stored R (legacy: prepare-time H, else current H).
+    required = value["stored_required"]
+    if required is None:
+        required = value.get("prepare_time_host_required", value["current_host_required"])
+    if not set(required) <= set(value["granted"]) & set(value["ceiling"]):
+        return error("access_denied", True, persisted=True, scopes=set(required))
     return {"code": None, "grant_persisted": True}
+
+
+SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
+                        "host_required", "explicit", "grant", "sent", "challenge",
+                        "prior_401_hint", "host_error"}
+SCOPE_DECISION_EXPECT = {"code", "scopes", "required", "action", "acquisition_scopes", "retired",
+                         "authorization_server_requests", "network_calls", "network_calls_max"}
+COMPLETION_INPUT = {"pending", "handle", "client_source", "source_permitted", "callback",
+                    "host_error", "claim", "exchange", "stored_required",
+                    "prepare_time_host_required", "current_host_required", "granted", "ceiling"}
+COMPLETION_EXPECT = {"code", "scopes", "login_ended", "grant_persisted"}
+VECTOR_KEYS = {"id", "requires", "input", "expect"}
 
 
 class SDKAuthContractTests(unittest.TestCase):
@@ -434,51 +485,90 @@ class SDKAuthContractTests(unittest.TestCase):
         for row in self.vectors["scope_decisions"]:
             with self.subTest(row["id"]):
                 value, expect = row["input"], row["expect"]
+                # Every field is defined in the spec; unknown fields fail.
+                self.assertLessEqual(set(row), VECTOR_KEYS)
+                self.assertLessEqual(set(value), SCOPE_DECISION_INPUT)
+                self.assertLessEqual(set(expect), SCOPE_DECISION_EXPECT)
                 self.assertEqual(decide_scope(value), expect)
                 self.assertIn(expect["code"], codes | {None})
                 self.assert_error_scope_set(expect)
+                self.assertIn(value["path"], ("fresh", "cached", "prepare", "credential",
+                                              "challenge", "preemptive"))
                 self.assertIn(value["binding"], ("unbound", "preset", "stored"))
-                if "preset_scopes" in value:
-                    self.assertEqual(value["binding"], "preset")
+                self.assertEqual("preset_scopes" in value and value["binding"] != "preset", False)
+                self.assertEqual("sent" in value, "challenge" in value)
+                self.assertEqual(expect["code"] is None, "action" in expect)
+                self.assertEqual(expect.get("action") in ("acquire", "login"),
+                                 "acquisition_scopes" in expect)
+                self.assertEqual(value.get("challenge", {}).get("status") == 401
+                                 and "host_error" not in value
+                                 and expect["code"] != "invalid_configuration"
+                                 and "required" in expect, "retired" in expect)
+                self.assertFalse("network_calls" in expect and "network_calls_max" in expect)
+                if "network_calls" in expect or "network_calls_max" in expect:
+                    self.assertEqual(expect["authorization_server_requests"], 0)
+                if value["grant"] is not None:
+                    self.assertEqual(set(value["grant"]), {"generation", "granted", "token", "refresh"})
                 for scope in set(value.get("preset_scopes", [])) - set(value["host_required"]):
                     # Preset scopes are requested, never required.
                     self.assertNotIn(scope, expect.get("required", []))
                     self.assertNotIn(scope, expect.get("scopes", []))
+                if "prior_401_hint" in value:
+                    # An earlier operation's 401 hint never reaches this one.
+                    stray = set(value["prior_401_hint"]) - set(value["requested"])
+                    self.assertTrue(stray and stray <= set(value["ceiling"]))
+                    self.assertFalse(stray & set(expect.get("acquisition_scopes", [])))
 
     def test_scope_decision_coverage(self):
         rows = {row["id"]: row for row in self.vectors["scope_decisions"]}
         refusals = [row for row in rows.values()
                     if row["expect"].get("code") == "access_denied"
                     and row["expect"].get("required")]
-        # Ceiling refusal is local on every path.
+        # Ceiling refusal is local on every path; unbound targets fetch PRM at most once.
         self.assertEqual({row["input"]["path"] for row in refusals},
                          {"fresh", "cached", "prepare", "credential", "challenge", "preemptive"})
         self.assertEqual({row["input"]["binding"] for row in refusals},
                          {"unbound", "preset", "stored"})
         for row in refusals:
-            self.assertEqual(row["expect"]["authorization_server_requests"], 0)
-            self.assertEqual(row["expect"]["network_calls"],
-                             1 if row["input"]["binding"] == "unbound" else 0)
+            unbound = row["input"]["binding"] == "unbound"
+            self.assertEqual(row["expect"].get("network_calls_max" if unbound else "network_calls"),
+                             1 if unbound else 0)
         for name in ("empty", "repeated-space", "leading-space", "trailing-space",
-                     "tab-separator", "invalid-character", "duplicated-parameter", "401"):
+                     "tab-separator", "invalid-character", "duplicated-parameter",
+                     "two-bearer-challenges", "bad-auth-param", "401"):
             self.assertEqual(rows["malformed-challenge-scope-" + name]["expect"]["scopes"], [])
         # A 401 scope never becomes a requirement or an access_denied.
         for row in rows.values():
-            if row["input"].get("challenge", {}).get("status") == 401:
-                self.assertTrue(row["expect"]["retired"])
-                params = bearer_params(row["input"]["challenge"]["www_authenticate"])
+            challenge = row["input"].get("challenge")
+            if challenge and challenge["status"] == 401:
+                params = bearer_params(challenge["www_authenticate"])
                 scopes = challenge_scope(params["scope"]) if params and "scope" in params else []
                 if scopes:
-                    host = set(row["input"]["host_required"]) | set(row["input"]["explicit"])
-                    self.assertEqual(set(row["expect"]["required"]), host)
+                    self.assertEqual(set(row["expect"]["required"]),
+                                     set(row["input"]["host_required"]) | set(row["input"]["explicit"]))
                     self.assertNotEqual(row["expect"]["code"], "access_denied")
-        self.assertEqual(rows["step-up-carries-full-required-set"]["expect"]["scopes"],
-                         ["read", "write"])
-        self.assertEqual(rows["insufficient-scope-already-granted-denied"]["expect"]["code"],
-                         "access_denied")
+        expected = {
+            "challenge-401-scope-added-to-request": "acquire",
+            "challenge-401-hint-not-used-by-later-operation": "acquire",
+            "challenge-401-older-generation-uses-current": "use",
+            "insufficient-scope-newer-generation-uses-current": "use",
+            "expired-token-refreshes": "refresh",
+            "prepare-explicit-and-host-required-union": "login",
+            "preset-scopes-omitted-no-constraint": "use",
+        }
+        for name, action in expected.items():
+            self.assertEqual(rows[name]["expect"]["action"], action, name)
+        for name in ("insufficient-scope-already-granted-denied",
+                     "insufficient-scope-anonymous-grant-covers-denied", "challenge-403-other-denied"):
+            self.assertEqual(rows[name]["expect"]["code"], "access_denied")
+        self.assertIsNone(rows["insufficient-scope-anonymous-grant-covers-denied"]["input"]["sent"])
+        self.assertNotIn("preset_scopes", rows["preset-scopes-omitted-no-constraint"]["input"])
+        self.assertEqual(rows["stored-grant-lacking-required-interaction-required"]["expect"]["code"],
+                         "interaction_required")
         for name in ("requested-outside-ceiling-invalid-configuration",
                      "preset-outside-ceiling-invalid-configuration",
-                     "preset-scopes-differ-from-client-invalid-configuration"):
+                     "preset-scopes-differ-from-client-invalid-configuration",
+                     "invalid-host-required-token-invalid-configuration"):
             self.assertEqual(rows[name]["expect"]["code"], "invalid_configuration")
         for row in rows.values():
             if "host_error" in row["input"]:
@@ -487,6 +577,7 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertFalse(row["expect"].get("scopes"))
                 self.assertIn(error["callback"],
                               ("client_selection", "token_validation", "destination"))
+                self.assertEqual(error["callback"] == "destination", "target" in error)
                 if error["callback"] == "destination":
                     # The code this contract defines for that destination refusal.
                     self.assertEqual(error["code"], {
@@ -498,36 +589,45 @@ class SDKAuthContractTests(unittest.TestCase):
         ended = set()
         for row in self.vectors["completions"]:
             with self.subTest(row["id"]):
-                expect = row["expect"]
-                self.assertEqual(complete_login(row["input"]), expect)
+                value, expect = row["input"], row["expect"]
+                self.assertLessEqual(set(row), VECTOR_KEYS)
+                self.assertLessEqual(set(value), COMPLETION_INPUT)
+                self.assertLessEqual(set(expect), COMPLETION_EXPECT)
+                self.assertLessEqual(COMPLETION_INPUT - {"host_error", "prepare_time_host_required",
+                                                        "current_host_required"}, set(value))
+                self.assertEqual(value["stored_required"] is None, "current_host_required" in value)
+                self.assertFalse("prepare_time_host_required" in value
+                                 and value["stored_required"] is not None)
+                self.assertIn(value["exchange"], TOKEN_ENDPOINT_ERRORS + ("ok",))
+                self.assertEqual(complete_login(value), expect)
                 # Every complete() error has a pinned code and carries login_ended.
-                self.assertIn("code", expect)
-                self.assertNotIn("failed", expect)
                 self.assertEqual(expect["code"] is not None, "login_ended" in expect)
                 self.assertIn(expect["code"], codes | {None})
-                # Only a failure before the claim leaves the login pending.
-                self.assertEqual(expect.get("login_ended") is False,
-                                 row["input"]["pending"] == "pending"
-                                 and (row["input"]["callback"] in CALLBACK_DEFECTS
-                                      or "host_error" in row["input"]))
                 self.assert_error_scope_set(expect)
-                if expect.get("code") == "access_denied" and expect["scopes"]:
-                    # Only the stored-R scope check attaches scopes.
-                    self.assertEqual(expect["scopes"],
-                                     sorted(set(row["input"]["stored_required"])))
+                if expect["code"] == "access_denied" and expect["scopes"]:
+                    # Only the stored-R check (step 7) attaches scopes.
                     self.assertTrue(expect["grant_persisted"] and expect["login_ended"])
                 ended.add(expect.get("login_ended"))
         self.assertEqual(ended, {None, True, False})
-        rows = self.vectors["completions"]
-        self.assertEqual({row["input"]["callback"] for row in rows} & set(CALLBACK_DEFECTS),
+        rows = {row["id"]: row for row in self.vectors["completions"]}
+        self.assertEqual({row["input"]["callback"] for row in rows.values()} & set(CALLBACK_DEFECTS),
                          set(CALLBACK_DEFECTS))
-        self.assertEqual({row["input"]["client_source"] for row in rows
+        self.assertEqual({row["input"]["exchange"] for row in rows.values()},
+                         set(TOKEN_ENDPOINT_ERRORS) | {"ok"})
+        self.assertEqual({row["input"]["client_source"] for row in rows.values()
                           if row["input"]["exchange"] == "invalid_client"},
                          {"preregistered", "cimd", "dcr"})
-        unknown = [row for row in rows if row["input"]["pending"] == "unknown"]
-        self.assertEqual({row["input"]["handle"] for row in unknown}, {"matching", "none"})
-        for row in unknown:
-            self.assertEqual(row["expect"]["code"], "interaction_required")
+        self.assertEqual({row["input"]["claim"]["reread"] for row in rows.values()
+                          if row["input"]["claim"] != "ok"}, {"gone", "pending", "undetermined"})
+        for name in ("complete-unknown-state-with-handle", "complete-unknown-state-without-handle",
+                     "complete-unknown-state-failing-host-callback", "complete-missing-state-login-ended"):
+            self.assertEqual(rows[name]["expect"]["code"], "interaction_required")
+            self.assertTrue(rows[name]["expect"]["login_ended"])
+        self.assertIn("host_error", rows["complete-unknown-state-failing-host-callback"]["input"])
+        self.assertIsNone(rows["complete-with-server-added-params"]["expect"]["code"])
+        legacy = [row for row in rows.values() if row["input"]["stored_required"] is None]
+        self.assertEqual({"prepare_time_host_required" in row["input"] for row in legacy},
+                         {True, False})
 
     def test_optional_feature_requirements(self):
         """requires names optional SDK features; untagged vectors apply to every SDK."""
@@ -542,25 +642,28 @@ class SDKAuthContractTests(unittest.TestCase):
                     tagged[row["id"]] = set(row["requires"])
         self.assertEqual(tagged, {
             "host-policy-access-denied-scopes-stripped": {"token_validation_callback"},
-            "complete-invalid-callback-state-mismatch": {"complete_handle"},
+            "complete-handle-names-other-login": {"complete_handle"},
             "complete-unknown-state-with-handle": {"complete_handle"},
         })
-        self.assertIn("requires", self.vectors["description"])
+        spec = (ROOT / "spec/draft/sdk-auth-lifecycle.md").read_text()
+        for feature in OPTIONAL_FEATURES:
+            # Features are defined in the spec prose, not only the JSON description.
+            self.assertIn("`%s`" % feature, spec)
+        for field in SCOPE_DECISION_INPUT | SCOPE_DECISION_EXPECT | COMPLETION_INPUT | COMPLETION_EXPECT:
+            self.assertIn("`%s`" % field, spec, field)
         # Rule 11 stays covered without the token-validation callback.
         untagged = [row["input"]["host_error"] for row in self.vectors["scope_decisions"]
                     + self.vectors["completions"]
                     if "host_error" in row["input"] and "requires" not in row]
         self.assertEqual({error["callback"] for error in untagged},
                          {"client_selection", "destination"})
-        self.assertTrue(all(error["scopes"] for error in untagged))
         # Without a handle, unknown state is still covered.
-        rows = [row for row in self.vectors["completions"]
-                if row["input"]["pending"] == "unknown" and "requires" not in row]
-        self.assertTrue(rows)
-        # A host failure before the claim keeps the login pending.
-        pending = [row for row in self.vectors["completions"] if "host_error" in row["input"]]
-        self.assertTrue(pending and all(row["expect"]["login_ended"] is False
-                                        for row in pending))
+        self.assertTrue([row for row in self.vectors["completions"]
+                         if row["input"]["pending"] == "unknown" and "requires" not in row])
+        # A host failure before the claim keeps the login pending (with a known state).
+        for row in self.vectors["completions"]:
+            if "host_error" in row["input"] and row["input"]["pending"] == "pending":
+                self.assertFalse(row["expect"]["login_ended"])
 
     def test_scope_contract_lifecycle_ids_are_listed(self):
         ids = {row["id"] for row in self.vectors["lifecycle"]}
@@ -576,7 +679,10 @@ class SDKAuthContractTests(unittest.TestCase):
                          "complete-error-login-ended",
                          "insufficient-scope-step-up", "step-up-required-scopes-round-trip",
                          "prepare-required-outside-ceiling-denied",
-                         "scope-challenge-without-required-scope"):
+                         "scope-challenge-without-required-scope",
+                         "entry-points-route-through-decide", "transport-challenge-routing",
+                         "replay-rejection-retires-token",
+                         "complete-token-endpoint-errors-classified"):
             self.assertIn(required, ids)
         expects = {row["id"]: row["expect"] for row in self.vectors["lifecycle"]}
         self.assertNotIn("diagnostics only", expects["step-up-required-scopes-round-trip"])
