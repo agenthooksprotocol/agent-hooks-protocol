@@ -92,10 +92,10 @@ never ends the decision.
    grammar is malformed. Fail `access_denied` with no scopes for a 403 that is
    not `insufficient_scope`, and for a 403 `insufficient_scope` without `scope`
    when H ∪ E is empty.
-3. **401 hint.** The token was already retired at step 0. The hint is
-   P′ = P ∩ C. It is used only by a client-credentials acquisition
-   in this same operation (step 8). It MUST NOT be stored, added to R, or cause
-   `access_denied`.
+3. **401 hint.** The token was already retired at step 0. A well-formed hint
+   is P′ = P ∩ C. It is used only by a client-credentials acquisition in this
+   same operation (step 8). It MUST NOT be stored, added to R, or cause
+   `access_denied`; a malformed 401 `scope` has already failed at step 2.
 4. **Ceiling.** If R ⊄ C, fail `access_denied` with R. A host-required scope
    outside the ceiling is this case too, never `interaction_required`,
    `provider_failed` or a native exception. When the binding or a preset is
@@ -755,7 +755,8 @@ Its `input` members are:
   `iss_mismatch`, `fragment`, `userinfo`, `missing_code`, `code_and_error`,
   `duplicate_param` or `unparseable`.
 * `host_error`: a pre-claim host callback failure, as in `scope_decisions`.
-* `claim`: `ok`, or `uncertain` with `error_code` (the store error's code) and
+* `claim`: the string `ok`, or an object for an uncertain claim with
+  `outcome` (always `uncertain`), `error_code` (the store error's code) and
   `reread` (`gone`, `pending` or `undetermined`).
 * `exchange`: `ok`, a token-endpoint OAuth error code (`invalid_grant`,
   `invalid_client`, `unauthorized_client`, `access_denied`, `invalid_scope`,

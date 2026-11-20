@@ -664,8 +664,15 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertEqual({row["input"]["client_source"] for row in rows.values()
                           if row["input"]["exchange"] == "invalid_client"},
                          {"preregistered", "cimd", "dcr"})
-        self.assertEqual({row["input"]["claim"]["reread"] for row in rows.values()
-                          if row["input"]["claim"] != "ok"}, {"gone", "pending", "undetermined"})
+        claims = [row["input"]["claim"] for row in rows.values()]
+        for claim in claims:
+            # claim is "ok" or an uncertain-claim object with exactly the defined members.
+            if claim != "ok":
+                self.assertEqual(set(claim), {"outcome", "error_code", "reread"})
+                self.assertEqual(claim["outcome"], "uncertain")
+                self.assertIn(claim["reread"], ("gone", "pending", "undetermined"))
+        self.assertEqual({claim["reread"] for claim in claims if claim != "ok"},
+                         {"gone", "pending", "undetermined"})
         for name in ("complete-unknown-state-with-handle", "complete-unknown-state-without-handle",
                      "complete-unknown-state-failing-host-callback", "complete-missing-state-login-ended"):
             self.assertEqual(rows[name]["expect"]["code"], "interaction_required")
@@ -735,7 +742,8 @@ class SDKAuthContractTests(unittest.TestCase):
             # Features are defined in the spec prose, not only the JSON description.
             self.assertIn("`%s`" % feature, spec)
         for field in (SCOPE_DECISION_INPUT | SCOPE_DECISION_EXPECT | COMPLETION_INPUT
-                      | COMPLETION_EXPECT | TOKEN_ERROR_INPUT | TOKEN_ERROR_EXPECT):
+                      | COMPLETION_EXPECT | TOKEN_ERROR_INPUT | TOKEN_ERROR_EXPECT
+                      | {"outcome", "error_code", "reread"}):
             self.assertIn("`%s`" % field, spec, field)
         # Rule 11 stays covered without the token-validation callback.
         untagged = [row["input"]["host_error"] for row in self.vectors["scope_decisions"]
