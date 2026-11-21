@@ -269,7 +269,9 @@ def decide_scope(value):
     sent = value.get("sent")
     # 0. A 401 retires the sent generation, if current, before every other step.
     retired = {}
-    token_valid = grant is not None and grant["token"] == "valid"
+    forced = value.get("force_registration", False)
+    # A forced re-registration replaces the client: its old tokens are unusable.
+    token_valid = grant is not None and grant["token"] == "valid" and not forced
     if status == 401:
         current = grant is not None and sent is not None and grant["generation"] == sent
         retired = {"retired": current}
@@ -329,16 +331,20 @@ def decide_scope(value):
         return {"code": None, "action": "use", "required": sorted(required), **NO_REQUESTS}
     # 6. Use.
     if token_valid and covered:
-        return dict(retired, code=None, action="use", required=sorted(required), **NO_REQUESTS)
+        counts = ({"authorization_server_requests": 0,
+                   "network_calls_max": local["network_calls_max"]}
+                  if value["binding"] == "unbound" else NO_REQUESTS)
+        return dict(retired, code=None, action="use", required=sorted(required), **counts)
     # 7. Refresh, PKCE grants only; client credentials reissue at step 8.
     if (value["flow"] == "authorization_code_pkce" and grant is not None
-            and grant["refresh"] and required <= granted):
+            and grant["refresh"] and not forced and required <= granted):
         return dict(retired, code=None, action="refresh", required=sorted(required))
     previous = granted
     # 8. Client credentials, with the same-operation hint only.
     if value["flow"] == "client_credentials":
         return dict(retired, code=None, action="acquire", required=sorted(required),
-                    acquisition_scopes=sorted(previous | ((requested | required | hint) & ceiling)))
+                    acquisition_scopes=sorted(previous | ((requested | required | hint) & ceiling)),
+                    **({"authorization_server_requests_min": 1} if forced else {}))
     # 9. PKCE.
     if value["path"] == "prepare":
         return dict(retired, code=None, action="login", required=sorted(required),
@@ -438,8 +444,10 @@ TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error", "refetch"}
 TOKEN_ERROR_EXPECT = {"code", "reregistrations"}
 SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
                         "host_required", "explicit", "grant", "sent", "challenge",
-                        "prior_401_hint", "host_error", "target_error", "client_source"}
+                        "prior_401_hint", "host_error", "target_error", "client_source",
+                        "force_registration"}
 SCOPE_DECISION_EXPECT = {"code", "scopes", "required", "action", "acquisition_scopes", "retired",
+                         "authorization_server_requests_min",
                          "authorization_server_requests", "network_calls", "network_calls_max"}
 COMPLETION_INPUT = {"pending", "handle", "client_source", "source_permitted", "callback",
                     "host_error", "claim", "exchange", "stored_required",
@@ -586,7 +594,15 @@ class SDKAuthContractTests(unittest.TestCase):
                                               "challenge", "preemptive"))
                 self.assertIn(value["binding"], ("unbound", "preset", "stored",
                                                  "stored_without_metadata"))
-                self.assertEqual("client_source" in value, value["binding"] == "unbound")
+                self.assertEqual("client_source" in value,
+                                 value["binding"] == "unbound" or "force_registration" in value)
+                self.assertEqual("authorization_server_requests_min" in expect,
+                                 "force_registration" in value)
+                if "force_registration" in value:
+                    self.assertIs(value["force_registration"], True)
+                    self.assertEqual((value["path"], value["client_source"]), ("prepare", "dcr"))
+                    self.assertGreaterEqual(expect["authorization_server_requests_min"], 1)
+                    self.assertNotEqual(expect.get("action"), "use")
                 # authorization_server_requests accompanies the network counts, every
                 # use and every step-9 interaction_required, and is always 0 there.
                 self.assertEqual("authorization_server_requests" in expect,
@@ -594,8 +610,12 @@ class SDKAuthContractTests(unittest.TestCase):
                                  or (expect["code"] == "interaction_required"
                                      and "host_error" not in value))
                 if expect.get("action") == "use":
-                    self.assertEqual((expect["authorization_server_requests"],
-                                      expect["network_calls"]), (0, 0))
+                    self.assertEqual(expect["authorization_server_requests"], 0)
+                    if value["binding"] == "unbound":
+                        self.assertEqual(expect["network_calls_max"],
+                                         unbound_discovery_requests(value["challenge"]))
+                    else:
+                        self.assertEqual(expect["network_calls"], 0)
                 self.assertEqual("preset_scopes" in value and value["binding"] != "preset", False)
                 self.assertEqual("sent" in value, "challenge" in value)
                 self.assertEqual(expect["code"] is None, "action" in expect)
@@ -646,7 +666,6 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertEqual(row["input"]["path"], "fresh")
             self.assertEqual(row["input"]["challenge"]["status"], 401)
             self.assertIsNone(row["input"]["sent"])
-            self.assertIsNone(row["input"]["grant"])
         self.assertEqual({row["expect"]["network_calls_max"] for row in unbound}, {1, 2})
         self.assertEqual(rows["unbound-unparseable-challenge-denied"]["expect"]["scopes"], [])
         self.assertEqual(rows["client-credentials-with-refresh-token-reissues"]["expect"]["action"],
@@ -692,6 +711,24 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertEqual(rows[name]["input"]["binding"], "stored_without_metadata")
             self.assertEqual((rows[name]["expect"]["code"],
                               rows[name]["expect"]["authorization_server_requests"]), (code, 0))
+        # A forced re-registration never returns the replaced client's token.
+        forced = rows["prepare-forced-reregistration-acquires"]
+        self.assertEqual(forced["input"]["grant"]["token"], "valid")
+        self.assertEqual(forced["expect"]["action"], "acquire")
+        # An unbound target with a usable grant uses it after discovery only.
+        reused = rows["unbound-usable-grant-uses"]
+        self.assertEqual((reused["expect"]["action"], reused["expect"]["authorization_server_requests"],
+                          reused["expect"]["network_calls_max"]), ("use", 0, 1))
+        # A preset with no stored binding and a valid grant is used with no request.
+        preset = rows["preset-scopes-requested-not-required"]
+        self.assertEqual((preset["input"]["binding"], preset["input"]["grant"]["token"],
+                          preset["expect"]["action"], preset["expect"]["authorization_server_requests"],
+                          preset["expect"]["network_calls"]), ("preset", "valid", "use", 0, 0))
+        # prepare serves a usable cached token without metadata, even with none persisted.
+        cached = rows["prepare-stored-without-metadata-serves-cached-token"]
+        self.assertEqual((cached["input"]["path"], cached["input"]["binding"], cached["expect"]["action"],
+                          cached["expect"]["authorization_server_requests"], cached["expect"]["network_calls"]),
+                         ("prepare", "stored_without_metadata", "use", 0, 0))
         # A PKCE 403 step-up on a stored binding needs no authorization-server request.
         step_up = rows["step-up-carries-full-required-set"]
         self.assertEqual((step_up["input"]["binding"], step_up["input"]["challenge"]["status"],

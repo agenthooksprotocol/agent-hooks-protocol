@@ -147,6 +147,9 @@ fetches happen only for outcomes that must contact the authorization server
 unbound target's client. Learning an unbound target's client needs
 protected-resource discovery; it fetches issuer metadata only when the client
 source depends on it (CIMD or DCR), so a pre-registered client needs none.
+An unbound target whose grant key already holds a usable grant covering R (a
+host-assigned shared grant partition, or a lost binding record) returns
+**use** after that discovery, with no authorization-server request.
 
 A step-up requirement (Ch) is operation-scoped and MUST NOT be persisted on a
 binding or grant. Later operations use the stored grant, which after step-up
@@ -563,8 +566,12 @@ record, and the SDK has no implicit secret store. `prepare` and any
 non-interactive acquisition, including the up-front lookup's re-acquisition and
 challenge handling, MAY register when no usable record exists. A record is
 unusable when its nonzero `client_secret_expires_at` has passed or its secret
-cannot be resolved. Host `prepare` MAY replace a usable record so changed
-registration settings take effect. Processes register once: under the registration key's lock,
+cannot be resolved. Host `prepare` MAY force re-registration, replacing a
+usable record so changed registration settings take effect. When it replaces
+the client, the existing grant's token (and refresh token) MUST NOT be used for
+that operation: the SDK acquires with the new client (client credentials) or
+creates a login (PKCE), and never returns a token issued to the replaced
+client ([decide](#decide) steps 6–9). Processes register once: under the registration key's lock,
 the SDK reloads, registers only when no usable record exists, stores the secret
 under a fresh reference, and persists by compare-and-set on the generation; a
 loser deletes its reference and uses the winner's record. After a successful
@@ -742,8 +749,12 @@ Its `input` members are:
   target, `fresh` is an anonymous request (no token sent) that receives the
   vector's 401 and is handled by `challenge`; such a vector has `challenge`
   with status 401 and `sent` `null`, and every SDK runs it that way.
-* `client_source`: present exactly for an `unbound` target: `preregistered`,
-  `cimd` or `dcr`, the client host client selection yields.
+* `client_source`: present exactly for an `unbound` target and with
+  `force_registration`: `preregistered`, `cimd` or `dcr`, the client host
+  client selection yields.
+* `force_registration`: `true` when host `prepare` forces re-registration that
+  replaces the client; only with `path` `prepare` and `client_source` `dcr`.
+  The stored token and refresh token are then unusable for the operation.
 * `binding`: `stored` (a stored binding with persisted authorization-server
   metadata), `stored_without_metadata` (a stored binding whose record lacks
   that metadata, so an outcome that contacts the authorization server first
@@ -781,12 +792,16 @@ Its `expect` members are:
   `acquire` or `login` (a pending login is created).
 * `acquisition_scopes`: present exactly when `action` is `acquire` or `login`;
   the sorted scopes requested.
+* `authorization_server_requests_min`: present exactly with
+  `force_registration`; the least number of authorization-server requests (at
+  least the token request with the new client), since metadata rebuilding on
+  such a `prepare` varies.
 * `retired`: present exactly for a 401, whatever the outcome; whether
   generation `sent` was retired at [decide](#decide) step 0.
 * `authorization_server_requests` and either `network_calls` or
   `network_calls_max`: present on failures decided at steps 1, 2, 4 and 5.
   Every **use** outcome also carries `authorization_server_requests` 0 and
-  `network_calls` 0. A PKCE `interaction_required` from step 9 also carries
+  `network_calls` 0 (`network_calls_max` for an `unbound` target). A PKCE `interaction_required` from step 9 also carries
   `authorization_server_requests` 0, plus `network_calls_max` for an `unbound`
   target. They
   count requests made after the inputs (after the challenged response on the
