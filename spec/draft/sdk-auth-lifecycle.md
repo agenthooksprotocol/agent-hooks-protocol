@@ -88,20 +88,20 @@ never ends the decision.
    the preset's `scopes` is present and differs from S, or if S, C, H or E
    contains an invalid scope token. This is an SDK auth error, never a native
    exception or `provider_failed`, and the SDK MUST NOT drop a scope silently.
-2. **Challenge form.** Fail `access_denied` with no scopes for an unparseable
-   or ambiguous Bearer challenge: a malformed auth-param (such as an
-   unterminated quoted string), two Bearer challenges, a duplicated parameter,
-   or a malformed `scope` value. Under RFC 9110 a bare token after a comma,
-   not followed by `=`, starts a new challenge: `Bearer
-   error="insufficient_scope", scope` is a Bearer challenge without `scope`
-   followed by a challenge whose scheme is `scope`, not a malformed
-   auth-param. A following challenge whose scheme is `Bearer` makes the header
-   ambiguous. A challenge `scope` MUST
-   be RFC 6749 scope tokens separated by single SP; an empty value, HTAB,
-   repeated, leading or trailing spaces, or a character outside the scope-token
-   grammar is malformed. Fail `access_denied` with no scopes for a 403 that is
-   not `insufficient_scope`, and for a 403 `insufficient_scope` without `scope`
-   when H ∪ E is empty.
+2. **Challenge form.** Fail `access_denied` with no scopes for an unparseable or
+   ambiguous Bearer challenge: a malformed auth-param (such as an unterminated
+   quoted string), two Bearer challenges, a duplicated parameter, a token68
+   directly after `Bearer`, or a malformed `scope` value ([entry
+   points](#entry-points-and-transport)). Under RFC 9110 a bare token after a
+   comma that follows Bearer auth-params, not followed by `=`, starts a new
+   challenge: `Bearer error="insufficient_scope", scope` is a Bearer challenge
+   without `scope` followed by a challenge whose scheme is `scope`, not a
+   malformed auth-param. A following challenge whose scheme is `Bearer` makes
+   the header ambiguous. A challenge `scope` MUST be RFC 6749 scope tokens
+   separated by single SP; an empty value, HTAB, repeated, leading or trailing
+   spaces, or a character outside the scope-token grammar is malformed. Fail
+   `access_denied` with no scopes for a 403 that is not `insufficient_scope`,
+   and for a 403 `insufficient_scope` without `scope` when H ∪ E is empty.
 3. **401 hint.** The token was already retired at step 0. A well-formed hint
    is P′ = P ∩ C. It is used only by a client-credentials acquisition in this
    same operation (step 8). It MUST NOT be stored, added to R, or cause
@@ -252,8 +252,13 @@ replay is also handed to the provider, so a 401 retires it.
 The transport alone decides whether to replay, under
 [challenged replay](base/transports/http.md#challenged-replay): at most once, with
 the same request identity and body, and never for notifications or uploads.
-Unknown authentication schemes and valid padded token68 payloads do not corrupt
-Bearer challenge parsing; malformed or ambiguous Bearer auth-params fail closed.
+A Bearer challenge carries auth-params only (RFC 6750). A token68 directly
+after the `Bearer` scheme, such as `Bearer abc==` or a lone `Bearer scope` with
+no `=`, is a malformed Bearer challenge: `access_denied` with no scopes
+([decide](#decide) step 2). Other schemes, including one carrying a token68,
+are skipped and do not affect Bearer parsing. This differs from a bare token
+after a comma that follows Bearer auth-params, which starts a new challenge
+(step 2). Malformed or ambiguous Bearer auth-params fail closed.
 
 ## Token response acceptance and persistence
 

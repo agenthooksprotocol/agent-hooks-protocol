@@ -174,39 +174,69 @@ BEARER_PARAM = re.compile(r'[ \t]*(' + HTTP_TOKEN + r')[ \t]*=[ \t]*(?:"((?:[^"\
                           + HTTP_TOKEN + r'))[ \t]*')
 
 
+TOKEN68 = re.compile(r"[ \t]*([A-Za-z0-9._~+/-]+=*)[ \t]*(?=,|$)")
 # A whole token not followed by "=" (a new auth-scheme); the lookaheads stop
 # backtracking into a shorter token.
 NEW_CHALLENGE = re.compile(r"[ \t]*(" + HTTP_TOKEN + r")(?![!#$%&'*+.^_`|~0-9A-Za-z-])"
                            r"(?![ \t]*=)")
 
 
-def bearer_params(header):
-    """Strict auth-params of a leading Bearer challenge; None when unparsable,
-    a parameter is duplicated, or a second Bearer challenge follows. Under RFC
-    9110 a bare token after a comma (no "=") starts the next challenge."""
-    if not re.match(r"Bearer(?: |$)", header):
-        return None
-    rest, params, pos = header[len("Bearer"):].strip(" \t"), {}, 0
-    while pos < len(rest):
-        match = BEARER_PARAM.match(rest, pos)
-        if not match:
-            scheme = NEW_CHALLENGE.match(rest, pos)
-            if scheme and params:
-                # The Bearer challenge ended; another Bearer one is ambiguous.
-                return None if scheme.group(1).lower() == "bearer" else params
-            return None
-        name = match.group(1).lower()
-        if name in params:
-            return None
-        quoted = match.group(2)
-        params[name] = (re.sub(r"\\(.)", r"\1", quoted) if quoted is not None
-                        else match.group(3))
-        pos = match.end()
-        if pos < len(rest):
-            if rest[pos] != ",":
-                return None
+def parse_challenges(header):
+    """RFC 9110 challenge list: [(scheme, params dict or token68 str)], or None
+    when the header is syntactically malformed or repeats a parameter."""
+    challenges, pos = [], 0
+    while pos < len(header):
+        if header[pos] in " \t,":
             pos += 1
-    return params
+            continue
+        scheme = NEW_CHALLENGE.match(header, pos)
+        if not scheme:
+            return None
+        pos = scheme.end()
+        if pos < len(header) and header[pos] not in " \t,":
+            return None
+        params = {}
+        param = BEARER_PARAM.match(header, pos)
+        token68 = None if param else TOKEN68.match(header, pos)
+        if token68 and token68.group(1):
+            challenges.append((scheme.group(1), token68.group(1)))
+            pos = token68.end()
+            continue
+        while param:
+            name = param.group(1).lower()
+            if name in params:
+                return None
+            quoted = param.group(2)
+            params[name] = (re.sub(r"\\(.)", r"\1", quoted) if quoted is not None
+                            else param.group(3))
+            pos = param.end()
+            if pos >= len(header):
+                break
+            if header[pos] != ",":
+                return None
+            # After a comma: another auth-param, or a bare token starting a new challenge.
+            param = BEARER_PARAM.match(header, pos + 1)
+            if param:
+                pos += 1
+            elif NEW_CHALLENGE.match(header, pos + 1):
+                break
+            else:
+                return None
+        challenges.append((scheme.group(1), params))
+    return challenges
+
+
+def bearer_params(header):
+    """Auth-params of the one Bearer challenge; None when the header is
+    malformed, has no or two Bearer challenges, or Bearer carries a token68
+    (RFC 6750: auth-params only). Other schemes, token68 or not, are skipped."""
+    challenges = parse_challenges(header)
+    if challenges is None:
+        return None
+    bearer = [value for scheme, value in challenges if scheme.lower() == "bearer"]
+    if len(bearer) != 1 or isinstance(bearer[0], str):
+        return None
+    return bearer[0]
 
 
 def challenge_scope(value):
@@ -610,6 +640,19 @@ class SDKAuthContractTests(unittest.TestCase):
         bad = rows["malformed-challenge-scope-bad-auth-param"]
         self.assertTrue(bad["input"]["host_required"])
         self.assertIsNone(bearer_params(bad["input"]["challenge"]["www_authenticate"]))
+        # A token68 directly after Bearer is malformed (H is non-empty, so only that
+        # rule yields no scopes); a token68 on another scheme is skipped.
+        token68 = rows["malformed-challenge-bearer-token68"]
+        self.assertTrue(token68["input"]["host_required"])
+        self.assertIsNone(bearer_params(token68["input"]["challenge"]["www_authenticate"]))
+        self.assertEqual(token68["expect"]["scopes"], [])
+        other = rows["challenge-non-bearer-token68-skipped"]
+        challenges = parse_challenges(other["input"]["challenge"]["www_authenticate"])
+        self.assertTrue(any(isinstance(v, str) and k.lower() != "bearer" for k, v in challenges))
+        self.assertEqual(other["expect"]["scopes"], ["write"])
+        unbound = rows["unbound-unparseable-challenge-denied"]
+        self.assertIsNone(bearer_params(unbound["input"]["challenge"]["www_authenticate"]))
+        self.assertEqual(unbound["expect"]["network_calls_max"], 2)
         # A bare name after a comma starts a new scheme: a Bearer challenge without scope.
         bare = rows["challenge-bare-name-after-comma-is-new-scheme"]
         self.assertEqual(bearer_params(bare["input"]["challenge"]["www_authenticate"]),
