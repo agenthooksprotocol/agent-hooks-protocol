@@ -77,16 +77,26 @@ steps run in this order; the first that matches wins. Step 0 runs first and
 never ends the decision.
 
 0. **401 retires first.** On a 401, retire generation `sent` if it is still the
-   current generation. This happens before every other step, whatever the
-   outcome, including a malformed or unparseable challenge and a configuration
-   failure.
+   current generation. This happens before every other step and before every
+   target or configuration check (an unsupported binding, invalid arguments, a
+   missing deadline, an incompatible stored binding, a host callback failure),
+   whatever the outcome, including a malformed or unparseable challenge.
+   Whenever the rejected grant can be identified, it is retired. Only an
+   operation whose budget is already exhausted or aborted, so that no I/O is
+   possible, may fail before step 0.
 1. **Configuration.** Fail `invalid_configuration` with no scopes if S ⊄ C, if
    the preset's `scopes` is present and differs from S, or if S, C, H or E
    contains an invalid scope token. This is an SDK auth error, never a native
    exception or `provider_failed`, and the SDK MUST NOT drop a scope silently.
 2. **Challenge form.** Fail `access_denied` with no scopes for an unparseable
-   or ambiguous Bearer challenge: a bad auth-param, two Bearer challenges, a
-   duplicated parameter, or a malformed `scope` value. A challenge `scope` MUST
+   or ambiguous Bearer challenge: a malformed auth-param (such as an
+   unterminated quoted string), two Bearer challenges, a duplicated parameter,
+   or a malformed `scope` value. Under RFC 9110 a bare token after a comma,
+   not followed by `=`, starts a new challenge: `Bearer
+   error="insufficient_scope", scope` is a Bearer challenge without `scope`
+   followed by a challenge whose scheme is `scope`, not a malformed
+   auth-param. A following challenge whose scheme is `Bearer` makes the header
+   ambiguous. A challenge `scope` MUST
    be RFC 6749 scope tokens separated by single SP; an empty value, HTAB,
    repeated, leading or trailing spaces, or a character outside the scope-token
    grammar is malformed. Fail `access_denied` with no scopes for a 403 that is
@@ -153,7 +163,8 @@ consent includes the broader scopes.
    cannot burn a valid pending operation.
 3. **Host policy** before the claim, for every valid callback including a
    consent denial: client selection, a client source that is no longer
-   permitted, and destination checks. A failure keeps the host's
+   permitted, and destination checks (the token-endpoint destination and
+   metadata approval). A failure keeps the host's
    code (`invalid_configuration` when the client source is no longer
    permitted), carries no scopes, leaves the login pending and sets the flag
    false.
@@ -716,8 +727,11 @@ Its `input` members are:
   NOT affect this operation.
 * `host_error`: an error a host callback raises, with `callback`
   (`client_selection`, `token_validation` or `destination`), `target` for
-  `destination` (`registration_endpoint` or `issuer_metadata`), `code` and the
-  `scopes` it carries.
+  `destination` (`registration_endpoint`, `issuer_metadata` or
+  `token_endpoint`), `code` and the `scopes` it carries.
+* `target_error`: a target or configuration check that fails before any
+  decide step, with `check` (`unsupported_binding`) and the `code` it yields;
+  a 401 still retires first.
 
 Its `expect` members are:
 

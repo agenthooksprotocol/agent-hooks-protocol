@@ -174,15 +174,26 @@ BEARER_PARAM = re.compile(r'[ \t]*(' + HTTP_TOKEN + r')[ \t]*=[ \t]*(?:"((?:[^"\
                           + HTTP_TOKEN + r'))[ \t]*')
 
 
+# A whole token not followed by "=" (a new auth-scheme); the lookaheads stop
+# backtracking into a shorter token.
+NEW_CHALLENGE = re.compile(r"[ \t]*(" + HTTP_TOKEN + r")(?![!#$%&'*+.^_`|~0-9A-Za-z-])"
+                           r"(?![ \t]*=)")
+
+
 def bearer_params(header):
-    """Strict single-Bearer-challenge auth-params; None when unparsable or a
-    parameter is duplicated."""
+    """Strict auth-params of a leading Bearer challenge; None when unparsable,
+    a parameter is duplicated, or a second Bearer challenge follows. Under RFC
+    9110 a bare token after a comma (no "=") starts the next challenge."""
     if not re.match(r"Bearer(?: |$)", header):
         return None
     rest, params, pos = header[len("Bearer"):].strip(" \t"), {}, 0
     while pos < len(rest):
         match = BEARER_PARAM.match(rest, pos)
         if not match:
+            scheme = NEW_CHALLENGE.match(rest, pos)
+            if scheme and params:
+                # The Bearer challenge ended; another Bearer one is ambiguous.
+                return None if scheme.group(1).lower() == "bearer" else params
             return None
         name = match.group(1).lower()
         if name in params:
@@ -216,11 +227,7 @@ def unbound_discovery_requests(challenge):
 
 
 def decide_scope(value):
-    """Reference decide(): steps 1-9 of the SDK scope decision, in order."""
-    if "host_error" in value:
-        # Host-callback errors keep their code; classify() strips any scopes.
-        code = value["host_error"]["code"]
-        return {"code": code, **({"scopes": []} if code in SCOPED_CODES else {})}
+    """Reference decide(): step 0, then target checks, then steps 1-9, in order."""
     requested = set(value["requested"])
     ceiling = set(value.get("ceiling", value["requested"]))
     host, explicit = set(value["host_required"]), set(value["explicit"])
@@ -234,6 +241,12 @@ def decide_scope(value):
         current = grant is not None and sent is not None and grant["generation"] == sent
         retired = {"retired": current}
         token_valid = token_valid and not current
+    # Target, configuration and host-callback failures come after step 0 and keep
+    # their own code; classify() strips any scopes.
+    for failure in ("target_error", "host_error"):
+        if failure in value:
+            code = value[failure]["code"]
+            return dict(retired, code=code, **({"scopes": []} if code in SCOPED_CODES else {}))
     local = {"authorization_server_requests": 0}
     local.update({"network_calls_max": unbound_discovery_requests(challenge)}
                  if value["binding"] == "unbound" else {"network_calls": 0})
@@ -374,11 +387,14 @@ def token_error(value):
     return {"code": "provider_failed"}
 
 
+DESTINATION_CODES = {"registration_endpoint": "untrusted_destination",
+                     "issuer_metadata": "discovery_failed",
+                     "token_endpoint": "untrusted_destination"}
 TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error"}
 TOKEN_ERROR_EXPECT = {"code", "reregistrations"}
 SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
                         "host_required", "explicit", "grant", "sent", "challenge",
-                        "prior_401_hint", "host_error"}
+                        "prior_401_hint", "host_error", "target_error"}
 SCOPE_DECISION_EXPECT = {"code", "scopes", "required", "action", "acquisition_scopes", "retired",
                          "authorization_server_requests", "network_calls", "network_calls_max"}
 COMPLETION_INPUT = {"pending", "handle", "client_source", "source_permitted", "callback",
@@ -531,8 +547,11 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertEqual(expect.get("action") in ("acquire", "login"),
                                  "acquisition_scopes" in expect)
                 # Step 0: every 401 reports retirement, whatever the outcome.
-                self.assertEqual(value.get("challenge", {}).get("status") == 401
-                                 and "host_error" not in value, "retired" in expect)
+                self.assertEqual(value.get("challenge", {}).get("status") == 401,
+                                 "retired" in expect)
+                if "target_error" in value:
+                    self.assertEqual(set(value["target_error"]), {"check", "code"})
+                    self.assertEqual(value["target_error"]["check"], "unsupported_binding")
                 if "retired" in expect:
                     self.assertEqual(expect["retired"],
                                      value["grant"] is not None
@@ -582,9 +601,20 @@ class SDKAuthContractTests(unittest.TestCase):
                      "tab-separator", "invalid-character", "duplicated-parameter",
                      "two-bearer-challenges", "bad-auth-param", "401"):
             self.assertEqual(rows["malformed-challenge-scope-" + name]["expect"]["scopes"], [])
-        # Step 0 retires before failures decided at steps 1 and 2.
-        for name in ("malformed-challenge-scope-401", "challenge-401-invalid-configuration-retires-first"):
+        # Step 0 retires before target checks, host callbacks and steps 1 and 2.
+        for name in ("malformed-challenge-scope-401", "challenge-401-invalid-configuration-retires-first",
+                     "challenge-401-unsupported-binding-retires-first",
+                     "challenge-401-host-callback-failure-retires-first"):
             self.assertTrue(rows[name]["expect"]["retired"])
+        # The malformed auth-param can only pass via the malformed rule (H is non-empty).
+        bad = rows["malformed-challenge-scope-bad-auth-param"]
+        self.assertTrue(bad["input"]["host_required"])
+        self.assertIsNone(bearer_params(bad["input"]["challenge"]["www_authenticate"]))
+        # A bare name after a comma starts a new scheme: a Bearer challenge without scope.
+        bare = rows["challenge-bare-name-after-comma-is-new-scheme"]
+        self.assertEqual(bearer_params(bare["input"]["challenge"]["www_authenticate"]),
+                         {"error": "insufficient_scope"})
+        self.assertEqual(bare["expect"]["required"], bare["input"]["host_required"])
         # A 401 scope never becomes a requirement or an access_denied.
         for row in rows.values():
             challenge = row["input"].get("challenge")
@@ -628,9 +658,7 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertEqual(error["callback"] == "destination", "target" in error)
                 if error["callback"] == "destination":
                     # The code this contract defines for that destination refusal.
-                    self.assertEqual(error["code"], {
-                        "registration_endpoint": "untrusted_destination",
-                        "issuer_metadata": "discovery_failed"}[error["target"]])
+                    self.assertEqual(error["code"], DESTINATION_CODES[error["target"]])
 
     def test_completions(self):
         codes = {row["code"] for row in self.vectors["recovery"]}
@@ -684,9 +712,15 @@ class SDKAuthContractTests(unittest.TestCase):
                          {"code": "access_denied", "scopes": [], "login_ended": False,
                           "grant_persisted": False})
         self.assertIsNone(rows["complete-with-server-added-params"]["expect"]["code"])
-        # Host policy runs before the claim even for a consent denial.
+        # Host policy, including destination checks, runs before the claim even
+        # for a consent denial.
+        for name in ("complete-token-endpoint-destination-refused-login-pending",
+                     "complete-consent-denied-destination-refused-login-pending"):
+            self.assertEqual(rows[name]["input"]["host_error"]["target"], "token_endpoint")
+            self.assertFalse(rows[name]["expect"]["login_ended"])
         for name in ("complete-consent-denied-source-not-permitted-login-pending",
-                     "complete-consent-denied-client-selection-failure-login-pending"):
+                     "complete-consent-denied-client-selection-failure-login-pending",
+                     "complete-consent-denied-destination-refused-login-pending"):
             self.assertEqual(rows[name]["input"]["callback"], "denied")
             self.assertFalse(rows[name]["expect"]["login_ended"])
             self.assertNotIn("scopes", rows[name]["expect"])
@@ -759,7 +793,7 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertIn("`%s`" % feature, spec)
         for field in (SCOPE_DECISION_INPUT | SCOPE_DECISION_EXPECT | COMPLETION_INPUT
                       | COMPLETION_EXPECT | TOKEN_ERROR_INPUT | TOKEN_ERROR_EXPECT
-                      | {"outcome", "error_code", "reread"}):
+                      | {"outcome", "error_code", "reread", "check"}):
             self.assertIn("`%s`" % field, spec, field)
         # Rule 11 stays covered without the token-validation callback.
         untagged = [row["input"]["host_error"] for row in self.vectors["scope_decisions"]
