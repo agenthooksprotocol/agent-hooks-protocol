@@ -118,7 +118,9 @@ is unchanged, and retries the renewal once. An OAuth error response (such as
 failure after the request was sent (read timeout, reset after send, 5xx,
 non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
 rotated refresh token is never replayed.
-A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
+A failed fetch or changed issuer is `discovery_failed`; a host
+destination-policy refusal is not a failed fetch and keeps the host's code
+([SDK classify](sdk-auth-lifecycle.md#classify)). If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
 failure, or interactive consent needed), the operation fails with that error;
 there is no anonymous fallback. The client sends anonymously only on a store

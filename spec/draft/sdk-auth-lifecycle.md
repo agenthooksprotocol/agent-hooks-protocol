@@ -163,8 +163,8 @@ consent includes the broader scopes.
    cannot burn a valid pending operation.
 3. **Host policy** before the claim, for every valid callback including a
    consent denial: client selection, a client source that is no longer
-   permitted, and destination checks (the token-endpoint destination and
-   metadata approval). A failure keeps the host's
+   permitted, and destination checks on the token endpoint and on any metadata
+   URL the SDK fetches before the claim. A failure keeps the host's
    code (`invalid_configuration` when the client source is no longer
    permitted), carries no scopes, leaves the login pending and sets the flag
    false.
@@ -233,6 +233,12 @@ login-ended flag.
   produced by the SDK's own scope logic always have any scopes stripped.
 * The login-ended flag appears only on errors from `complete`, never on errors
   from other operations, and is never copied from a host error.
+* A host destination-policy refusal keeps the host's code (default
+  `untrusted_destination`, recovery `configure`) and carries no scopes,
+  whichever URL it refuses: protected-resource metadata, issuer
+  (authorization-server) metadata, the registration endpoint or the token
+  endpoint. `discovery_failed` is for fetch and validation failures, never for
+  a host policy refusal.
 
 ### Entry points and transport
 
@@ -609,7 +615,9 @@ is unchanged, and retries the renewal once. An OAuth error response (such as
 failure after the request was sent (read timeout, reset after send, 5xx,
 non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
 rotated refresh token is never replayed.
-A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
+A failed fetch or changed issuer is `discovery_failed`; a host
+destination-policy refusal is not a failed fetch and keeps the host's code
+([classify](#classify)). If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
 failure, or interactive consent needed), the operation fails with that error;
 there is no anonymous fallback. The client sends anonymously only on a store
@@ -732,8 +740,10 @@ Its `input` members are:
   NOT affect this operation.
 * `host_error`: an error a host callback raises, with `callback`
   (`client_selection`, `token_validation` or `destination`), `target` for
-  `destination` (`registration_endpoint`, `issuer_metadata` or
-  `token_endpoint`), `code` and the `scopes` it carries.
+  `destination` (`protected_resource_metadata`, `issuer_metadata`,
+  `registration_endpoint` or `token_endpoint`), `code` and the `scopes` it
+  carries. A `destination` error's `code` is the host's, by default
+  `untrusted_destination`, whatever the target.
 * `target_error`: a target or configuration check that fails before any
   decide step, with `check` (`unsupported_binding`) and the `code` it yields;
   a 401 still retires first.

@@ -417,9 +417,10 @@ def token_error(value):
     return {"code": "provider_failed"}
 
 
-DESTINATION_CODES = {"registration_endpoint": "untrusted_destination",
-                     "issuer_metadata": "discovery_failed",
-                     "token_endpoint": "untrusted_destination"}
+# A host destination refusal keeps the host's code (default untrusted_destination),
+# whichever URL it refuses; discovery_failed is for fetch and validation failures.
+DESTINATION_TARGETS = {"protected_resource_metadata", "issuer_metadata",
+                       "registration_endpoint", "token_endpoint"}
 TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error"}
 TOKEN_ERROR_EXPECT = {"code", "reregistrations"}
 SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
@@ -636,6 +637,13 @@ class SDKAuthContractTests(unittest.TestCase):
                      "challenge-401-unsupported-binding-retires-first",
                      "challenge-401-host-callback-failure-retires-first"):
             self.assertTrue(rows[name]["expect"]["retired"])
+        # An issuer-metadata destination refusal keeps the host's code, never
+        # discovery_failed, on prepare and on a challenged operation.
+        refused = [row for row in rows.values()
+                   if row["input"].get("host_error", {}).get("target") == "issuer_metadata"]
+        self.assertEqual({row["input"]["path"] for row in refused}, {"prepare", "challenge"})
+        for row in refused:
+            self.assertEqual(row["expect"], {"code": "untrusted_destination"})
         # The malformed auth-param can only pass via the malformed rule (H is non-empty).
         bad = rows["malformed-challenge-scope-bad-auth-param"]
         self.assertTrue(bad["input"]["host_required"])
@@ -701,7 +709,8 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assertEqual(error["callback"] == "destination", "target" in error)
                 if error["callback"] == "destination":
                     # The code this contract defines for that destination refusal.
-                    self.assertEqual(error["code"], DESTINATION_CODES[error["target"]])
+                    self.assertIn(error["target"], DESTINATION_TARGETS)
+                    self.assertEqual(error["code"], "untrusted_destination")
 
     def test_completions(self):
         codes = {row["code"] for row in self.vectors["recovery"]}
@@ -760,6 +769,7 @@ class SDKAuthContractTests(unittest.TestCase):
         for name in ("complete-token-endpoint-destination-refused-login-pending",
                      "complete-consent-denied-destination-refused-login-pending"):
             self.assertEqual(rows[name]["input"]["host_error"]["target"], "token_endpoint")
+            self.assertEqual(rows[name]["expect"]["code"], "untrusted_destination")
             self.assertFalse(rows[name]["expect"]["login_ended"])
         for name in ("complete-consent-denied-source-not-permitted-login-pending",
                      "complete-consent-denied-client-selection-failure-login-pending",
