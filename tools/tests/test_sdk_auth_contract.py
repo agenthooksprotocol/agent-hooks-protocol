@@ -340,8 +340,9 @@ def decide_scope(value):
     if value["path"] == "prepare":
         return dict(retired, code=None, action="login", required=sorted(required),
                     acquisition_scopes=sorted(previous | ((requested | required) & ceiling)))
+    # No authorization-server request is needed to return interaction_required.
     return dict(retired, code="interaction_required", scopes=sorted(required),
-                required=sorted(required))
+                required=sorted(required), authorization_server_requests=0)
 
 
 OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle",
@@ -571,7 +572,14 @@ class SDKAuthContractTests(unittest.TestCase):
                 self.assert_error_scope_set(expect)
                 self.assertIn(value["path"], ("fresh", "cached", "prepare", "credential",
                                               "challenge", "preemptive"))
-                self.assertIn(value["binding"], ("unbound", "preset", "stored"))
+                self.assertIn(value["binding"], ("unbound", "preset", "stored",
+                                                 "stored_without_metadata"))
+                # authorization_server_requests accompanies the network counts and
+                # every step-9 interaction_required.
+                self.assertEqual("authorization_server_requests" in expect,
+                                 "network_calls" in expect or "network_calls_max" in expect
+                                 or (expect["code"] == "interaction_required"
+                                     and "host_error" not in value))
                 self.assertEqual("preset_scopes" in value and value["binding"] != "preset", False)
                 self.assertEqual("sent" in value, "challenge" in value)
                 self.assertEqual(expect["code"] is None, "action" in expect)
@@ -644,6 +652,18 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertEqual({row["input"]["path"] for row in refused}, {"prepare", "challenge"})
         for row in refused:
             self.assertEqual(row["expect"], {"code": "untrusted_destination"})
+            # Only an outcome that contacts the authorization server fetches issuer
+            # metadata: client credentials (step 8), so every SDK must fetch it.
+            self.assertEqual(row["input"]["flow"], "client_credentials")
+        challenged = next(row for row in refused if row["input"]["path"] == "challenge")
+        self.assertEqual(challenged["input"]["binding"], "stored_without_metadata")
+        self.assertEqual(decide_scope({k: v for k, v in challenged["input"].items()
+                                       if k != "host_error"})["action"], "acquire")
+        # A PKCE 403 step-up on a stored binding needs no authorization-server request.
+        step_up = rows["step-up-carries-full-required-set"]
+        self.assertEqual((step_up["input"]["binding"], step_up["input"]["challenge"]["status"],
+                          step_up["expect"]["code"], step_up["expect"]["authorization_server_requests"]),
+                         ("stored", 403, "interaction_required", 0))
         # The malformed auth-param can only pass via the malformed rule (H is non-empty).
         bad = rows["malformed-challenge-scope-bad-auth-param"]
         self.assertTrue(bad["input"]["host_required"])

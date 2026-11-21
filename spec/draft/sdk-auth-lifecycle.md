@@ -138,6 +138,12 @@ never ends the decision.
    `interaction_required` with R; the host passes that set back to `prepare` as
    explicit required scopes.
 
+A decide outcome that needs no authorization-server request (**use**, a local
+refusal, or PKCE `interaction_required` at step 9) MUST be returned without
+one. Discovery and metadata fetches happen only for outcomes that must contact
+the authorization server (refresh, client-credentials acquisition, creating a
+login) or to learn an unbound target's client.
+
 A step-up requirement (Ch) is operation-scoped and MUST NOT be persisted on a
 binding or grant. Later operations use the stored grant, which after step-up
 consent includes the broader scopes.
@@ -587,7 +593,8 @@ Persist or otherwise retain trusted binding metadata so a recreated provider
 can find a valid grant without an available metadata endpoint. Local policy is
 still checked; a cache does not override issuer/resource/destination constraints.
 Full discovery (protected-resource, then authorization-server metadata) runs
-only on a cache miss, explicit invalidation, challenge handling, or a host
+only on a cache miss, explicit invalidation, challenge handling whose
+[decide](#decide) outcome must contact the authorization server, or a host
 `prepare` that must perform an exchange or create a login, outside the
 credential-store coordination lock. A `prepare` that finds a usable cached token
 serves it without any metadata network call; otherwise it rebuilds binding
@@ -725,7 +732,10 @@ Its `input` members are:
   target, `fresh` is an anonymous request (no token sent) that receives the
   vector's 401 and is handled by `challenge`; such a vector has `challenge`
   with status 401 and `sent` `null`, and every SDK runs it that way.
-* `binding`: `stored` (a stored binding), `preset` (an explicit preset) or
+* `binding`: `stored` (a stored binding with persisted authorization-server
+  metadata), `stored_without_metadata` (a stored binding whose record lacks
+  that metadata, so an outcome that contacts the authorization server first
+  fetches the stored issuer's metadata), `preset` (an explicit preset) or
   `unbound`.
 * `requested` (S), `host_required` (H) and `explicit` (E): scope lists.
 * `ceiling` (C): a scope list; when absent, C is `requested`.
@@ -762,7 +772,9 @@ Its `expect` members are:
 * `retired`: present exactly for a 401, whatever the outcome; whether
   generation `sent` was retired at [decide](#decide) step 0.
 * `authorization_server_requests` and either `network_calls` or
-  `network_calls_max`: present on failures decided at steps 1, 2, 4 and 5. They
+  `network_calls_max`: present on failures decided at steps 1, 2, 4 and 5.
+  `authorization_server_requests` alone (always 0) is also present on a PKCE
+  `interaction_required` from step 9. They
   count requests made after the inputs (after the challenged response on the
   challenge path): authorization-server requests (metadata, registration, token
   and authorization), and all network requests exactly (`network_calls`) or at
