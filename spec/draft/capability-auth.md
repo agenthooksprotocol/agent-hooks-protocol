@@ -113,7 +113,9 @@ When a renewal using persisted metadata fails where the token endpoint provably
 did not process the request (DNS resolution, TCP connect or TLS handshake
 failure, or HTTP 404/410 from the token endpoint), it refetches the stored
 issuer's authorization-server metadata once, persists it if the issuer identity
-is unchanged, and retries the renewal once. An OAuth error response (such as
+is unchanged, and retries the renewal once. A host destination-policy refusal
+of that refetch keeps the host's code (default `untrusted_destination`) with no
+scopes; only a failed refetch is `discovery_failed`. An OAuth error response (such as
 `invalid_grant` or `invalid_client`) never triggers a refetch, and an ambiguous
 failure after the request was sent (read timeout, reset after send, 5xx,
 non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a

@@ -138,11 +138,15 @@ never ends the decision.
    `interaction_required` with R; the host passes that set back to `prepare` as
    explicit required scopes.
 
-A decide outcome that needs no authorization-server request (**use**, a local
-refusal, or PKCE `interaction_required` at step 9) MUST be returned without
-one. Discovery and metadata fetches happen only for outcomes that must contact
-the authorization server (refresh, client-credentials acquisition, creating a
-login) or to learn an unbound target's client.
+A decide outcome that needs no authorization-server request (**use**, a
+refusal at steps 1–5, or PKCE `interaction_required` at step 9) MUST be
+returned without one, for every binding, including a stored binding whose
+record lacks persisted authorization-server metadata. Discovery and metadata
+fetches happen only for outcomes that must contact the authorization server
+(refresh, client-credentials acquisition, creating a login) or to learn an
+unbound target's client. Learning an unbound target's client needs
+protected-resource discovery; it fetches issuer metadata only when the client
+source depends on it (CIMD or DCR), so a pre-registered client needs none.
 
 A step-up requirement (Ch) is operation-scoped and MUST NOT be persisted on a
 binding or grant. Later operations use the stored grant, which after step-up
@@ -222,7 +226,11 @@ client-credentials grant (step 8) map as follows; none carries scopes.
   ([DCR](#dynamic-client-registration)).
 * Every other token-endpoint error (including `access_denied` and
   `invalid_scope`), an unreachable or 404 endpoint, and an invalid token
-  response: `provider_failed`.
+  response: `provider_failed`. For an unreachable or 404 endpoint the
+  stale-metadata refetch runs first
+  ([cached acquisition](#cached-acquisition-and-metadata-availability)): a
+  failed refetch is `discovery_failed`, and a host destination refusal of it
+  keeps the host's code.
 
 ### Classify
 
@@ -617,7 +625,9 @@ When a renewal using persisted metadata fails where the token endpoint provably
 did not process the request (DNS resolution, TCP connect or TLS handshake
 failure, or HTTP 404/410 from the token endpoint), it refetches the stored
 issuer's authorization-server metadata once, persists it if the issuer identity
-is unchanged, and retries the renewal once. An OAuth error response (such as
+is unchanged, and retries the renewal once. A host destination-policy refusal
+of that refetch keeps the host's code (default `untrusted_destination`) with no
+scopes; only a failed refetch is `discovery_failed`. An OAuth error response (such as
 `invalid_grant` or `invalid_client`) never triggers a refetch, and an ambiguous
 failure after the request was sent (read timeout, reset after send, 5xx,
 non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
@@ -732,6 +742,8 @@ Its `input` members are:
   target, `fresh` is an anonymous request (no token sent) that receives the
   vector's 401 and is handled by `challenge`; such a vector has `challenge`
   with status 401 and `sent` `null`, and every SDK runs it that way.
+* `client_source`: present exactly for an `unbound` target: `preregistered`,
+  `cimd` or `dcr`, the client host client selection yields.
 * `binding`: `stored` (a stored binding with persisted authorization-server
   metadata), `stored_without_metadata` (a stored binding whose record lacks
   that metadata, so an outcome that contacts the authorization server first
@@ -773,8 +785,10 @@ Its `expect` members are:
   generation `sent` was retired at [decide](#decide) step 0.
 * `authorization_server_requests` and either `network_calls` or
   `network_calls_max`: present on failures decided at steps 1, 2, 4 and 5.
-  `authorization_server_requests` alone (always 0) is also present on a PKCE
-  `interaction_required` from step 9. They
+  Every **use** outcome also carries `authorization_server_requests` 0 and
+  `network_calls` 0. A PKCE `interaction_required` from step 9 also carries
+  `authorization_server_requests` 0, plus `network_calls_max` for an `unbound`
+  target. They
   count requests made after the inputs (after the challenged response on the
   challenge path): authorization-server requests (metadata, registration, token
   and authorization), and all network requests exactly (`network_calls`) or at
@@ -820,7 +834,11 @@ A `token_errors` vector has `id`, optional `requires`, `input` and `expect`,
 for a token-endpoint error outside `complete` ([renewal errors](#renewal-errors)).
 Its `input` members are `grant_type` (`refresh`, a PKCE refresh, or
 `client_credentials`), `client_source` (as for `completions`; `cimd` only with
-`refresh`) and `error` (a value of `completions` `exchange` other than `ok`).
+`refresh`), `error` (a value of `completions` `exchange` other than `ok`) and,
+only with `unreachable` or `not_found`, `refetch`: the stale-metadata refetch
+of the stored issuer's metadata, either `failed` (the fetch itself fails) or a
+`host_error` object for a destination refusal of it. When `refetch` is absent,
+any refetch succeeds and the retried renewal fails with `error`.
 Its `expect` members are `code` and, present exactly for a client-credentials
 DCR `invalid_client`, `reregistrations` (the registrations sent before the
 repeated `invalid_client`). A `token_errors` outcome never carries scopes.

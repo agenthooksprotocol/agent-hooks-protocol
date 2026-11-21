@@ -256,6 +256,9 @@ def unbound_discovery_requests(challenge):
     return 1 if params and "resource_metadata" in params else 2
 
 
+NO_REQUESTS = {"authorization_server_requests": 0, "network_calls": 0}
+
+
 def decide_scope(value):
     """Reference decide(): step 0, then target checks, then steps 1-9, in order."""
     requested = set(value["requested"])
@@ -323,10 +326,10 @@ def decide_scope(value):
     if status == 403 and covered:
         if sent is None or grant["generation"] == sent:
             return fail("access_denied", required, required)
-        return {"code": None, "action": "use", "required": sorted(required)}
+        return {"code": None, "action": "use", "required": sorted(required), **NO_REQUESTS}
     # 6. Use.
     if token_valid and covered:
-        return dict(retired, code=None, action="use", required=sorted(required))
+        return dict(retired, code=None, action="use", required=sorted(required), **NO_REQUESTS)
     # 7. Refresh, PKCE grants only; client credentials reissue at step 8.
     if (value["flow"] == "authorization_code_pkce" and grant is not None
             and grant["refresh"] and required <= granted):
@@ -340,9 +343,12 @@ def decide_scope(value):
     if value["path"] == "prepare":
         return dict(retired, code=None, action="login", required=sorted(required),
                     acquisition_scopes=sorted(previous | ((requested | required) & ceiling)))
-    # No authorization-server request is needed to return interaction_required.
+    # No authorization-server request is needed to return interaction_required;
+    # an unbound target still ran its protected-resource discovery.
+    extra = ({"network_calls_max": local["network_calls_max"]}
+             if value["binding"] == "unbound" else {})
     return dict(retired, code="interaction_required", scopes=sorted(required),
-                required=sorted(required), authorization_server_requests=0)
+                required=sorted(required), authorization_server_requests=0, **extra)
 
 
 OPTIONAL_FEATURES = {"token_validation_callback", "complete_handle",
@@ -405,6 +411,12 @@ def complete_login(value):
 def token_error(value):
     """Reference renewal-error mapping for refresh and client-credentials grants."""
     grant_type, source, error = value["grant_type"], value["client_source"], value["error"]
+    refetch = value.get("refetch")
+    if refetch == "failed":
+        return {"code": "discovery_failed"}
+    if refetch is not None:
+        # A host destination refusal of the refetch keeps the host's code.
+        return {"code": refetch["code"]}
     if error == "invalid_grant":
         return {"code": "refresh_rejected" if grant_type == "refresh" else "credential_unavailable"}
     if error == "unauthorized_client":
@@ -422,11 +434,11 @@ def token_error(value):
 # whichever URL it refuses; discovery_failed is for fetch and validation failures.
 DESTINATION_TARGETS = {"protected_resource_metadata", "issuer_metadata",
                        "registration_endpoint", "token_endpoint"}
-TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error"}
+TOKEN_ERROR_INPUT = {"grant_type", "client_source", "error", "refetch"}
 TOKEN_ERROR_EXPECT = {"code", "reregistrations"}
 SCOPE_DECISION_INPUT = {"flow", "path", "binding", "requested", "ceiling", "preset_scopes",
                         "host_required", "explicit", "grant", "sent", "challenge",
-                        "prior_401_hint", "host_error", "target_error"}
+                        "prior_401_hint", "host_error", "target_error", "client_source"}
 SCOPE_DECISION_EXPECT = {"code", "scopes", "required", "action", "acquisition_scopes", "retired",
                          "authorization_server_requests", "network_calls", "network_calls_max"}
 COMPLETION_INPUT = {"pending", "handle", "client_source", "source_permitted", "callback",
@@ -574,12 +586,16 @@ class SDKAuthContractTests(unittest.TestCase):
                                               "challenge", "preemptive"))
                 self.assertIn(value["binding"], ("unbound", "preset", "stored",
                                                  "stored_without_metadata"))
-                # authorization_server_requests accompanies the network counts and
-                # every step-9 interaction_required.
+                self.assertEqual("client_source" in value, value["binding"] == "unbound")
+                # authorization_server_requests accompanies the network counts, every
+                # use and every step-9 interaction_required, and is always 0 there.
                 self.assertEqual("authorization_server_requests" in expect,
                                  "network_calls" in expect or "network_calls_max" in expect
                                  or (expect["code"] == "interaction_required"
                                      and "host_error" not in value))
+                if expect.get("action") == "use":
+                    self.assertEqual((expect["authorization_server_requests"],
+                                      expect["network_calls"]), (0, 0))
                 self.assertEqual("preset_scopes" in value and value["binding"] != "preset", False)
                 self.assertEqual("sent" in value, "challenge" in value)
                 self.assertEqual(expect["code"] is None, "action" in expect)
@@ -659,6 +675,23 @@ class SDKAuthContractTests(unittest.TestCase):
         self.assertEqual(challenged["input"]["binding"], "stored_without_metadata")
         self.assertEqual(decide_scope({k: v for k, v in challenged["input"].items()
                                        if k != "host_error"})["action"], "acquire")
+        # An older sent generation with a valid covering current one is used with no request.
+        older = rows["challenge-401-older-generation-uses-current"]
+        self.assertEqual(older["input"]["flow"], "client_credentials")
+        self.assertLess(older["input"]["sent"], older["input"]["grant"]["generation"])
+        self.assertEqual((older["expect"]["action"], older["expect"]["network_calls"]), ("use", 0))
+        # An unbound pre-registered PKCE target makes only its protected-resource fetch.
+        unbound_pkce = rows["unbound-preregistered-pkce-interaction-required"]
+        self.assertEqual((unbound_pkce["input"]["client_source"], unbound_pkce["expect"]["code"],
+                          unbound_pkce["expect"]["authorization_server_requests"],
+                          unbound_pkce["expect"]["network_calls_max"]),
+                         ("preregistered", "interaction_required", 0, 1))
+        # A stored binding without persisted metadata decides no-contact outcomes locally.
+        for name, code in (("stored-without-metadata-use", None),
+                           ("stored-without-metadata-interaction-required", "interaction_required")):
+            self.assertEqual(rows[name]["input"]["binding"], "stored_without_metadata")
+            self.assertEqual((rows[name]["expect"]["code"],
+                              rows[name]["expect"]["authorization_server_requests"]), (code, 0))
         # A PKCE 403 step-up on a stored binding needs no authorization-server request.
         step_up = rows["step-up-carries-full-required-set"]
         self.assertEqual((step_up["input"]["binding"], step_up["input"]["challenge"]["status"],
@@ -812,13 +845,30 @@ class SDKAuthContractTests(unittest.TestCase):
         for row in rows:
             with self.subTest(row["id"]):
                 self.assertLessEqual(set(row), VECTOR_KEYS)
-                self.assertEqual(set(row["input"]), TOKEN_ERROR_INPUT)
+                self.assertEqual(set(row["input"]) | {"refetch"}, TOKEN_ERROR_INPUT)
+                if "refetch" in row["input"]:
+                    refetch = row["input"]["refetch"]
+                    self.assertIn(row["input"]["error"], ("unreachable", "not_found"))
+                    if refetch != "failed":
+                        self.assertEqual(set(refetch), {"callback", "target", "code", "scopes"})
+                        self.assertEqual((refetch["callback"], refetch["target"]),
+                                         ("destination", "issuer_metadata"))
+                        self.assertEqual(refetch["code"], "untrusted_destination")
+                        self.assertTrue(refetch["scopes"])
                 self.assertLessEqual(set(row["expect"]), TOKEN_ERROR_EXPECT)
                 self.assertEqual(token_error(row["input"]), row["expect"])
                 self.assertIn(row["expect"]["code"], codes)
                 self.assertIn(row["input"]["error"], TOKEN_ENDPOINT_ERRORS)
                 self.assertFalse(row["input"]["client_source"] == "cimd"
                                  and row["input"]["grant_type"] != "refresh")
+        # The stale-metadata refetch: refusal keeps the host's code, failure is
+        # discovery_failed; both grant types cover the refusal.
+        refetched = {(row["input"]["grant_type"], row["input"]["refetch"] if row["input"]["refetch"] == "failed"
+                      else "refused"): row["expect"]["code"]
+                     for row in rows if "refetch" in row["input"]}
+        self.assertEqual(refetched, {("refresh", "refused"): "untrusted_destination",
+                                     ("refresh", "failed"): "discovery_failed",
+                                     ("client_credentials", "refused"): "untrusted_destination"})
         # Every error code is covered for both grant types.
         for grant_type in ("refresh", "client_credentials"):
             self.assertEqual({row["input"]["error"] for row in rows
