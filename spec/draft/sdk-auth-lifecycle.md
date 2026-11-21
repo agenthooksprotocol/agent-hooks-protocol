@@ -83,7 +83,10 @@ never ends the decision.
    whatever the outcome, including a malformed or unparseable challenge.
    Whenever the rejected grant can be identified, it is retired. Only an
    operation whose budget is already exhausted or aborted, so that no I/O is
-   possible, may fail before step 0.
+   possible, may fail before step 0. Host policy (client selection and
+   destination checks) runs after step 0 and before step 1: a refusal ends the
+   decision with the host's code and no scopes, so no later step, including the
+   local decision at step 5, runs on a target host policy refuses.
 1. **Configuration.** Fail `invalid_configuration` with no scopes if S ⊄ C, if
    the preset's `scopes` is present and differs from S, or if S, C, H or E
    contains an invalid scope token. This is an SDK auth error, never a native
@@ -567,11 +570,16 @@ non-interactive acquisition, including the up-front lookup's re-acquisition and
 challenge handling, MAY register when no usable record exists. A record is
 unusable when its nonzero `client_secret_expires_at` has passed or its secret
 cannot be resolved. Host `prepare` MAY force re-registration, replacing a
-usable record so changed registration settings take effect. When it replaces
-the client, the existing grant's token (and refresh token) MUST NOT be used for
-that operation: the SDK acquires with the new client (client credentials) or
-creates a login (PKCE), and never returns a token issued to the replaced
-client ([decide](#decide) steps 6–9). Processes register once: under the registration key's lock,
+usable record so changed registration settings take effect. This applies only
+to a client-credentials DCR client, the only client with a separate
+registration record (a PKCE DCR client registers per login). When it replaces
+the client, the existing grant's token MUST NOT be used for that operation: the
+SDK acquires with the new client and never returns a token issued to the
+replaced client ([decide](#decide) step 8). The operation stays forced
+throughout, including its internal retries (the stale-metadata refetch and an
+`invalid_client` re-registration). For a PKCE or pre-registered client the
+force flag does not make a usable token unusable. Processes register once:
+under the registration key's lock,
 the SDK reloads, registers only when no usable record exists, stores the secret
 under a fresh reference, and persists by compare-and-set on the generation; a
 loser deletes its reference and uses the winner's record. After a successful
@@ -752,9 +760,10 @@ Its `input` members are:
 * `client_source`: present exactly for an `unbound` target and with
   `force_registration`: `preregistered`, `cimd` or `dcr`, the client host
   client selection yields.
-* `force_registration`: `true` when host `prepare` forces re-registration that
-  replaces the client; only with `path` `prepare` and `client_source` `dcr`.
-  The stored token and refresh token are then unusable for the operation.
+* `force_registration`: `true` when host `prepare` forces re-registration;
+  only with `path` `prepare`. For a client-credentials `dcr` client the stored
+  token is then unusable for the operation; for any other client it has no
+  effect on a usable token.
 * `binding`: `stored` (a stored binding with persisted authorization-server
   metadata), `stored_without_metadata` (a stored binding whose record lacks
   that metadata, so an outcome that contacts the authorization server first
@@ -793,7 +802,7 @@ Its `expect` members are:
 * `acquisition_scopes`: present exactly when `action` is `acquire` or `login`;
   the sorted scopes requested.
 * `authorization_server_requests_min`: present exactly with
-  `force_registration`; the least number of authorization-server requests (at
+  `force_registration` on a client-credentials `dcr` client; the least number of authorization-server requests (at
   least the token request with the new client), since metadata rebuilding on
   such a `prepare` varies.
 * `retired`: present exactly for a 401, whatever the outcome; whether

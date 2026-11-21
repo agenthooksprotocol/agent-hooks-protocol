@@ -269,7 +269,9 @@ def decide_scope(value):
     sent = value.get("sent")
     # 0. A 401 retires the sent generation, if current, before every other step.
     retired = {}
-    forced = value.get("force_registration", False)
+    # Only a client-credentials DCR client has a registration record to replace.
+    forced = (value.get("force_registration", False) and value["flow"] == "client_credentials"
+              and value.get("client_source") == "dcr")
     # A forced re-registration replaces the client: its old tokens are unusable.
     token_valid = grant is not None and grant["token"] == "valid" and not forced
     if status == 401:
@@ -596,13 +598,15 @@ class SDKAuthContractTests(unittest.TestCase):
                                                  "stored_without_metadata"))
                 self.assertEqual("client_source" in value,
                                  value["binding"] == "unbound" or "force_registration" in value)
-                self.assertEqual("authorization_server_requests_min" in expect,
-                                 "force_registration" in value)
+                effective = ("force_registration" in value and value["flow"] == "client_credentials"
+                             and value.get("client_source") == "dcr")
+                self.assertEqual("authorization_server_requests_min" in expect, effective)
                 if "force_registration" in value:
                     self.assertIs(value["force_registration"], True)
-                    self.assertEqual((value["path"], value["client_source"]), ("prepare", "dcr"))
-                    self.assertGreaterEqual(expect["authorization_server_requests_min"], 1)
-                    self.assertNotEqual(expect.get("action"), "use")
+                    self.assertEqual(value["path"], "prepare")
+                    if effective:
+                        self.assertGreaterEqual(expect["authorization_server_requests_min"], 1)
+                        self.assertNotEqual(expect.get("action"), "use")
                 # authorization_server_requests accompanies the network counts, every
                 # use and every step-9 interaction_required, and is always 0 there.
                 self.assertEqual("authorization_server_requests" in expect,
@@ -613,7 +617,7 @@ class SDKAuthContractTests(unittest.TestCase):
                     self.assertEqual(expect["authorization_server_requests"], 0)
                     if value["binding"] == "unbound":
                         self.assertEqual(expect["network_calls_max"],
-                                         unbound_discovery_requests(value["challenge"]))
+                                         unbound_discovery_requests(value.get("challenge")))
                     else:
                         self.assertEqual(expect["network_calls"], 0)
                 self.assertEqual("preset_scopes" in value and value["binding"] != "preset", False)
@@ -663,9 +667,13 @@ class SDKAuthContractTests(unittest.TestCase):
         # An unbound target is an anonymous request answered by the vector's 401.
         unbound = [row for row in rows.values() if row["input"]["binding"] == "unbound"]
         for row in unbound:
-            self.assertEqual(row["input"]["path"], "fresh")
-            self.assertEqual(row["input"]["challenge"]["status"], 401)
-            self.assertIsNone(row["input"]["sent"])
+            # fresh: an anonymous request answered by the vector's 401; prepare: no challenge.
+            self.assertIn(row["input"]["path"], ("fresh", "prepare"))
+            if row["input"]["path"] == "fresh":
+                self.assertEqual(row["input"]["challenge"]["status"], 401)
+                self.assertIsNone(row["input"]["sent"])
+            else:
+                self.assertNotIn("challenge", row["input"])
         self.assertEqual({row["expect"]["network_calls_max"] for row in unbound}, {1, 2})
         self.assertEqual(rows["unbound-unparseable-challenge-denied"]["expect"]["scopes"], [])
         self.assertEqual(rows["client-credentials-with-refresh-token-reissues"]["expect"]["action"],
@@ -711,6 +719,20 @@ class SDKAuthContractTests(unittest.TestCase):
             self.assertEqual(rows[name]["input"]["binding"], "stored_without_metadata")
             self.assertEqual((rows[name]["expect"]["code"],
                               rows[name]["expect"]["authorization_server_requests"]), (code, 0))
+        # The force flag only affects a client-credentials DCR client.
+        for name in ("prepare-forced-registration-pkce-keeps-usable-token",
+                     "prepare-forced-registration-preregistered-keeps-usable-token"):
+            self.assertTrue(rows[name]["input"]["force_registration"])
+            self.assertEqual(rows[name]["expect"]["action"], "use")
+        # prepare on an unbound target with a usable grant: discovery only.
+        unbound_prepare = rows["prepare-unbound-usable-grant-uses"]
+        self.assertEqual((unbound_prepare["expect"]["action"],
+                          unbound_prepare["expect"]["authorization_server_requests"]), ("use", 0))
+        # Host policy refusing a challenged stored target pre-empts the step-5 decision.
+        refused_target = rows["host-policy-client-selection-refuses-challenged-target"]
+        without = {k: v for k, v in refused_target["input"].items() if k != "host_error"}
+        self.assertEqual(decide_scope(without)["code"], "access_denied")
+        self.assertEqual(refused_target["expect"], {"code": "credential_unavailable"})
         # A forced re-registration never returns the replaced client's token.
         forced = rows["prepare-forced-reregistration-acquires"]
         self.assertEqual(forced["input"]["grant"]["token"], "valid")
