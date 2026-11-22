@@ -113,12 +113,16 @@ When a renewal using persisted metadata fails where the token endpoint provably
 did not process the request (DNS resolution, TCP connect or TLS handshake
 failure, or HTTP 404/410 from the token endpoint), it refetches the stored
 issuer's authorization-server metadata once, persists it if the issuer identity
-is unchanged, and retries the renewal once. An OAuth error response (such as
+is unchanged, and retries the renewal once. A host destination-policy refusal
+of that refetch keeps the host's code (default `untrusted_destination`) with no
+scopes; only a failed refetch is `discovery_failed`. An OAuth error response (such as
 `invalid_grant` or `invalid_client`) never triggers a refetch, and an ambiguous
 failure after the request was sent (read timeout, reset after send, 5xx,
 non-OAuth body) is `provider_failed` with no SDK-driven immediate retry, so a
 rotated refresh token is never replayed.
-A failed fetch or changed issuer is `discovery_failed`. If a binding is known but its grant holds no usable token
+A failed fetch or changed issuer is `discovery_failed`; a host
+destination-policy refusal is not a failed fetch and keeps the host's code
+([SDK classify](sdk-auth-lifecycle.md#classify)). If a binding is known but its grant holds no usable token
 and cannot be renewed this way (transient error, `invalid_grant`, metadata
 failure, or interactive consent needed), the operation fails with that error;
 there is no anonymous fallback. The client sends anonymously only on a store
@@ -146,9 +150,13 @@ method to negotiate bearer, mTLS, or workload credentials.
 
 Discovery is untrusted input, not permission to send credentials. Clients MUST
 validate HTTPS URLs, server certificates, exact discovered issuer identity,
-resource/audience, scope requirements, and token validity. Challenge scopes describe
-requirements, not consent: clients MUST request only locally permitted scopes and
-MUST NOT assume `scopes_supported` is the required set for a particular request. Clients MUST request
+resource/audience, scope requirements, and token validity. Only a Bearer 403
+`insufficient_scope` challenge's scopes describe requirements. A 401 means the
+token was rejected; its `scope` is only a hint, used by a client-credentials
+acquisition in the same operation and never stored or required. Neither is
+consent: clients MUST request only locally permitted scopes and MUST NOT assume
+`scopes_supported` is the required set for a particular request (see
+[SDK scope decisions](sdk-auth-lifecycle.md#scope-decisions)). Clients MUST request
 resource-bound tokens using RFC 8707 and MUST NOT use a token for another resource.
 Clients MUST apply local destination/SSRF policy to metadata, registration,
 authorization, and token endpoints, including DNS resolution and every redirect;
@@ -182,7 +190,11 @@ its issuer, resource, scope, and client constraints.
   If resolution fails, do not send the request. Send the resolved token in exactly
   one Authorization header. A challenge cannot choose a different local secret.
 * `oauth`: an optional preset configures HTTPS `issuer`, protected `resource`,
-  `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. It uses the
+  `clientId`, `flow`, optional `scopes`, and optional `clientSecretRef`. Omitted
+  preset `scopes` mean no constraint; present ones MUST equal the client's
+  configured scopes. They are requested, not required: a grant lacking them
+  still satisfies an operation whose
+  [required set](sdk-auth-lifecycle.md#inputs) is covered. It uses the
   standards-based discovery and validation above; it is not required merely to
   encounter an OAuth-protected endpoint. A trusted explicit preset may discover
   its configured issuer directly; protected-resource metadata is not a prerequisite
